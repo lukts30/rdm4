@@ -3,13 +3,13 @@ use std::path::Path;
 
 use std::fs::File;
 
-
-
 use std::str;
 use std::string;
 
 use half::f16;
 use std::fmt;
+
+use nalgebra::*;
 
 #[macro_use]
 extern crate log;
@@ -101,12 +101,10 @@ impl GetVertex for Bytes {
 pub struct RDJoint {
     name: String,
     nameptr: u32,
-    transition: [f32;3],
-    quaternion: [f32;4],
+    transition: [f32; 3],
+    quaternion: [f32; 4],
     parent: u8,
 }
-
-
 
 impl RDModell {
     const META_OFFSET: u32 = 32;
@@ -119,15 +117,16 @@ impl RDModell {
         let mut skin_buffer = self.buffer.clone();
         skin_buffer.advance(40);
         let skin_offset = skin_buffer.get_u32_le();
-        assert_eq!(skin_offset!=0,true);
+        assert_eq!(skin_offset != 0, true);
 
-
-        let rel_skin_offset: usize = (skin_offset - (self.size - skin_buffer.remaining() as u32)) as usize;
+        let rel_skin_offset: usize =
+            (skin_offset - (self.size - skin_buffer.remaining() as u32)) as usize;
         skin_buffer.advance(rel_skin_offset);
         let first_skin_offset = skin_buffer.get_u32_le();
 
-        let joint_count_ptr = first_skin_offset-RDModell::META_COUNT;
-        let rel_joint_count: usize = (joint_count_ptr - (self.size - skin_buffer.remaining() as u32)) as usize;
+        let joint_count_ptr = first_skin_offset - RDModell::META_COUNT;
+        let rel_joint_count: usize =
+            (joint_count_ptr - (self.size - skin_buffer.remaining() as u32)) as usize;
         skin_buffer.advance(rel_joint_count);
 
         let joint_count = skin_buffer.get_u32_le();
@@ -135,51 +134,61 @@ impl RDModell {
 
         let mut joints_vec: Vec<RDJoint> = Vec::with_capacity(joint_count as usize);
 
-
-        
         let mut joint_name_buffer = skin_buffer.clone();
-        
 
-        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le()-RDModell::META_COUNT;
-        let rel_len_first_joint_name_ptr: usize = (len_first_joint_name_ptr - (self.size - joint_name_buffer.remaining() as u32)) as usize;
+        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RDModell::META_COUNT;
+        let rel_len_first_joint_name_ptr: usize = (len_first_joint_name_ptr
+            - (self.size - joint_name_buffer.remaining() as u32))
+            as usize;
         joint_name_buffer.advance(rel_len_first_joint_name_ptr);
 
+        assert_eq!(joint_size, 84);
+        for _ in 0..joint_count {
 
-        assert_eq!(joint_size,84);
-        for _ in  0..joint_count {
+
+            let len_joint_name = joint_name_buffer.get_u32_le();
+            assert_eq!(joint_name_buffer.get_u32_le(), 1);
+            let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
+            let k = String::from(name);
+            joint_name_buffer.advance(len_joint_name as usize);
+
+            let nameptr = skin_buffer.get_u32_le();
+
+            let tz = -skin_buffer.get_f32_le();
+            let ty = -skin_buffer.get_f32_le();
+            let tx = -skin_buffer.get_f32_le();
+
+            let qx = skin_buffer.get_f32_le();
+            let qy = skin_buffer.get_f32_le();
+            let qz = skin_buffer.get_f32_le();
+            let qw = skin_buffer.get_f32_le();
+
+            let q = Quaternion::new(qw,qx,qy,qz);
+            let uq = UnitQuaternion::from_quaternion(q).inverse();
+
+
+            let uqc = uq.quaternion().coords;
+
+            let trans_point = Point3::new(tx, ty, tz).coords;
+
+
+            warn!("{:?}",trans_point);
+
             let joint = RDJoint {
-                name: {
-                    let len_joint_name = joint_name_buffer.get_u32_le();
-                    assert_eq!(joint_name_buffer.get_u32_le(),1);
-                    let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
-                    let k = String::from(name);
-                    joint_name_buffer.advance(len_joint_name as usize);
-                    
-                    k
-                },
-                nameptr: skin_buffer.get_u32_le(), 
-                transition: [
-                    -skin_buffer.get_f32_le(),
-                    -skin_buffer.get_f32_le(),
-                    -skin_buffer.get_f32_le()
-                ],
-                quaternion: [
-                    skin_buffer.get_f32_le(),
-                    skin_buffer.get_f32_le(),
-                    skin_buffer.get_f32_le(),
-                    skin_buffer.get_f32_le()
-                ],
-                parent: skin_buffer.get_u8(), 
+                name: k,
+                nameptr: nameptr,
+                transition: [trans_point.x, trans_point.y, trans_point.z],
+                quaternion: [uqc.x,uqc.y,uqc.z,uqc.w],
+                parent: skin_buffer.get_u8(),
             };
 
             joints_vec.push(joint);
-            skin_buffer.advance(84-33);            
+            skin_buffer.advance(84 - 33);
         }
 
-        info!("joints {:?}",joints_vec);
+        info!("joints {:?}", joints_vec);
 
         self.joints = Some(joints_vec);
-        
     }
 
     fn new(buf: Vec<u8>) -> Self {
@@ -204,10 +213,8 @@ impl RDModell {
 
         let mut vert_read_buf = nbuffer.clone();
 
-
         let vertices_vec: Option<Vec<VertexFormat>> = match vertex_buffer_size {
-
-            VertexFormatSize::P4h => {                
+            VertexFormatSize::P4h => {
                 vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
                 assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
                 let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
@@ -221,12 +228,13 @@ impl RDModell {
                 assert_eq!(vert_read_buf.is_empty(), true);
                 info!(
                     "Read {} vertices of type P4h ({} bytes)",
-                    verts_vec.len(),vertex_buffer_size
+                    verts_vec.len(),
+                    vertex_buffer_size
                 );
                 Some(verts_vec)
             }
 
-            VertexFormatSize::P4h_N4b_T2h_C4c => {                
+            VertexFormatSize::P4h_N4b_T2h_C4c => {
                 vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
                 assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
                 let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
@@ -237,19 +245,20 @@ impl RDModell {
                     let t2h = vert_read_buf.get_t2h();
                     let c4c = vert_read_buf.get_c4c();
 
-                    let k = VertexFormat::P4h_N4b_T2h_C4c(p4h, n4b, t2h,c4c);
+                    let k = VertexFormat::P4h_N4b_T2h_C4c(p4h, n4b, t2h, c4c);
                     verts_vec.push(k);
                 }
                 assert_eq!(verts_vec.len(), vertices_count as usize);
                 assert_eq!(vert_read_buf.is_empty(), true);
                 info!(
                     "Read {} vertices of type P4h_N4b_T2h_C4c ({} bytes)",
-                    verts_vec.len(),vertex_buffer_size
+                    verts_vec.len(),
+                    vertex_buffer_size
                 );
                 Some(verts_vec)
             }
 
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h => {                
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h => {
                 vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
                 assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
                 let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
@@ -267,12 +276,13 @@ impl RDModell {
                 assert_eq!(vert_read_buf.is_empty(), true);
                 info!(
                     "Read {} vertices of type P4h_N4b_G4b_B4b_T2h ({} bytes)",
-                    verts_vec.len(),vertex_buffer_size
+                    verts_vec.len(),
+                    vertex_buffer_size
                 );
                 Some(verts_vec)
             }
 
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b => {                
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b => {
                 vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
                 assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
                 let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
@@ -291,10 +301,10 @@ impl RDModell {
                 assert_eq!(vert_read_buf.is_empty(), true);
                 info!(
                     "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_I4b ({} bytes)",
-                    verts_vec.len(),vertex_buffer_size
+                    verts_vec.len(),
+                    vertex_buffer_size
                 );
 
-                
                 Some(verts_vec)
             }
             _ => {
@@ -308,24 +318,23 @@ impl RDModell {
         let triangles_idx_count = nbuffer.get_u32_le();
         let triangles_idx_size = nbuffer.get_u32_le();
 
-        // read indices for triangles 
-        assert_eq!(triangles_idx_size,2);
-        assert_eq!(triangles_idx_count%3,0);
+        // read indices for triangles
+        assert_eq!(triangles_idx_size, 2);
+        assert_eq!(triangles_idx_count % 3, 0);
         let mut triangles_idx_buffer = nbuffer.clone();
-        triangles_idx_buffer.truncate((triangles_idx_size*triangles_idx_count) as usize);
-        let triangles_real_count = triangles_idx_count/3;
+        triangles_idx_buffer.truncate((triangles_idx_size * triangles_idx_count) as usize);
+        let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
         for _ in 0..triangles_real_count {
             let t = Triangle {
                 indices: [
                     triangles_idx_buffer.get_u16_le(),
                     triangles_idx_buffer.get_u16_le(),
-                    triangles_idx_buffer.get_u16_le()
-                ]
+                    triangles_idx_buffer.get_u16_le(),
+                ],
             };
             triangles.push(t);
         }
-
 
         let modell = RDModell {
             size: size,
@@ -351,30 +360,28 @@ impl fmt::Debug for RDModell {
         let felm = self.vertices.first().unwrap();
         let vformat = match felm {
             VertexFormat::P4h(_) => "P4h",
-            VertexFormat::P4h_N4b_T2h_C4c(_,_,_,_) => "P4h_N4b_T2h_C4c",
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(_,_,_,_,_) => "P4h_N4b_G4b_B4b_T2h",
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_,_,_,_,_,_) => "P4h_N4b_G4b_B4b_T2h_I4b",
-        };        
+            VertexFormat::P4h_N4b_T2h_C4c(_, _, _, _) => "P4h_N4b_T2h_C4c",
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h",
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h_I4b",
+        };
         f.debug_struct("RDModell")
-         .field("meta", &self.meta)
-         .field("vertex_format", &vformat)
-         .field("vertex_offset", &self.vertex_offset)
-         .field("vertices_count", &self.vertices_count)
-         .field("vertex_buffer_size", &self.vertex_buffer_size)
-         .field("triangles_offset", &self.triangles_offset)
-         .field("triangles_idx_count", &self.triangles_idx_count)
-         .field("triangles_idx_size", &self.triangles_idx_size)
-         .finish()
-        
+            .field("meta", &self.meta)
+            .field("vertex_format", &vformat)
+            .field("vertex_offset", &self.vertex_offset)
+            .field("vertices_count", &self.vertices_count)
+            .field("vertex_buffer_size", &self.vertex_buffer_size)
+            .field("triangles_offset", &self.triangles_offset)
+            .field("triangles_idx_count", &self.triangles_idx_count)
+            .field("triangles_idx_size", &self.triangles_idx_size)
+            .finish()
     }
 }
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct Triangle {
-    indices: [u16;3]
+    indices: [u16; 3],
 }
-
 
 #[derive(Debug)]
 #[repr(C)]
@@ -418,7 +425,7 @@ pub struct C4c {
 #[allow(non_camel_case_types)]
 pub enum VertexFormat {
     P4h(P4h),
-    P4h_N4b_T2h_C4c(P4h, N4b, T2h,C4c),
+    P4h_N4b_T2h_C4c(P4h, N4b, T2h, C4c),
     P4h_N4b_G4b_B4b_T2h(P4h, N4b, G4b, B4b, T2h),
     P4h_N4b_G4b_B4b_T2h_I4b(P4h, N4b, G4b, B4b, T2h, I4b),
 }
@@ -427,10 +434,10 @@ impl VertexFormat {
     fn get_p4h(&self) -> &P4h {
         let p4h = match self {
             VertexFormat::P4h(p4h) => p4h,
-            VertexFormat::P4h_N4b_T2h_C4c(p4h,_,_,_) => p4h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h,_,_,_,_) => p4h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h,_,_,_,_,_) => p4h,
-        };    
+            VertexFormat::P4h_N4b_T2h_C4c(p4h, _, _, _) => p4h,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, _, _, _, _) => p4h,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, _, _, _, _, _) => p4h,
+        };
         p4h
     }
 }
@@ -445,7 +452,6 @@ impl VertexFormatSize {
     const P4h_N4b_G4b_B4b_T2h_I4b: u32 = 28;
 }
 
-
 impl From<&Path> for RDModell {
     fn from(f_path: &Path) -> Self {
         let mut f = File::open(f_path).unwrap();
@@ -454,7 +460,7 @@ impl From<&Path> for RDModell {
 
         let buffer_len = buffer.len();
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
-        
+
         info!("buffer size: {}", buffer_len);
         let rdm = RDModell::new(buffer);
         rdm
@@ -474,41 +480,49 @@ mod tests {
     #[test]
     fn fishery_others_lod2() {
         let rdm = RDModell::from("fishery_others_lod2.rdm");
-        assert_eq!(rdm.vertices_count,3291);
-        assert_eq!(rdm.triangles_idx_count,7473);
+        assert_eq!(rdm.vertices_count, 3291);
+        assert_eq!(rdm.triangles_idx_count, 7473);
 
-        assert_eq!(rdm.triangles_idx_count as usize,rdm.triangle_indices.len()*3);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
     }
 
     #[test]
     fn basalt_crusher_others_lod2() {
         let rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
-        assert_eq!(rdm.vertices_count,2615);
+        assert_eq!(rdm.vertices_count, 2615);
 
-        assert_eq!(rdm.triangles_idx_count as usize,rdm.triangle_indices.len()*3);
-
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
     }
 
     #[test]
     fn fishery_others_cutout_lod0() {
         let rdm = RDModell::from("fishery_others_cutout_lod0.rdm");
-        assert_eq!(rdm.vertices_count,32);
-        assert_eq!(rdm.triangles_idx_count,78);
+        assert_eq!(rdm.vertices_count, 32);
+        assert_eq!(rdm.triangles_idx_count, 78);
 
-        assert_eq!(rdm.triangles_idx_count as usize,rdm.triangle_indices.len()*3);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
     }
 
     #[test]
     fn ark_waterfall2() {
         let rdm = RDModell::from("ark_waterfall2.rdm");
-        assert_eq!(rdm.vertices_count,105);
+        assert_eq!(rdm.vertices_count, 105);
 
-        assert_eq!(rdm.triangles_idx_count as usize,rdm.triangle_indices.len()*3);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
     }
-
-    
 }
-
 
 fn main() {
     env_logger::init();

@@ -11,6 +11,8 @@ log = "0.4"
 env_logger = "0.7.1"
 bytes = "0.5"
 half = "1.5.0"
+nalgebra = "0.21.0"
+
 
 
 [dependencies.gltf]
