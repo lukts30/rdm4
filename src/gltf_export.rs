@@ -1,13 +1,14 @@
 use gltf::json;
 
+use gltf::json as gltf_json;
+
 use std::{fs, mem};
 
 use json::validation::Checked::Valid;
 
 use std::io::Write;
 
-
-
+use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormat;
@@ -30,11 +31,77 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
+pub fn rdm_joint_to_nodes(joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
+    let mut skin_nodes: Vec<json::Node> = Vec::new();
+
+    let mut arm: Vec<json::root::Index<_>> = Vec::new();
+
+    for i in 0..joints_vec.len() {
+        if joints_vec[i].parent == 255 {
+            arm.push(json::Index::new(start_jindex+i as u32));
+        }
+    }
+    info!("{:#?}", arm);
+    
+    let zero_node = json::Node {
+        camera: None,
+        children: Some(arm),
+        extensions: None,
+        extras: None,
+        matrix: None,
+        mesh: Some(json::Index::new(0)),
+        name: Some(String::from("armature")),
+        rotation: None,
+        scale: None,
+        translation: None,
+        skin: None,
+        weights: None,
+    };
+    skin_nodes.push(zero_node);
+
+
+    let jlen = joints_vec.len();
+    let mut z: usize = 0;
+
+    for joint in &joints_vec {
+        let ijoint = json::Node {
+            camera: None,
+            children: {
+                let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
+                for j in 0..jlen {
+                    if joints_vec[j].parent == z as u8 {
+                        child.push(gltf_json::Index::new(start_jindex+j as u32));
+                    }
+                }
+                z = z+1;
+                if child.len() > 0 {
+                    Some(child)
+                } else {
+                    None
+                }
+            },
+            extensions: None,
+            extras: None,
+            matrix: None,
+            mesh: None,
+            name: Some(String::from(&joint.name)),
+            rotation: Some(json::scene::UnitQuaternion(joint.quaternion)),
+            scale: None,
+            translation: Some(joint.transition),
+            skin: None,
+            weights: None,
+        };
+        skin_nodes.push(ijoint);
+    }
+    info!("{:#?}",skin_nodes);
+    skin_nodes
+}
+
 fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
     let mut out: Vec<Vertex> = Vec::new();
 
-    let mut min: Vec<f32> = vec![100.0,100.0,100.0];
-    let mut max: Vec<f32> = vec![-100.0,-100.0,-100.0];
+    let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
+    let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
 
     for vert in input_vec {
         let p4h = vert.get_p4h();
@@ -60,6 +127,8 @@ fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, V
 
 pub fn export(rdm: RDModell) {
     let conv = rdm_vertex_to_gltf(rdm.vertices);
+
+    
 
     let triangle_vertices = conv.0;
     let min = conv.1;
@@ -181,7 +250,14 @@ pub fn export(rdm: RDModell) {
         buffers: vec![buffer, buffer_idx],
         buffer_views: vec![buffer_view, buffer_idx_view],
         meshes: vec![mesh],
-        nodes: vec![node],
+        nodes: {
+            if rdm.joints.is_some() {
+                let mut comb: Vec<json::Node> = rdm_joint_to_nodes(rdm.joints.unwrap(),1);
+                comb
+            } else {
+                vec![node]
+            }
+        },
         scenes: vec![json::Scene {
             extensions: Default::default(),
             extras: Default::default(),

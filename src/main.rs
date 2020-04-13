@@ -2,7 +2,11 @@ use bytes::{Buf, Bytes};
 use std::path::Path;
 
 use std::fs::File;
-use std::io;
+
+
+
+use std::str;
+use std::string;
 
 use half::f16;
 use std::fmt;
@@ -13,7 +17,9 @@ extern crate log;
 mod gltf_export;
 
 pub struct RDModell {
+    size: u32,
     buffer: Bytes,
+    joints: Option<Vec<RDJoint>>,
     vertices: Vec<VertexFormat>,
     triangle_indices: Vec<Triangle>,
 
@@ -91,12 +97,90 @@ impl GetVertex for Bytes {
     }
 }
 
+#[derive(Debug)]
+pub struct RDJoint {
+    name: String,
+    nameptr: u32,
+    transition: [f32;3],
+    quaternion: [f32;4],
+    parent: u8,
+}
+
+
+
 impl RDModell {
     const META_OFFSET: u32 = 32;
     const META_COUNT: u32 = 8; //neg
     const META_SIZE: u32 = 4; //neg
     const VERTEX_META: u32 = 12;
     const TRIANGLES_META: u32 = 16;
+
+    fn add_skin(&mut self) {
+        let mut skin_buffer = self.buffer.clone();
+        skin_buffer.advance(40);
+        let skin_offset = skin_buffer.get_u32_le();
+        assert_eq!(skin_offset!=0,true);
+
+
+        let rel_skin_offset: usize = (skin_offset - (self.size - skin_buffer.remaining() as u32)) as usize;
+        skin_buffer.advance(rel_skin_offset);
+        let first_skin_offset = skin_buffer.get_u32_le();
+
+        let joint_count_ptr = first_skin_offset-RDModell::META_COUNT;
+        let rel_joint_count: usize = (joint_count_ptr - (self.size - skin_buffer.remaining() as u32)) as usize;
+        skin_buffer.advance(rel_joint_count);
+
+        let joint_count = skin_buffer.get_u32_le();
+        let joint_size = skin_buffer.get_u32_le();
+
+        let mut joints_vec: Vec<RDJoint> = Vec::with_capacity(joint_count as usize);
+
+
+        
+        let mut joint_name_buffer = skin_buffer.clone();
+        
+
+        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le()-RDModell::META_COUNT;
+        let rel_len_first_joint_name_ptr: usize = (len_first_joint_name_ptr - (self.size - joint_name_buffer.remaining() as u32)) as usize;
+        joint_name_buffer.advance(rel_len_first_joint_name_ptr);
+
+
+        assert_eq!(joint_size,84);
+        for _ in  0..joint_count {
+            let joint = RDJoint {
+                name: {
+                    let len_joint_name = joint_name_buffer.get_u32_le();
+                    assert_eq!(joint_name_buffer.get_u32_le(),1);
+                    let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
+                    let k = String::from(name);
+                    joint_name_buffer.advance(len_joint_name as usize);
+                    
+                    k
+                },
+                nameptr: skin_buffer.get_u32_le(), 
+                transition: [
+                    -skin_buffer.get_f32_le(),
+                    -skin_buffer.get_f32_le(),
+                    -skin_buffer.get_f32_le()
+                ],
+                quaternion: [
+                    skin_buffer.get_f32_le(),
+                    skin_buffer.get_f32_le(),
+                    skin_buffer.get_f32_le(),
+                    skin_buffer.get_f32_le()
+                ],
+                parent: skin_buffer.get_u8(), 
+            };
+
+            joints_vec.push(joint);
+            skin_buffer.advance(84-33);            
+        }
+
+        info!("joints {:?}",joints_vec);
+
+        self.joints = Some(joints_vec);
+        
+    }
 
     fn new(buf: Vec<u8>) -> Self {
         let size = buf.len() as u32;
@@ -119,6 +203,7 @@ impl RDModell {
         let vertex_buffer_size = nbuffer.get_u32_le();
 
         let mut vert_read_buf = nbuffer.clone();
+
 
         let vertices_vec: Option<Vec<VertexFormat>> = match vertex_buffer_size {
 
@@ -208,6 +293,8 @@ impl RDModell {
                     "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_I4b ({} bytes)",
                     verts_vec.len(),vertex_buffer_size
                 );
+
+                
                 Some(verts_vec)
             }
             _ => {
@@ -241,7 +328,9 @@ impl RDModell {
 
 
         let modell = RDModell {
+            size: size,
             buffer: buffer,
+            joints: None,
             vertices: vertices_vec.unwrap(),
             triangle_indices: triangles,
             meta: meta,
@@ -425,8 +514,9 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
+    let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
     //info!("rdm: {:#?}", rdm);
 
+    rdm.add_skin();
     gltf_export::export(rdm);
 }
