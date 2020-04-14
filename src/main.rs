@@ -154,22 +154,31 @@ impl RDModell {
 
             let nameptr = skin_buffer.get_u32_le();
 
-            let tz = -skin_buffer.get_f32_le();
-            let ty = -skin_buffer.get_f32_le();
-            let tx = -skin_buffer.get_f32_le();
+            let tx = skin_buffer.get_f32_le();
+            let ty = skin_buffer.get_f32_le();
+            let tz = skin_buffer.get_f32_le();
 
-            let qx = skin_buffer.get_f32_le();
-            let qy = skin_buffer.get_f32_le();
-            let qz = skin_buffer.get_f32_le();
-            let qw = skin_buffer.get_f32_le();
+            let rx = skin_buffer.get_f32_le();
+            let ry = skin_buffer.get_f32_le();
+            let rz = skin_buffer.get_f32_le();
+            let rw = skin_buffer.get_f32_le();
 
-            let q = Quaternion::new(qw,qx,qy,qz);
-            let uq = UnitQuaternion::from_quaternion(q).inverse();
-
+            let q = Quaternion::new(rw,rx,ry,rz);
+            let uq = UnitQuaternion::from_quaternion(q);
 
             let uqc = uq.quaternion().coords;
 
-            let trans_point = Point3::new(tx, ty, tz).coords;
+            //let trans_point = Point3::new(tx, ty, tz).coords;
+            let t: Translation3<f32> = Translation3::new(tx, ty, tz);
+
+            //let trans_point = t.inverse_transform_point(&Point3::new(0.0, 0.0, 0.0)).coords;
+
+            let inv_bindmat = (uq.to_homogeneous())*(t.to_homogeneous());
+            let x = inv_bindmat.m14;
+            let y = inv_bindmat.m24;
+            let z = inv_bindmat.m34;
+
+            let trans_point = Translation3::new(x, y, z).inverse();
 
 
             warn!("{:?}",trans_point);
@@ -528,7 +537,7 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
+    let mut rdm = RDModell::from("coal_mine_others_lod2.rdm");
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();
