@@ -13,6 +13,10 @@ use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormat;
 
+use nalgebra::*;
+use std::collections::VecDeque;
+
+
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 struct Vertex {
@@ -31,18 +35,18 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
-pub fn rdm_joint_to_nodes(joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
+pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
     let mut skin_nodes: Vec<json::Node> = Vec::new();
 
     let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
     for i in 0..joints_vec.len() {
-        if joints_vec[i].parent == 255 {
-            arm.push(json::Index::new(start_jindex+i as u32));
+        if joints_vec[i].parent == 255 || false{
+            arm.push(json::Index::new(start_jindex + i as u32));
         }
     }
     info!("{:#?}", arm);
-    
+
     let zero_node = json::Node {
         camera: None,
         children: Some(arm),
@@ -59,27 +63,71 @@ pub fn rdm_joint_to_nodes(joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<js
     };
     skin_nodes.push(zero_node);
 
-
     let jlen = joints_vec.len();
-    let mut z: usize = 0;
+    //let mut z: usize = 0;
+
+
+    let mut child_list: VecDeque<_> = VecDeque::new();
+    for z in 0..jlen {
+        let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
+        for j in 0..jlen {
+            if joints_vec[j].parent == z as u8 {
+                let master_rot = joints_vec[z].quaternion;
+                let curr_child_rot = joints_vec[j].quaternion;
+
+                let rx = master_rot[0];
+                let ry = master_rot[1];
+                let rz = master_rot[2];
+                let rw = master_rot[3];
+
+                let mq = Quaternion::new(rw,rx,ry,rz);
+                let muq = UnitQuaternion::from_quaternion(mq);
+                
+                let sx = curr_child_rot[0];
+                let sy = curr_child_rot[1];
+                let sz = curr_child_rot[2];
+                let sw = curr_child_rot[3];
+
+                let sq = Quaternion::new(sw,sx,sy,sz);
+                let suq = UnitQuaternion::from_quaternion(sq);
+
+                let nsuq = (suq.inverse())*muq.inverse()*(muq);
+                let nsuq_cord = nsuq.coords;
+
+                //joints_vec[j].quaternion = [nsuq_cord[0],nsuq_cord[1],nsuq_cord[2],nsuq_cord[3]];
+
+
+                // translation
+                let master_trans = joints_vec[z].transition;
+                let curr_child_trans = joints_vec[j].transition;
+
+                joints_vec[j].name = format!("{}/{}",joints_vec[z].name,joints_vec[j].name);
+                
+                joints_vec[j].transition = [
+                    -master_trans[0]+curr_child_trans[0],
+                    -master_trans[1]+curr_child_trans[1],
+                    -master_trans[2]+curr_child_trans[2],
+                ];
+                
+                child.push(gltf_json::Index::new(start_jindex + j as u32));
+            }
+        }
+        //z = z + 1;
+        if child.len() > 0 {
+            child_list.push_back(Some(child))
+        } else {
+            child_list.push_back(None);
+        }
+
+    }
 
     for joint in &joints_vec {
         let ijoint = json::Node {
             camera: None,
-            children: {
-                let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
-                for j in 0..jlen {
-                    if joints_vec[j].parent == z as u8 {
-                        child.push(gltf_json::Index::new(start_jindex+j as u32));
-                    }
-                }
-                z = z+1;
-                if child.len() > 0 {
-                    Some(child)
-                } else {
-                    None
-                }
-            },
+            children: { 
+                let p = child_list.pop_front().unwrap();
+                p
+             },
             extensions: None,
             extras: None,
             matrix: None,
@@ -93,7 +141,7 @@ pub fn rdm_joint_to_nodes(joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<js
         };
         skin_nodes.push(ijoint);
     }
-    info!("{:#?}",skin_nodes);
+    info!("{:#?}", skin_nodes);
     skin_nodes
 }
 
@@ -127,8 +175,6 @@ fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, V
 
 pub fn export(rdm: RDModell) {
     let conv = rdm_vertex_to_gltf(rdm.vertices);
-
-    
 
     let triangle_vertices = conv.0;
     let min = conv.1;
@@ -252,7 +298,7 @@ pub fn export(rdm: RDModell) {
         meshes: vec![mesh],
         nodes: {
             if rdm.joints.is_some() {
-                let mut comb: Vec<json::Node> = rdm_joint_to_nodes(rdm.joints.unwrap(),1);
+                let mut comb: Vec<json::Node> = rdm_joint_to_nodes(rdm.joints.unwrap(), 1);
                 comb
             } else {
                 vec![node]

@@ -164,6 +164,7 @@ impl RDModell {
             let rw = skin_buffer.get_f32_le();
 
             let q = Quaternion::new(rw,rx,ry,rz);
+            let uqt = UnitQuaternion::from_quaternion(q);
             let uq = UnitQuaternion::from_quaternion(q);
 
             let uqc = uq.quaternion().coords;
@@ -173,13 +174,14 @@ impl RDModell {
 
             //let trans_point = t.inverse_transform_point(&Point3::new(0.0, 0.0, 0.0)).coords;
 
-            let inv_bindmat = (uq.to_homogeneous())*(t.to_homogeneous());
+            let inv_bindmat = (uqt.to_homogeneous())*(t.to_homogeneous());
             let x = inv_bindmat.m14;
             let y = inv_bindmat.m24;
             let z = inv_bindmat.m34;
 
             let trans_point = Translation3::new(x, y, z).inverse();
 
+            let p = uq/uqt;
 
             warn!("{:?}",trans_point);
 
@@ -537,7 +539,7 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let mut rdm = RDModell::from("coal_mine_others_lod2.rdm");
+    let mut rdm = RDModell::from("ozone_maker_building_ecos_lod2.rdm");
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();
