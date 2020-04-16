@@ -41,7 +41,8 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
     let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
     for i in 0..joints_vec.len() {
-        if joints_vec[i].parent == 255 || false{
+        if joints_vec[i].parent == 255 || false  {
+            joints_vec[i].locked = true;
             arm.push(json::Index::new(start_jindex + i as u32));
         }
     }
@@ -66,50 +67,16 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
     let jlen = joints_vec.len();
     //let mut z: usize = 0;
 
+    let mut tb_rel: VecDeque<(usize,usize)> = VecDeque::new();
 
     let mut child_list: VecDeque<_> = VecDeque::new();
     for z in 0..jlen {
         let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
         for j in 0..jlen {
-            if joints_vec[j].parent == z as u8 {
-                let master_rot = joints_vec[z].quaternion;
-                let curr_child_rot = joints_vec[j].quaternion;
-
-                let rx = master_rot[0];
-                let ry = master_rot[1];
-                let rz = master_rot[2];
-                let rw = master_rot[3];
-
-                let mq = Quaternion::new(rw,rx,ry,rz);
-                let muq = UnitQuaternion::from_quaternion(mq);
-                
-                let sx = curr_child_rot[0];
-                let sy = curr_child_rot[1];
-                let sz = curr_child_rot[2];
-                let sw = curr_child_rot[3];
-
-                let sq = Quaternion::new(sw,sx,sy,sz);
-                let suq = UnitQuaternion::from_quaternion(sq);
-
-                let nsuq = (suq.inverse())*muq.inverse()*(muq);
-                let nsuq_cord = nsuq.coords;
-
-                //joints_vec[j].quaternion = [nsuq_cord[0],nsuq_cord[1],nsuq_cord[2],nsuq_cord[3]];
-
-
-                // translation
-                let master_trans = joints_vec[z].transition;
-                let curr_child_trans = joints_vec[j].transition;
-
-                joints_vec[j].name = format!("{}/{}",joints_vec[z].name,joints_vec[j].name);
-                
-                joints_vec[j].transition = [
-                    -master_trans[0]+curr_child_trans[0],
-                    -master_trans[1]+curr_child_trans[1],
-                    -master_trans[2]+curr_child_trans[2],
-                ];
-                
+            if joints_vec[j].parent == z as u8 && joints_vec[z].locked == true && joints_vec[j].locked == false {        
+                joints_vec[j].locked = true;        
                 child.push(gltf_json::Index::new(start_jindex + j as u32));
+                tb_rel.push_back((z,j));
             }
         }
         //z = z + 1;
@@ -118,6 +85,81 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
         } else {
             child_list.push_back(None);
         }
+
+    }
+
+    while tb_rel.len() > 0 {
+        let target = tb_rel.pop_back().unwrap();
+
+        let master_idx = target.0;
+        let child_idx = target.1;
+
+        let master_trans = joints_vec[master_idx].transition;  
+        let mx = master_trans[0];
+        let my = master_trans[1];
+        let mz = master_trans[2];
+
+        //
+
+        let master_quaternion = joints_vec[master_idx].quaternion;  
+
+        let mqx = master_quaternion[0];
+        let mqy = master_quaternion[1];
+        let mqz = master_quaternion[2];
+        let mqw = master_quaternion[3];
+
+        let mq = Quaternion::new(mqw,mqx,mqy,mqz);
+        let muq = UnitQuaternion::from_quaternion(mq);
+
+
+        let child_quaternion = joints_vec[child_idx].quaternion;
+
+        let rx = child_quaternion[0];
+        let ry = child_quaternion[1];
+        let rz = child_quaternion[2];
+        let rw = child_quaternion[3];
+
+        let q = Quaternion::new(rw,rx,ry,rz);
+        let uq = UnitQuaternion::from_quaternion(q);
+
+        let rel_uq = uq*muq.inverse();
+        let uqc = rel_uq.quaternion().coords;
+
+
+        joints_vec[child_idx].quaternion =  [uqc.x,uqc.y,uqc.z,uqc.w];
+
+        //
+
+        let child_trans = joints_vec[child_idx].transition;  
+        let tx = child_trans[0];
+        let ty = child_trans[1];
+        let tz = child_trans[2];
+
+        let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
+        let ct: Translation3<f32> = Translation3::new(tx, ty, tz).inverse();
+
+        let nx = ct.x-mt.x;
+        let ny = ct.y-mt.y;
+        let nz = ct.z-mt.z;
+
+        let trans_inter_point = Point3::new(nx, ny, nz);
+
+
+        
+
+        let uik = muq.inverse_transform_point(&trans_inter_point);
+                
+        let uik_x = uik.x;
+        let uik_y = uik.y;
+        let uik_z = uik.z;
+
+        let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
+
+        joints_vec[child_idx].transition =  [
+            trans_point.x,
+            trans_point.y,
+            trans_point.z,
+        ];
 
     }
 
