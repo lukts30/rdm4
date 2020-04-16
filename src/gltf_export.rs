@@ -23,6 +23,12 @@ struct Vertex {
     position: [f32; 3],
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum JointOption {
+    ResolveParentNode,
+    ResolveAllRoot,
+}
+
 fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     let byte_length = vec.len() * mem::size_of::<T>();
     let byte_capacity = vec.capacity() * mem::size_of::<T>();
@@ -35,20 +41,19 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
-pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
+pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
     let mut skin_nodes: Vec<json::Node> = Vec::new();
 
     let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
     for i in 0..joints_vec.len() {
-        if joints_vec[i].parent == 255 || false  {
+        if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot  {
             joints_vec[i].locked = true;
             arm.push(json::Index::new(start_jindex + i as u32));
         }
     }
-    info!("{:#?}", arm);
 
-    let zero_node = json::Node {
+    let main_node = json::Node {
         camera: None,
         children: Some(arm),
         extensions: None,
@@ -62,10 +67,9 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
         skin: None,
         weights: None,
     };
-    skin_nodes.push(zero_node);
+    skin_nodes.push(main_node);
 
     let jlen = joints_vec.len();
-    //let mut z: usize = 0;
 
     let mut tb_rel: VecDeque<(usize,usize)> = VecDeque::new();
 
@@ -79,8 +83,8 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
                 tb_rel.push_back((z,j));
             }
         }
-        //z = z + 1;
-        if child.len() > 0 {
+
+        if !child.is_empty() && cfg == JointOption::ResolveParentNode {
             child_list.push_back(Some(child))
         } else {
             child_list.push_back(None);
@@ -88,7 +92,7 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
 
     }
 
-    while tb_rel.len() > 0 {
+    while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
         let target = tb_rel.pop_back().unwrap();
 
         let master_idx = target.0;
@@ -154,7 +158,6 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
         let uik_z = uik.z;
 
         let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
-
         joints_vec[child_idx].transition =  [
             trans_point.x,
             trans_point.y,
@@ -183,7 +186,7 @@ pub fn rdm_joint_to_nodes(mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Ve
         };
         skin_nodes.push(ijoint);
     }
-    info!("{:#?}", skin_nodes);
+    
     skin_nodes
 }
 
@@ -340,7 +343,7 @@ pub fn export(rdm: RDModell) {
         meshes: vec![mesh],
         nodes: {
             if rdm.joints.is_some() {
-                let mut comb: Vec<json::Node> = rdm_joint_to_nodes(rdm.joints.unwrap(), 1);
+                let comb: Vec<json::Node> = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 1);
                 comb
             } else {
                 vec![node]

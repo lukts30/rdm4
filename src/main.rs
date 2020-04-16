@@ -4,9 +4,6 @@ use std::path::Path;
 use std::fs::File;
 
 use std::str;
-use std::string;
-
-use std::collections::VecDeque;
 
 
 use half::f16;
@@ -176,10 +173,8 @@ impl RDModell {
 
             let mut uqc = uq.quaternion().coords;
 
-            //let trans_point = Point3::new(tx, ty, tz).coords;
             let t: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-            //let trans_point = t.inverse_transform_point(&Point3::new(0.0, 0.0, 0.0)).coords;
 
             let inv_bindmat = (uqt.to_homogeneous())*(t.to_homogeneous());
             let x = inv_bindmat.m14;
@@ -188,55 +183,7 @@ impl RDModell {
 
             let mut trans_point = Translation3::new(x, y, z).inverse();
 
-            warn!("{:?}",trans_point);
-
             let parent_id = skin_buffer.get_u8();
-
-
-            if parent_id != 255 && false {
-                let master_trans = joints_vec[parent_id as usize].transition;  
-                let mx = master_trans[0];
-                let my = master_trans[1];
-                let mz = master_trans[2];
-
-                let master_quaternion = joints_vec[parent_id as usize].quaternion;  
-
-                let mqx = master_quaternion[0];
-                let mqy = master_quaternion[1];
-                let mqz = master_quaternion[2];
-                let mqw = master_quaternion[3];
-
-                let mq = Quaternion::new(mqw,mqx,mqy,mqz);
-                let muq = UnitQuaternion::from_quaternion(mq);
-                              
-                //
-                let rel_q = uq.inverse().quaternion()*uq.quaternion();
-                let urel = UnitQuaternion::from_quaternion(rel_q);
-
-                uqc = UnitQuaternion::identity().quaternion().coords;
-                // 
-                //
-                //uqc = muq.inverse().quaternion().coords;
-
-
-                let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
-                let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
-
-                let nx = ct.x-mt.x;
-                let ny = ct.y-mt.y;
-                let nz = ct.z-mt.z;
-
-                let trans_inter_point = Point3::new(nx, ny, nz);
-
-                let uik = muq.inverse_transform_point(&trans_inter_point);
-                
-                let uik_x = uik.x;
-                let uik_y = uik.y;
-                let uik_z = uik.z;
-
-                trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
-            }
-
 
             let joint = RDJoint {
                 name: k,
@@ -250,10 +197,6 @@ impl RDModell {
             joints_vec.push(joint);
             skin_buffer.advance(84 - 33);
         }
-
-
-
-        info!("joints {:?}", joints_vec);
 
         self.joints = Some(joints_vec);
     }
@@ -595,7 +538,7 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let mut rdm = RDModell::from("coal_fired_power_plant_tycoons_lod2.rdm");
+    let mut rdm = RDModell::from("excavator_tycoons_lod1.rdm");
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();

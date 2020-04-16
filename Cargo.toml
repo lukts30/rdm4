@@ -14,7 +14,6 @@ half = "1.5.0"
 nalgebra = "0.21.0"
 
 
-
 [dependencies.gltf]
 version = "0.15"
 features = ["extras", "names"]
