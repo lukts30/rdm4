@@ -65,7 +65,7 @@ pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) {
 
 }
 
-pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
+pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> (u32,Vec<json::Node>) {
 
     let mut invbind_buf = BytesMut::with_capacity(64*joints_vec.len());
 
@@ -147,7 +147,7 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         skin: None,
         weights: None,
     };
-    skin_nodes.push(main_node);
+    
 
     let jlen = joints_vec.len();
 
@@ -266,8 +266,9 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         };
         skin_nodes.push(ijoint);
     }
-    
-    skin_nodes
+
+    skin_nodes.push(main_node);
+    (skin_nodes.len() as u32,skin_nodes)
 }
 
 fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
@@ -405,6 +406,18 @@ pub fn export(rdm: RDModell) {
         weights: None,
     };
 
+
+    let mut nlen = json::Index::new(0);
+    let mut njvec: Option<Vec<json::Node>> = None;
+
+    if rdm.joints.is_some() {
+        let  comb: (u32,Vec<json::Node>) = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 0);
+        nlen = json::Index::new(comb.0-1);
+        njvec = Some(comb.1);
+    } 
+
+    warn!("nlen: {}",nlen);
+
     let node = json::Node {
         camera: None,
         children: None,
@@ -419,25 +432,19 @@ pub fn export(rdm: RDModell) {
         skin: None,
         weights: None,
     };
+    
 
     let root = json::Root {
         accessors: vec![positions, idx],
         buffers: vec![buffer, buffer_idx],
         buffer_views: vec![buffer_view, buffer_idx_view],
         meshes: vec![mesh],
-        nodes: {
-            if rdm.joints.is_some() {
-                let comb: Vec<json::Node> = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 0);
-                comb
-            } else {
-                vec![node]
-            }
-        },
+        nodes: njvec.unwrap_or_else(|| vec![node]),
         scenes: vec![json::Scene {
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            nodes: vec![json::Index::new(0)],
+            nodes: vec![nlen],
         }],
         ..Default::default()
     };
