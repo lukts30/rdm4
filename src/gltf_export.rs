@@ -4,6 +4,7 @@ use gltf::json as gltf_json;
 
 use std::{fs, mem};
 
+use bytes::{BytesMut, BufMut};
 use json::validation::Checked::Valid;
 
 use std::io::Write;
@@ -41,7 +42,86 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
+pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) {
+
+    let mut joint_weight_buf = BytesMut::with_capacity((4+4*4)*input_vec.len());
+    let def_weight: [f32;4] = [1.0,0.0,0.0,0.0];
+
+    for vert in input_vec {
+        match vert {
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
+                joint_weight_buf.put_slice(&i4b.blend_idx);
+                joint_weight_buf.put_f32_le(def_weight[0]);
+                joint_weight_buf.put_f32_le(def_weight[1]);
+                joint_weight_buf.put_f32_le(def_weight[2]);
+                joint_weight_buf.put_f32_le(def_weight[3]);
+            },
+            _ => panic!("not supported !"),
+        };
+    }
+    
+    let mut writer = fs::File::create("triangle/buffer3.bin").expect("I/O error");
+    writer.write_all(&joint_weight_buf).expect("I/O error");
+
+}
+
 pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> Vec<json::Node> {
+
+    let mut invbind_buf = BytesMut::with_capacity(64*joints_vec.len());
+
+    // inverseBindMatrices
+    {
+        for joint in &joints_vec {
+            let child_quaternion = joint.quaternion;
+    
+            let rx = child_quaternion[0];
+            let ry = child_quaternion[1];
+            let rz = child_quaternion[2];
+            let rw = child_quaternion[3];
+
+            let q = Quaternion::new(rw,rx,ry,rz);
+            let uq = UnitQuaternion::from_quaternion(q);
+    
+            let child_trans = joint.transition;  
+            let tx = child_trans[0];
+            let ty = child_trans[1];
+            let tz = child_trans[2];
+    
+            let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
+
+            let bindmat = (ct.to_homogeneous())*(uq.to_homogeneous())*Matrix4::identity();
+            let inv_bindmat = bindmat.try_inverse().unwrap();
+            let invbind_buf_len = invbind_buf.len();
+
+            invbind_buf.put_f32_le(inv_bindmat.m11);
+            invbind_buf.put_f32_le(inv_bindmat.m21);
+            invbind_buf.put_f32_le(inv_bindmat.m31);
+            invbind_buf.put_f32_le(inv_bindmat.m41);
+
+            invbind_buf.put_f32_le(inv_bindmat.m12);
+            invbind_buf.put_f32_le(inv_bindmat.m22);
+            invbind_buf.put_f32_le(inv_bindmat.m32);
+            invbind_buf.put_f32_le(inv_bindmat.m42);
+
+            invbind_buf.put_f32_le(inv_bindmat.m13);
+            invbind_buf.put_f32_le(inv_bindmat.m23);
+            invbind_buf.put_f32_le(inv_bindmat.m33);
+            invbind_buf.put_f32_le(inv_bindmat.m43);
+
+            invbind_buf.put_f32_le(inv_bindmat.m14);
+            invbind_buf.put_f32_le(inv_bindmat.m24);
+            invbind_buf.put_f32_le(inv_bindmat.m34);
+            invbind_buf.put_f32_le(inv_bindmat.m44);
+
+            let invbind_buf_written = invbind_buf.len()-invbind_buf_len;
+            assert_eq!(invbind_buf_written,64);
+        }
+
+        //let bin = to_padded_byte_vector(invbind_buf);
+        let mut writer = fs::File::create("triangle/buffer2.bin").expect("I/O error");
+        writer.write_all(&invbind_buf).expect("I/O error");
+    }
+    // end inverseBindMatrices
     let mut skin_nodes: Vec<json::Node> = Vec::new();
 
     let mut arm: Vec<json::root::Index<_>> = Vec::new();
@@ -219,6 +299,10 @@ fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, V
 }
 
 pub fn export(rdm: RDModell) {
+    // skinning joints and weights
+    rdm_joint_weights(&rdm.vertices);
+    //
+
     let conv = rdm_vertex_to_gltf(rdm.vertices);
 
     let triangle_vertices = conv.0;
@@ -343,7 +427,7 @@ pub fn export(rdm: RDModell) {
         meshes: vec![mesh],
         nodes: {
             if rdm.joints.is_some() {
-                let comb: Vec<json::Node> = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 1);
+                let comb: Vec<json::Node> = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 0);
                 comb
             } else {
                 vec![node]
