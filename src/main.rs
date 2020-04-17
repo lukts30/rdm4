@@ -538,7 +538,7 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let mut rdm = RDModell::from("excavator_tycoons_lod1.rdm");
+    let mut rdm = RDModell::from("repair_dock_others_lod2.rdm");
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();

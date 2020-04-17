@@ -126,7 +126,7 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         let q = Quaternion::new(rw,rx,ry,rz);
         let uq = UnitQuaternion::from_quaternion(q);
 
-        let rel_uq = uq*muq.inverse();
+        let rel_uq = (muq.inverse())*uq;
         let uqc = rel_uq.quaternion().coords;
 
 
@@ -149,7 +149,7 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         let trans_inter_point = Point3::new(nx, ny, nz);
 
 
-        
+
 
         let uik = muq.inverse_transform_point(&trans_inter_point);
                 
