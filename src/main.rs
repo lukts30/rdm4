@@ -15,6 +15,7 @@ use nalgebra::*;
 extern crate log;
 
 mod gltf_export;
+mod rdm_anim;
 
 pub struct RDModell {
     size: u32,
@@ -674,7 +675,7 @@ fn main() {
     env_logger::init();
     info!("init !");
 
-    let mut rdm = RDModell::from("rival_third_party_lod0.rdm");
+    let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();
