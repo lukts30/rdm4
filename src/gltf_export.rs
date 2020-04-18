@@ -49,17 +49,32 @@ pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) -> (
     json::Accessor,
 ) {
     let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
-    let def_weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
+    let mut weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
 
     for vert in input_vec {
         match vert {
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
+            VertexFormat::P4h_N4b_T2h_I4b( _, _, _, i4b) | VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
                 joint_weight_buf.put_slice(&i4b.blend_idx);
-                joint_weight_buf.put_f32_le(def_weight[0]);
-                joint_weight_buf.put_f32_le(def_weight[1]);
-                joint_weight_buf.put_f32_le(def_weight[2]);
-                joint_weight_buf.put_f32_le(def_weight[3]);
+                joint_weight_buf.put_f32_le(weight[0]);
+                joint_weight_buf.put_f32_le(weight[1]);
+                joint_weight_buf.put_f32_le(weight[2]);
+                joint_weight_buf.put_f32_le(weight[3]);
             }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(_,_,_,i4b,w4b) => {
+                weight = [
+                    w4b.blend_weight[0] as f32 /255.0,
+                    w4b.blend_weight[1] as f32 /255.0,
+                    w4b.blend_weight[2] as f32 /255.0,
+                    w4b.blend_weight[3] as f32 /255.0,
+                ];
+
+                joint_weight_buf.put_slice(&i4b.blend_idx);
+                joint_weight_buf.put_f32_le(weight[0]);
+                joint_weight_buf.put_f32_le(weight[1]);
+                joint_weight_buf.put_f32_le(weight[2]);
+                joint_weight_buf.put_f32_le(weight[3]);
+            }
+
             _ => panic!("not supported !"),
         };
     }
