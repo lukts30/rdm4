@@ -114,6 +114,10 @@ impl RDModell {
     const VERTEX_META: u32 = 12;
     const TRIANGLES_META: u32 = 16;
 
+    pub fn has_skin(&self) -> bool {
+        self.joints.is_some()
+    }
+
     fn add_skin(&mut self) {
         let mut skin_buffer = self.buffer.clone();
         skin_buffer.advance(40);
@@ -387,7 +391,7 @@ impl fmt::Debug for RDModell {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Triangle {
     indices: [u16; 3],
@@ -541,6 +545,6 @@ fn main() {
     let mut rdm = RDModell::from("excavator_tycoons_lod1.rdm");
     //info!("rdm: {:#?}", rdm);
 
-    rdm.add_skin();
+    // rdm.add_skin();
     gltf_export::export(rdm);
 }

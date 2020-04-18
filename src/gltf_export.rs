@@ -389,7 +389,11 @@ pub fn rdm_joint_to_nodes(
     )
 }
 
-fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
+fn rdm_vertex_to_gltf(rdm : &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
+
+    let input_vec = &rdm.vertices;
+
+
     let mut out: Vec<Vertex> = Vec::new();
 
     let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
@@ -418,17 +422,18 @@ fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, V
 }
 
 pub fn export(rdm: RDModell) {
-    // skinning joints and weights
-    let jw = rdm_joint_weights(&rdm.vertices);
-    //
+    
 
-    let conv = rdm_vertex_to_gltf(rdm.vertices);
+    let conv = rdm_vertex_to_gltf(&rdm);
 
     let triangle_vertices = conv.0;
     let min = conv.1;
     let max = conv.2;
 
-    let triangle_idx: Vec<Triangle> = rdm.triangle_indices;
+    let triangle_idx: Vec<Triangle> = rdm.triangle_indices.clone();
+    warn!("{}",rdm.triangle_indices.len());
+    warn!("{}",triangle_idx.len());
+    
 
     let buffer_length = (triangle_vertices.len() * mem::size_of::<Vertex>()) as u32;
     let buffer = json::Buffer {
@@ -506,8 +511,10 @@ pub fn export(rdm: RDModell) {
         attributes: {
             let mut map = std::collections::HashMap::new();
             map.insert(Valid(json::mesh::Semantic::Positions), json::Index::new(0));
-            map.insert(Valid(json::mesh::Semantic::Joints(0)), json::Index::new(3));
-            map.insert(Valid(json::mesh::Semantic::Weights(0)), json::Index::new(4));
+            if rdm.has_skin() {
+                map.insert(Valid(json::mesh::Semantic::Joints(0)), json::Index::new(3));
+                map.insert(Valid(json::mesh::Semantic::Weights(0)), json::Index::new(4));
+            }
             map
         },
         extensions: Default::default(),
@@ -535,7 +542,12 @@ pub fn export(rdm: RDModell) {
 
     let mut sk = None;
 
-    if rdm.joints.is_some() {
+    if rdm.has_skin() {
+
+        // skinning joints and weights
+        let jw = rdm_joint_weights(&rdm.vertices);
+        //
+
         let comb = rdm_joint_to_nodes(JointOption::ResolveParentNode, rdm.joints.unwrap(), 0);
 
         let nlen_u32 = comb.0-1;
@@ -615,7 +627,7 @@ pub fn export(rdm: RDModell) {
             name: None,
             nodes: vec![nlen],
         }],
-        skins: vec![sk.unwrap()],
+        skins: if sk.is_some() { vec![sk.unwrap()] } else { Default::default() },
         ..Default::default()
     };
 
