@@ -4,7 +4,7 @@ use gltf::json as gltf_json;
 
 use std::{fs, mem};
 
-use bytes::{BytesMut, BufMut};
+use bytes::{BufMut, BytesMut};
 use json::validation::Checked::Valid;
 
 use std::io::Write;
@@ -16,7 +16,6 @@ use crate::VertexFormat;
 
 use nalgebra::*;
 use std::collections::VecDeque;
-
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -42,10 +41,15 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
-pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) {
-
-    let mut joint_weight_buf = BytesMut::with_capacity((4+4*4)*input_vec.len());
-    let def_weight: [f32;4] = [1.0,0.0,0.0,0.0];
+pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) -> (
+    json::Buffer,
+    json::buffer::View,
+    json::Accessor,
+    json::buffer::View,
+    json::Accessor,
+) {
+    let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
+    let def_weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
 
     for vert in input_vec {
         match vert {
@@ -55,41 +59,121 @@ pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) {
                 joint_weight_buf.put_f32_le(def_weight[1]);
                 joint_weight_buf.put_f32_le(def_weight[2]);
                 joint_weight_buf.put_f32_le(def_weight[3]);
-            },
+            }
             _ => panic!("not supported !"),
         };
     }
-    
+
+    let real_len = joint_weight_buf.len() as u32;
+    joint_weight_buf.put_u32_le(0);
+
     let mut writer = fs::File::create("triangle/buffer3.bin").expect("I/O error");
     writer.write_all(&joint_weight_buf).expect("I/O error");
 
+
+
+    let jw_buffer = json::Buffer {
+        byte_length: joint_weight_buf.len() as u32,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        uri: Some("buffer3.bin".into()),
+    };
+
+    let joint_buffer_view = json::buffer::View {
+        buffer: json::Index::new(3),
+        byte_length: real_len,
+        byte_offset: None,
+        byte_stride: Some(20),
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: None,
+    };
+
+    let joint_accessor = json::Accessor {
+        buffer_view: Some(json::Index::new(3)),
+        byte_offset: 0,
+        count: input_vec.len() as u32,
+        component_type: Valid(json::accessor::GenericComponentType(
+            json::accessor::ComponentType::U8,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: Valid(json::accessor::Type::Vec4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    };
+
+    let weight_buffer_view = json::buffer::View {
+        buffer: json::Index::new(3),
+        byte_length: real_len,
+        byte_offset: Some(4),
+        byte_stride: Some(20),
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: None,
+    };
+
+    let weight_accessor = json::Accessor {
+        buffer_view: Some(json::Index::new(4)),
+        byte_offset: 0,
+        count: input_vec.len() as u32,
+        component_type: Valid(json::accessor::GenericComponentType(
+            json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: Valid(json::accessor::Type::Vec4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    };
+
+    (jw_buffer,joint_buffer_view,joint_accessor,weight_buffer_view,weight_accessor)
+
 }
 
-pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_jindex: u32) -> (u32,Vec<json::Node>) {
-
-    let mut invbind_buf = BytesMut::with_capacity(64*joints_vec.len());
+pub fn rdm_joint_to_nodes(
+    cfg: JointOption,
+    mut joints_vec: Vec<RDJoint>,
+    start_jindex: u32,
+) -> (
+    u32,
+    Vec<json::Node>,
+    json::Buffer,
+    json::buffer::View,
+    json::Accessor,
+) {
+    let mut invbind_buf = BytesMut::with_capacity(64 * joints_vec.len());
 
     // inverseBindMatrices
     {
         for joint in &joints_vec {
             let child_quaternion = joint.quaternion;
-    
+
             let rx = child_quaternion[0];
             let ry = child_quaternion[1];
             let rz = child_quaternion[2];
             let rw = child_quaternion[3];
 
-            let q = Quaternion::new(rw,rx,ry,rz);
+            let q = Quaternion::new(rw, rx, ry, rz);
             let uq = UnitQuaternion::from_quaternion(q);
-    
-            let child_trans = joint.transition;  
+
+            let child_trans = joint.transition;
             let tx = child_trans[0];
             let ty = child_trans[1];
             let tz = child_trans[2];
-    
+
             let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-            let bindmat = (ct.to_homogeneous())*(uq.to_homogeneous())*Matrix4::identity();
+            let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
             let inv_bindmat = bindmat.try_inverse().unwrap();
             let invbind_buf_len = invbind_buf.len();
 
@@ -113,21 +197,58 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
             invbind_buf.put_f32_le(inv_bindmat.m34);
             invbind_buf.put_f32_le(inv_bindmat.m44);
 
-            let invbind_buf_written = invbind_buf.len()-invbind_buf_len;
-            assert_eq!(invbind_buf_written,64);
+            let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
+            assert_eq!(invbind_buf_written, 64);
         }
 
         //let bin = to_padded_byte_vector(invbind_buf);
         let mut writer = fs::File::create("triangle/buffer2.bin").expect("I/O error");
         writer.write_all(&invbind_buf).expect("I/O error");
     }
+
+    let mat_buffer = json::Buffer {
+        byte_length: invbind_buf.len() as u32,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        uri: Some("buffer2.bin".into()),
+    };
+
+    let mat_buffer_view = json::buffer::View {
+        buffer: json::Index::new(2),
+        byte_length: invbind_buf.len() as u32,
+        byte_offset: None,
+        byte_stride: None,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        target: None,
+    };
+
+    let mat_accessor = json::Accessor {
+        buffer_view: Some(json::Index::new(2)),
+        byte_offset: 0,
+        count: joints_vec.len() as u32,
+        component_type: Valid(json::accessor::GenericComponentType(
+            json::accessor::ComponentType::F32,
+        )),
+        extensions: Default::default(),
+        extras: Default::default(),
+        type_: Valid(json::accessor::Type::Mat4),
+        min: None,
+        max: None,
+        name: None,
+        normalized: false,
+        sparse: None,
+    };
+
     // end inverseBindMatrices
     let mut skin_nodes: Vec<json::Node> = Vec::new();
 
     let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
     for i in 0..joints_vec.len() {
-        if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot  {
+        if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot {
             joints_vec[i].locked = true;
             arm.push(json::Index::new(start_jindex + i as u32));
         }
@@ -144,23 +265,25 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         rotation: None,
         scale: None,
         translation: None,
-        skin: None,
+        skin: Some(json::Index::new(0)),
         weights: None,
     };
-    
 
     let jlen = joints_vec.len();
 
-    let mut tb_rel: VecDeque<(usize,usize)> = VecDeque::new();
+    let mut tb_rel: VecDeque<(usize, usize)> = VecDeque::new();
 
     let mut child_list: VecDeque<_> = VecDeque::new();
     for z in 0..jlen {
         let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
         for j in 0..jlen {
-            if joints_vec[j].parent == z as u8 && joints_vec[z].locked == true && joints_vec[j].locked == false {        
-                joints_vec[j].locked = true;        
+            if joints_vec[j].parent == z as u8
+                && joints_vec[z].locked == true
+                && joints_vec[j].locked == false
+            {
+                joints_vec[j].locked = true;
                 child.push(gltf_json::Index::new(start_jindex + j as u32));
-                tb_rel.push_back((z,j));
+                tb_rel.push_back((z, j));
             }
         }
 
@@ -169,7 +292,6 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         } else {
             child_list.push_back(None);
         }
-
     }
 
     while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
@@ -178,23 +300,22 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         let master_idx = target.0;
         let child_idx = target.1;
 
-        let master_trans = joints_vec[master_idx].transition;  
+        let master_trans = joints_vec[master_idx].transition;
         let mx = master_trans[0];
         let my = master_trans[1];
         let mz = master_trans[2];
 
         //
 
-        let master_quaternion = joints_vec[master_idx].quaternion;  
+        let master_quaternion = joints_vec[master_idx].quaternion;
 
         let mqx = master_quaternion[0];
         let mqy = master_quaternion[1];
         let mqz = master_quaternion[2];
         let mqw = master_quaternion[3];
 
-        let mq = Quaternion::new(mqw,mqx,mqy,mqz);
+        let mq = Quaternion::new(mqw, mqx, mqy, mqz);
         let muq = UnitQuaternion::from_quaternion(mq);
-
 
         let child_quaternion = joints_vec[child_idx].quaternion;
 
@@ -203,18 +324,17 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         let rz = child_quaternion[2];
         let rw = child_quaternion[3];
 
-        let q = Quaternion::new(rw,rx,ry,rz);
+        let q = Quaternion::new(rw, rx, ry, rz);
         let uq = UnitQuaternion::from_quaternion(q);
 
-        let rel_uq = (muq.inverse())*uq;
+        let rel_uq = (muq.inverse()) * uq;
         let uqc = rel_uq.quaternion().coords;
 
-
-        joints_vec[child_idx].quaternion =  [uqc.x,uqc.y,uqc.z,uqc.w];
+        joints_vec[child_idx].quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
 
         //
 
-        let child_trans = joints_vec[child_idx].transition;  
+        let child_trans = joints_vec[child_idx].transition;
         let tx = child_trans[0];
         let ty = child_trans[1];
         let tz = child_trans[2];
@@ -222,37 +342,29 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
         let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
         let ct: Translation3<f32> = Translation3::new(tx, ty, tz).inverse();
 
-        let nx = ct.x-mt.x;
-        let ny = ct.y-mt.y;
-        let nz = ct.z-mt.z;
+        let nx = ct.x - mt.x;
+        let ny = ct.y - mt.y;
+        let nz = ct.z - mt.z;
 
         let trans_inter_point = Point3::new(nx, ny, nz);
 
-
-
-
         let uik = muq.inverse_transform_point(&trans_inter_point);
-                
+
         let uik_x = uik.x;
         let uik_y = uik.y;
         let uik_z = uik.z;
 
         let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
-        joints_vec[child_idx].transition =  [
-            trans_point.x,
-            trans_point.y,
-            trans_point.z,
-        ];
-
+        joints_vec[child_idx].transition = [trans_point.x, trans_point.y, trans_point.z];
     }
 
     for joint in &joints_vec {
         let ijoint = json::Node {
             camera: None,
-            children: { 
+            children: {
                 let p = child_list.pop_front().unwrap();
                 p
-             },
+            },
             extensions: None,
             extras: None,
             matrix: None,
@@ -268,7 +380,13 @@ pub fn rdm_joint_to_nodes(cfg : JointOption,mut joints_vec: Vec<RDJoint>, start_
     }
 
     skin_nodes.push(main_node);
-    (skin_nodes.len() as u32,skin_nodes)
+    (
+        skin_nodes.len() as u32,
+        skin_nodes,
+        mat_buffer,
+        mat_buffer_view,
+        mat_accessor,
+    )
 }
 
 fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
@@ -301,7 +419,7 @@ fn rdm_vertex_to_gltf(input_vec: Vec<VertexFormat>) -> (Vec<Vertex>, Vec<f32>, V
 
 pub fn export(rdm: RDModell) {
     // skinning joints and weights
-    rdm_joint_weights(&rdm.vertices);
+    let jw = rdm_joint_weights(&rdm.vertices);
     //
 
     let conv = rdm_vertex_to_gltf(rdm.vertices);
@@ -388,6 +506,8 @@ pub fn export(rdm: RDModell) {
         attributes: {
             let mut map = std::collections::HashMap::new();
             map.insert(Valid(json::mesh::Semantic::Positions), json::Index::new(0));
+            map.insert(Valid(json::mesh::Semantic::Joints(0)), json::Index::new(3));
+            map.insert(Valid(json::mesh::Semantic::Weights(0)), json::Index::new(4));
             map
         },
         extensions: Default::default(),
@@ -406,17 +526,67 @@ pub fn export(rdm: RDModell) {
         weights: None,
     };
 
-
     let mut nlen = json::Index::new(0);
     let mut njvec: Option<Vec<json::Node>> = None;
 
-    if rdm.joints.is_some() {
-        let  comb: (u32,Vec<json::Node>) = rdm_joint_to_nodes(JointOption::ResolveParentNode,rdm.joints.unwrap(), 0);
-        nlen = json::Index::new(comb.0-1);
-        njvec = Some(comb.1);
-    } 
+    let mut vec_acc = vec![positions, idx];
+    let mut vec_buff = vec![buffer, buffer_idx];
+    let mut vec_buff_v = vec![buffer_view, buffer_idx_view];
 
-    warn!("nlen: {}",nlen);
+    let mut sk = None;
+
+    if rdm.joints.is_some() {
+        let comb = rdm_joint_to_nodes(JointOption::ResolveParentNode, rdm.joints.unwrap(), 0);
+
+        let nlen_u32 = comb.0-1;
+        nlen = json::Index::new(nlen_u32);
+        njvec = Some(comb.1);
+
+        let mut joint_indi_vec: Vec<json::root::Index<_>> = Vec::new();
+        for i in 0..nlen_u32 {
+            joint_indi_vec.push(json::Index::new(i as u32));
+        }
+
+        sk = Some(json::Skin {
+            joints: joint_indi_vec,
+            extensions: None,
+            inverse_bind_matrices: Some(json::Index::new(2)),
+            skeleton: None,
+            extras: None,
+            name: None,
+        });
+
+        //
+        let mat_buff = comb.2;
+        vec_buff.push(mat_buff);
+        
+        let jw_buff = jw.0;
+        vec_buff.push(jw_buff);
+        //
+
+        //
+        let mat_buff_v = comb.3;
+        vec_buff_v.push(mat_buff_v);
+
+        let joint_buff_v = jw.1;
+        let weight_buff_v = jw.3;
+        vec_buff_v.push(joint_buff_v);
+        vec_buff_v.push(weight_buff_v);
+        //
+
+        //
+        let mat_acc = comb.4;
+        vec_acc.push(mat_acc);
+
+        let joint_acc = jw.2;
+        let weight_acc = jw.4;
+        vec_acc.push(joint_acc);
+        vec_acc.push(weight_acc);
+        //
+    }
+
+
+    warn!("nlen: {}", nlen);
 
     let node = json::Node {
         camera: None,
@@ -432,12 +602,11 @@ pub fn export(rdm: RDModell) {
         skin: None,
         weights: None,
     };
-    
 
     let root = json::Root {
-        accessors: vec![positions, idx],
-        buffers: vec![buffer, buffer_idx],
-        buffer_views: vec![buffer_view, buffer_idx_view],
+        accessors: vec_acc,
+        buffers: vec_buff,
+        buffer_views: vec_buff_v,
         meshes: vec![mesh],
         nodes: njvec.unwrap_or_else(|| vec![node]),
         scenes: vec![json::Scene {
@@ -446,6 +615,7 @@ pub fn export(rdm: RDModell) {
             name: None,
             nodes: vec![nlen],
         }],
+        skins: vec![sk.unwrap()],
         ..Default::default()
     };
 
