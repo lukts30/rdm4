@@ -13,6 +13,7 @@ use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormat;
+use crate::rdm_anim::RDAnim;
 
 use nalgebra::*;
 use std::collections::VecDeque;
@@ -39,6 +40,151 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
         new_vec.push(0); // pad to multiple of four bytes
     }
     new_vec
+}
+
+pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json::Accessor>) {
+
+    let anim_vec = &anim.anim_vec;
+
+    let anim_vec_len = anim_vec.len();
+    let mut size: usize = 0;
+    for janim in anim_vec {
+        size += janim.len as usize;
+    }
+
+    size = size*32;
+
+    let mut anim_buf = BytesMut::with_capacity(size);
+
+    // alloc one buffer 
+    // vec buffer_v
+    let mut buffer_v_vec = Vec::new();
+
+    // vec acc
+    let mut acc_vec = Vec::new();
+    
+    // ** animations
+
+    let buffv_idx = 4;
+    let mut acc_idx = 5;
+
+    for janim in anim_vec {
+        let count = janim.len as usize;
+        let start = anim_buf.len();
+        for f in &janim.frames {
+
+            anim_buf.put_f32_le(f.time);
+
+            anim_buf.put_f32_le(f.translation[0]);
+            anim_buf.put_f32_le(f.translation[1]);
+            anim_buf.put_f32_le(f.translation[2]);
+
+            anim_buf.put_f32_le(f.rotation[0]);
+            anim_buf.put_f32_le(f.rotation[1]);
+            anim_buf.put_f32_le(f.rotation[2]);
+            anim_buf.put_f32_le(-f.rotation[3]);
+        }
+        let end = anim_buf.len();
+
+        let real_len = end-start;
+
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffv_idx),
+            byte_length: real_len as u32,
+            byte_offset: Some(start as u32),
+            byte_stride: Some(32),
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        let time_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(acc_idx)),
+            byte_offset: 0,
+            count: count as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Scalar),
+            min: Some(json::Value::from(vec![0.0])),
+            max: Some(json::Value::from(vec![24.0])),
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        let trans_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(acc_idx)),
+            byte_offset: 4,
+            count: count as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec3),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        let rot_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(acc_idx)),
+            byte_offset: 16,
+            count: count as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+
+        buffer_v_vec.push(buffer_view);
+        acc_vec.push(time_accessor);
+        acc_vec.push(trans_accessor);
+        acc_vec.push(rot_accessor);
+
+        
+        acc_idx += 1;
+    }
+ 
+        // write rot trans and time 
+        // buffer_v 
+        // acc for rot trans time
+
+
+        // create sampler input:acc_time output:acc_trans
+        // create sampler input:acc_time output:acc_rot
+
+        // node target maps to idx in RDAnim
+        // create chanel sampler_trans
+        // create chanel sampler_rot
+
+
+    let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
+    writer.write_all(&anim_buf).expect("I/O error");
+
+    let anim_buffer = json::Buffer {
+        byte_length: anim_buf.len() as u32,
+        extensions: Default::default(),
+        extras: Default::default(),
+        name: None,
+        uri: Some("buffer4.bin".into()),
+    };
+
+    (anim_buffer,buffer_v_vec,acc_vec)
 }
 
 pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) -> (
@@ -437,8 +583,10 @@ fn rdm_vertex_to_gltf(rdm : &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
 }
 
 pub fn export(rdm: RDModell) {
-    
 
+
+    
+    
     let conv = rdm_vertex_to_gltf(&rdm);
 
     let triangle_vertices = conv.0;
@@ -610,6 +758,17 @@ pub fn export(rdm: RDModell) {
         vec_acc.push(joint_acc);
         vec_acc.push(weight_acc);
         //
+    }
+
+    if rdm.anim.is_some() {
+        // ugly mess 
+        let anim = rdm.anim.clone().unwrap();
+        
+        let mut acc_v_anim = rdm_anim(&anim);
+
+        vec_buff.push(acc_v_anim.0);
+        vec_buff_v.append(&mut acc_v_anim.1);
+        vec_acc.append(&mut acc_v_anim.2);
     }
 
 

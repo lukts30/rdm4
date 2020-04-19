@@ -14,8 +14,10 @@ use nalgebra::*;
 #[macro_use]
 extern crate log;
 
-mod gltf_export;
 mod rdm_anim;
+mod gltf_export;
+use crate::rdm_anim::RDAnim;
+
 
 pub struct RDModell {
     size: u32,
@@ -32,6 +34,8 @@ pub struct RDModell {
     triangles_offset: u32,
     triangles_idx_count: u32,
     triangles_idx_size: u32,
+
+    anim: Option<RDAnim>,
 }
 
 trait GetVertex {
@@ -125,6 +129,10 @@ impl RDModell {
 
     pub fn has_skin(&self) -> bool {
         self.joints.is_some()
+    }
+
+    fn add_anim(&mut self,anim: RDAnim) {
+        self.anim = Some(anim);
     }
 
     fn add_skin(&mut self) {
@@ -475,6 +483,8 @@ impl RDModell {
             triangles_offset: triangles_offset,
             triangles_idx_count: triangles_idx_count,
             triangles_idx_size: triangles_idx_size,
+
+            anim: None,
         };
         modell
     }
@@ -679,5 +689,9 @@ fn main() {
     //info!("rdm: {:#?}", rdm);
 
     rdm.add_skin();
+
+    let anim = RDAnim::from("basalt_crusher_others_work01.rdm");
+    rdm.add_anim(anim);
+
     gltf_export::export(rdm);
 }
