@@ -5,7 +5,6 @@ use gltf::json as gltf_json;
 use std::{fs, mem};
 
 use bytes::{BufMut, BytesMut};
-use bytes::buf::ext::BufExt;
 use json::validation::Checked::Valid;
 
 use std::io::Write;
@@ -43,7 +42,7 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
-pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json::Accessor>) {
+pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json::Accessor>,json::animation::Animation) {
 
     let anim_vec = &anim.anim_vec;
 
@@ -72,6 +71,16 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
 
     let buffv_idx = 4;
     let mut acc_idx = 5;
+
+    // anim node 
+    let time_f32_max = (anim.time_max as f32)/1000.0;
+
+    let mut rot_sampler_chanel = 0;
+    let mut trans_sampler_chanel = 1;
+    let mut node_idx = 0;
+
+    let mut sampler_vec = Vec::new();
+    let mut chanel_vec = Vec::new();
 
     for janim in anim_vec {
         let count = janim.len as usize;
@@ -117,7 +126,6 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             target: None,
         };
 
-
         let rot_accessor = json::Accessor {
             buffer_view: Some(json::Index::new(acc_idx)),
             byte_offset: 0,
@@ -134,6 +142,8 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             normalized: false,
             sparse: None,
         };
+        let rot_sampler_idx = acc_idx;
+        acc_vec.push(rot_accessor);
         acc_idx += 1;
 
         let trans_buffer_view = json::buffer::View {
@@ -163,6 +173,8 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             normalized: false,
             sparse: None,
         };
+        let trans_sampler_idx = acc_idx;
+        acc_vec.push(trans_accessor);
         acc_idx += 1;
 
 
@@ -188,24 +200,82 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             extras: Default::default(),
             type_: Valid(json::accessor::Type::Scalar),
             min: Some(json::Value::from(vec![0.0])),
-            max: Some(json::Value::from(vec![24.0])),
+            max: Some(json::Value::from(vec![time_f32_max])),
             name: None,
             normalized: false,
             sparse: None,
         };
+        let time_sampler_idx = acc_idx;
+        acc_vec.push(time_accessor);
         acc_idx += 1;
 
         buffer_v_vec.push(rot_buffer_view);
         buffer_v_vec.push(trans_buffer_view);
         buffer_v_vec.push(time_buffer_view);
         
-        acc_vec.push(rot_accessor);
-        acc_vec.push(trans_accessor);
-        acc_vec.push(time_accessor);
 
-        
+        let rot_sampler = json::animation::Sampler {
+            input: json::Index::new(time_sampler_idx),
+            interpolation: Valid(json::animation::Interpolation::Linear),
+            output: json::Index::new(rot_sampler_idx),
+            extensions: None,
+            extras: None,
+        };
+
+        let trans_sampler = json::animation::Sampler {
+            input: json::Index::new(time_sampler_idx),
+            interpolation: Valid(json::animation::Interpolation::Linear),
+            output: json::Index::new(trans_sampler_idx),
+            extensions: None,
+            extras: None,
+        };
+
+        let rot_chanel = json::animation::Channel {
+            sampler: json::Index::new(rot_sampler_chanel),
+            target: json::animation::Target {
+                node: json::Index::new(node_idx),
+                path: Valid(json::animation::Property::Rotation),
+                extensions: None,
+                extras: None,
+            },
+            extensions: None,
+            extras: None,
+        };
+
+        let trans_chanel = json::animation::Channel {
+            sampler: json::Index::new(trans_sampler_chanel),
+            target: json::animation::Target {
+                node: json::Index::new(node_idx),
+                path: Valid(json::animation::Property::Translation),
+                extensions: None,
+                extras: None,
+            },
+            extensions: None,
+            extras: None,
+        };
+
+
+        sampler_vec.push(rot_sampler);
+        sampler_vec.push(trans_sampler);
+
+        chanel_vec.push(rot_chanel);
+        chanel_vec.push(trans_chanel);
+
+        rot_sampler_chanel += 2;
+        trans_sampler_chanel += 2;
+        node_idx += 1;
         
     }
+
+    let anim_node = json::animation::Animation {
+        name: Some(anim.name.clone()),
+        samplers: sampler_vec,
+        channels: chanel_vec,
+        extensions: None,
+        extras: None,
+    };
+
+    debug!("{:#?}",anim_node);
  
         // write rot trans and time 
         // buffer_v 
@@ -237,7 +307,7 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         uri: Some("buffer4.bin".into()),
     };
 
-    (anim_buffer,buffer_v_vec,acc_vec)
+    (anim_buffer,buffer_v_vec,acc_vec,anim_node)
 }
 
 pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) -> (
@@ -637,7 +707,7 @@ fn rdm_vertex_to_gltf(rdm : &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
 
 pub fn export(rdm: RDModell) {
 
-
+    let _ = fs::create_dir("triangle");
     
     
     let conv = rdm_vertex_to_gltf(&rdm);
@@ -813,6 +883,8 @@ pub fn export(rdm: RDModell) {
         //
     }
 
+    let mut anim_node = None;
+
     if rdm.anim.is_some() {
         // ugly mess 
         let anim = rdm.anim.clone().unwrap();
@@ -822,6 +894,8 @@ pub fn export(rdm: RDModell) {
         vec_buff.push(acc_v_anim.0);
         vec_buff_v.append(&mut acc_v_anim.1);
         vec_acc.append(&mut acc_v_anim.2);
+
+        anim_node = Some(acc_v_anim.3);
     }
 
 
@@ -855,10 +929,11 @@ pub fn export(rdm: RDModell) {
             nodes: vec![nlen],
         }],
         skins: if sk.is_some() { vec![sk.unwrap()] } else { Default::default() },
+        animations: if anim_node.is_some() {vec![anim_node.unwrap()]} else { Default::default() },
         ..Default::default()
     };
 
-    let _ = fs::create_dir("triangle");
+    
 
     let writer = fs::File::create("triangle/triangle.gltf").expect("I/O error");
     json::serialize::to_writer_pretty(writer, &root).expect("Serialization error");

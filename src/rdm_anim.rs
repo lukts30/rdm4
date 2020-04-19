@@ -22,12 +22,14 @@ pub struct FrameCollection {
 
 #[derive(Debug, Clone)]
 pub struct RDAnim {
+    pub time_max: u32,
+    pub name: String,
     pub anim_vec: Vec<FrameCollection>,
 }
 
 impl RDAnim {
 
-    pub fn new(buffer: Vec<u8>) -> Self {
+    pub fn new(buffer: Vec<u8>,name_anim : String) -> Self {
     
         let mut buffer = Bytes::from(buffer);
         let size = buffer.len();
@@ -39,6 +41,9 @@ impl RDAnim {
         buffer.advance(base_offset - (size - buffer.remaining()));
     
         let model_str_ptr = buffer.get_u32_le() as usize;
+        buffer.advance(4);
+        let time_max = buffer.get_u32_le();
+        
     
         buffer.advance(model_str_ptr - RDModell::META_COUNT as usize - (size - buffer.remaining()));
     
@@ -112,9 +117,9 @@ impl RDAnim {
             anim_vec.push(ent);
         }
     
-        info!("anim: {:?}", anim_vec);
+        debug!("anim: {:?}", anim_vec);
     
-        RDAnim { anim_vec: anim_vec }
+        RDAnim { anim_vec: anim_vec, name: name_anim , time_max: time_max}
     }
 
 }
@@ -129,7 +134,7 @@ impl From<&Path> for RDAnim {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        let anim = RDAnim::new(buffer);
+        let anim = RDAnim::new(buffer,String::from(f_path.file_stem().unwrap().to_str().unwrap()));
         anim
     }
 }
@@ -137,5 +142,11 @@ impl From<&Path> for RDAnim {
 impl From<&str> for RDAnim {
     fn from(str_path: &str) -> Self {
         RDAnim::from(Path::new(str_path))
+    }
+}
+
+impl From<&String> for RDAnim {
+    fn from(string_path: &String) -> Self {
+        RDAnim::from(Path::new(string_path))
     }
 }

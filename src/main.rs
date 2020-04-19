@@ -1,10 +1,10 @@
 use bytes::{Buf, Bytes};
 use std::path::Path;
 
+use std::env;
 use std::fs::File;
 
 use std::str;
-
 
 use half::f16;
 use std::fmt;
@@ -13,11 +13,11 @@ use nalgebra::*;
 
 #[macro_use]
 extern crate log;
+use env_logger::Env;
 
-mod rdm_anim;
 mod gltf_export;
+mod rdm_anim;
 use crate::rdm_anim::RDAnim;
-
 
 pub struct RDModell {
     size: u32,
@@ -131,7 +131,7 @@ impl RDModell {
         self.joints.is_some()
     }
 
-    fn add_anim(&mut self,anim: RDAnim) {
+    fn add_anim(&mut self, anim: RDAnim) {
         self.anim = Some(anim);
     }
 
@@ -164,13 +164,8 @@ impl RDModell {
             as usize;
         joint_name_buffer.advance(rel_len_first_joint_name_ptr);
 
-
-        
-
         assert_eq!(joint_size, 84);
         for _ in 0..joint_count {
-
-
             let len_joint_name = joint_name_buffer.get_u32_le();
             assert_eq!(joint_name_buffer.get_u32_le(), 1);
             let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
@@ -188,7 +183,7 @@ impl RDModell {
             let rz = -skin_buffer.get_f32_le();
             let rw = -skin_buffer.get_f32_le();
 
-            let q = Quaternion::new(rw,rx,ry,rz);
+            let q = Quaternion::new(rw, rx, ry, rz);
             let uqt = UnitQuaternion::from_quaternion(q);
             let uq = UnitQuaternion::from_quaternion(q);
 
@@ -196,8 +191,7 @@ impl RDModell {
 
             let t: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-
-            let inv_bindmat = (uqt.to_homogeneous())*(t.to_homogeneous());
+            let inv_bindmat = (uqt.to_homogeneous()) * (t.to_homogeneous());
             let x = inv_bindmat.m14;
             let y = inv_bindmat.m24;
             let z = inv_bindmat.m34;
@@ -210,7 +204,7 @@ impl RDModell {
                 name: k,
                 nameptr: nameptr,
                 transition: [trans_point.x, trans_point.y, trans_point.z],
-                quaternion: [uqc.x,uqc.y,uqc.z,uqc.w],
+                quaternion: [uqc.x, uqc.y, uqc.z, uqc.w],
                 parent: parent_id,
                 locked: false,
             };
@@ -231,7 +225,11 @@ impl RDModell {
         let meta = nbuffer.get_u32_le();
 
         nbuffer.get_u32_le();
-        let skin_there = if nbuffer.get_u32_le() > 0 { true } else { false };
+        let skin_there = if nbuffer.get_u32_le() > 0 {
+            true
+        } else {
+            false
+        };
 
         nbuffer.advance((meta - (size - nbuffer.remaining() as u32)) as usize);
         nbuffer.advance(RDModell::VERTEX_META as usize);
@@ -376,7 +374,7 @@ impl RDModell {
                     let i4b = vert_read_buf.get_i4b();
                     let w4b = vert_read_buf.get_w4b();
 
-                    let k = VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, n4b, t2h,i4b,w4b);
+                    let k = VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, n4b, t2h, i4b, w4b);
                     verts_vec.push(k);
                 }
                 assert_eq!(verts_vec.len(), vertices_count as usize);
@@ -495,7 +493,7 @@ impl fmt::Debug for RDModell {
         let felm = self.vertices.first().unwrap();
         let vformat = match felm {
             VertexFormat::P4h(_) => "P4h",
-            VertexFormat::P4h_N4b_T2h(_,_,_) => "P4h_N4b_T2h",
+            VertexFormat::P4h_N4b_T2h(_, _, _) => "P4h_N4b_T2h",
             VertexFormat::P4h_N4b_T2h_C4c(_, _, _, _) => "P4h_N4b_T2h_C4c",
             VertexFormat::P4h_N4b_T2h_I4b(_, _, _, _) => "P4h_N4b_T2h_I4b",
             VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h",
@@ -557,7 +555,7 @@ pub struct I4b {
 #[derive(Debug)]
 #[repr(C)]
 pub struct W4b {
-    blend_weight : [u8; 4],
+    blend_weight: [u8; 4],
 }
 
 #[derive(Debug)]
@@ -570,11 +568,11 @@ pub struct C4c {
 #[allow(non_camel_case_types)]
 pub enum VertexFormat {
     P4h(P4h),
-    P4h_N4b_T2h(P4h,N4b,T2h),
+    P4h_N4b_T2h(P4h, N4b, T2h),
     P4h_N4b_T2h_C4c(P4h, N4b, T2h, C4c),
     P4h_N4b_T2h_I4b(P4h, N4b, T2h, I4b),
     P4h_N4b_G4b_B4b_T2h(P4h, N4b, G4b, B4b, T2h),
-    P4h_N4b_T2h_I4b_W4b(P4h, N4b, T2h, I4b,W4b),
+    P4h_N4b_T2h_I4b_W4b(P4h, N4b, T2h, I4b, W4b),
     P4h_N4b_G4b_B4b_T2h_C4c(P4h, N4b, G4b, B4b, T2h, C4c),
     P4h_N4b_G4b_B4b_T2h_I4b(P4h, N4b, G4b, B4b, T2h, I4b),
 }
@@ -583,7 +581,7 @@ impl VertexFormat {
     fn get_p4h(&self) -> &P4h {
         let p4h = match self {
             VertexFormat::P4h(p4h) => p4h,
-            VertexFormat::P4h_N4b_T2h(p4h,_,_) => p4h,
+            VertexFormat::P4h_N4b_T2h(p4h, _, _) => p4h,
             VertexFormat::P4h_N4b_T2h_C4c(p4h, _, _, _) => p4h,
             VertexFormat::P4h_N4b_T2h_I4b(p4h, _, _, _) => p4h,
             VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, _, _, _, _) => p4h,
@@ -627,6 +625,12 @@ impl From<&Path> for RDModell {
 impl From<&str> for RDModell {
     fn from(str_path: &str) -> Self {
         RDModell::from(Path::new(str_path))
+    }
+}
+
+impl From<&String> for RDModell {
+    fn from(string_path: &String) -> Self {
+        RDModell::from(Path::new(string_path))
     }
 }
 
@@ -682,16 +686,54 @@ mod tests {
 }
 
 fn main() {
-    env_logger::init();
+    //env_logger::init();
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
+
     info!("init !");
 
-    let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
-    //info!("rdm: {:#?}", rdm);
+    if true {
+        args_main();
+    } 
+    
+    if false {
+        let mut rdm = RDModell::from("giant_pumping_station_oil_baron_lod2.rdm");
+        //info!("rdm: {:#?}", rdm);
 
-    rdm.add_skin();
+        rdm.add_skin();
 
-    let anim = RDAnim::from("basalt_crusher_others_work01.rdm");
-    rdm.add_anim(anim);
+        let anim = RDAnim::from("giant_pumping_station_oil_baron_work03.rdm");
+        rdm.add_anim(anim);
 
-    gltf_export::export(rdm);
+        gltf_export::export(rdm);
+    }
+}
+
+fn args_main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() > 2 {
+        let mut rdm = RDModell::from(&args[2]);
+
+        match args[1].as_ref() {
+            "-fs" => {
+                rdm.add_skin();
+                warn!("Skin added !");
+            }
+            "-fsm" if args.len() > 3 => {
+                rdm.add_skin();
+
+                let anim = RDAnim::from(&args[3]);
+                rdm.add_anim(anim);
+
+                warn!("Skin and anim added !");
+            }
+            _ => {
+                warn!("No skin. No anim !");
+            }
+        }
+        info!("running gltf_export ...");
+        gltf_export::export(rdm);
+    } else {
+        error!("Not enough arguments provided");
+    }
 }
