@@ -5,6 +5,7 @@ use gltf::json as gltf_json;
 use std::{fs, mem};
 
 use bytes::{BufMut, BytesMut};
+use bytes::buf::ext::BufExt;
 use json::validation::Checked::Valid;
 
 use std::io::Write;
@@ -52,9 +53,13 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         size += janim.len as usize;
     }
 
-    size = size*32;
+    let rot_size = size*16;
+    let trans_size = size*12;
+    let t_size = size*4;
 
-    let mut anim_buf = BytesMut::with_capacity(size);
+    let mut rot_anim_buf = BytesMut::with_capacity(rot_size);
+    let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
+    let mut t_anim_buf = BytesMut::with_capacity(t_size);
 
     // alloc one buffer 
     // vec buffer_v
@@ -70,29 +75,102 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
 
     for janim in anim_vec {
         let count = janim.len as usize;
-        let start = anim_buf.len();
+
+        let rot_start = rot_anim_buf.len();
+        let trans_start = trans_anim_buf.len();
+        let t_start = t_anim_buf.len();
+
         for f in &janim.frames {
 
-            anim_buf.put_f32_le(f.time);
+            rot_anim_buf.put_f32_le(f.rotation[0]);
+            rot_anim_buf.put_f32_le(f.rotation[1]);
+            rot_anim_buf.put_f32_le(f.rotation[2]);
+            rot_anim_buf.put_f32_le(-f.rotation[3]);
 
-            anim_buf.put_f32_le(f.translation[0]);
-            anim_buf.put_f32_le(f.translation[1]);
-            anim_buf.put_f32_le(f.translation[2]);
+            trans_anim_buf.put_f32_le(f.translation[0]);
+            trans_anim_buf.put_f32_le(f.translation[1]);
+            trans_anim_buf.put_f32_le(f.translation[2]);
 
-            anim_buf.put_f32_le(f.rotation[0]);
-            anim_buf.put_f32_le(f.rotation[1]);
-            anim_buf.put_f32_le(f.rotation[2]);
-            anim_buf.put_f32_le(-f.rotation[3]);
+            t_anim_buf.put_f32_le(f.time);
         }
-        let end = anim_buf.len();
+        let rot_end = rot_anim_buf.len();
+        warn!("{}",rot_start);
+        warn!("{}",rot_end);
 
-        let real_len = end-start;
+        let trans_end = trans_anim_buf.len();
+        let t_end = t_anim_buf.len();
 
-        let buffer_view = json::buffer::View {
+        let rot_real_len = rot_end-rot_start;
+        let trans_real_len = trans_end-trans_start;
+
+        let t_real_len = t_end-t_start;
+
+
+        let rot_buffer_view = json::buffer::View {
             buffer: json::Index::new(buffv_idx),
-            byte_length: real_len as u32,
-            byte_offset: Some(start as u32),
-            byte_stride: Some(32),
+            byte_length: rot_real_len as u32,
+            byte_offset: Some(0+rot_start as u32),
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+
+        let rot_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(acc_idx)),
+            byte_offset: 0,
+            count: count as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+        acc_idx += 1;
+
+        let trans_buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffv_idx),
+            byte_length: trans_real_len as u32,
+            byte_offset: Some((rot_size + trans_start) as u32),
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        let trans_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(acc_idx)),
+            byte_offset: 0,
+            count: count as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec3),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+        acc_idx += 1;
+
+
+        let time_buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffv_idx),
+            byte_length: t_real_len as u32,
+            byte_offset: Some((rot_size+trans_size+t_start) as u32),
+            byte_stride: None,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -115,49 +193,18 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             normalized: false,
             sparse: None,
         };
+        acc_idx += 1;
 
-        let trans_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(acc_idx)),
-            byte_offset: 4,
-            count: count as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Vec3),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-
-        let rot_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(acc_idx)),
-            byte_offset: 16,
-            count: count as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Vec4),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-
-
-        buffer_v_vec.push(buffer_view);
-        acc_vec.push(time_accessor);
-        acc_vec.push(trans_accessor);
+        buffer_v_vec.push(rot_buffer_view);
+        buffer_v_vec.push(trans_buffer_view);
+        buffer_v_vec.push(time_buffer_view);
+        
         acc_vec.push(rot_accessor);
+        acc_vec.push(trans_accessor);
+        acc_vec.push(time_accessor);
 
         
-        acc_idx += 1;
+        
     }
  
         // write rot trans and time 
@@ -172,12 +219,18 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         // create chanel sampler_trans
         // create chanel sampler_rot
 
+    
+    //let mut anim_buf = rot_anim_buf.chain(trans_anim_buf);
 
+    
     let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
-    writer.write_all(&anim_buf).expect("I/O error");
+
+    writer.write_all(&rot_anim_buf).expect("I/O error");
+    writer.write_all(&trans_anim_buf).expect("I/O error");
+    writer.write_all(&t_anim_buf).expect("I/O error");
 
     let anim_buffer = json::Buffer {
-        byte_length: anim_buf.len() as u32,
+        byte_length: (rot_anim_buf.len()+trans_anim_buf.len()+t_anim_buf.len()) as u32,
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
