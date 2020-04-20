@@ -9,26 +9,17 @@ use json::validation::Checked::Valid;
 
 use std::io::Write;
 
+use crate::rdm_anim::RDAnim;
 use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormat;
-use crate::rdm_anim::RDAnim;
 
 use nalgebra::*;
 use std::collections::VecDeque;
 
-
-use std::collections::HashMap;
 use gltf::mesh::Semantic;
-
-
-struct RDGltfBuilder {
-    name: String,
-    buffers: Vec<json::Buffer>,
-    buffer_views: Vec<json::buffer::View>,
-    accessors: Vec<json::Accessor>,
-}
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -37,6 +28,7 @@ struct Vertex {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[allow(dead_code)]
 pub enum JointOption {
     ResolveParentNode,
     ResolveAllRoot,
@@ -54,8 +46,14 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 
-pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json::Accessor>,json::animation::Animation) {
-
+pub fn rdm_anim(
+    anim: &RDAnim,
+) -> (
+    json::Buffer,
+    Vec<json::buffer::View>,
+    Vec<json::Accessor>,
+    json::animation::Animation,
+) {
     let anim_vec = &anim.anim_vec;
 
     let anim_vec_len = anim_vec.len();
@@ -64,28 +62,28 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         size += janim.len as usize;
     }
 
-    let rot_size = size*16;
-    let trans_size = size*12;
-    let t_size = size*4;
+    let rot_size = size * 16;
+    let trans_size = size * 12;
+    let t_size = size * 4;
 
     let mut rot_anim_buf = BytesMut::with_capacity(rot_size);
     let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
     let mut t_anim_buf = BytesMut::with_capacity(t_size);
 
-    // alloc one buffer 
+    // alloc one buffer
     // vec buffer_v
     let mut buffer_v_vec = Vec::new();
 
     // vec acc
     let mut acc_vec = Vec::new();
-    
+
     // ** animations
 
     let buffv_idx = 4;
     let mut acc_idx = 5;
 
-    // anim node 
-    let time_f32_max = (anim.time_max as f32)/1000.0;
+    // anim node
+    let time_f32_max = (anim.time_max as f32) / 1000.0;
 
     let mut rot_sampler_chanel = 0;
     let mut trans_sampler_chanel = 1;
@@ -102,7 +100,6 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         let t_start = t_anim_buf.len();
 
         for f in &janim.frames {
-
             rot_anim_buf.put_f32_le(f.rotation[0]);
             rot_anim_buf.put_f32_le(f.rotation[1]);
             rot_anim_buf.put_f32_le(f.rotation[2]);
@@ -115,22 +112,21 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             t_anim_buf.put_f32_le(f.time);
         }
         let rot_end = rot_anim_buf.len();
-        warn!("{}",rot_start);
-        warn!("{}",rot_end);
+        warn!("{}", rot_start);
+        warn!("{}", rot_end);
 
         let trans_end = trans_anim_buf.len();
         let t_end = t_anim_buf.len();
 
-        let rot_real_len = rot_end-rot_start;
-        let trans_real_len = trans_end-trans_start;
+        let rot_real_len = rot_end - rot_start;
+        let trans_real_len = trans_end - trans_start;
 
-        let t_real_len = t_end-t_start;
-
+        let t_real_len = t_end - t_start;
 
         let rot_buffer_view = json::buffer::View {
             buffer: json::Index::new(buffv_idx),
             byte_length: rot_real_len as u32,
-            byte_offset: Some(0+rot_start as u32),
+            byte_offset: Some(0 + rot_start as u32),
             byte_stride: None,
             extensions: Default::default(),
             extras: Default::default(),
@@ -189,11 +185,10 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         acc_vec.push(trans_accessor);
         acc_idx += 1;
 
-
         let time_buffer_view = json::buffer::View {
             buffer: json::Index::new(buffv_idx),
             byte_length: t_real_len as u32,
-            byte_offset: Some((rot_size+trans_size+t_start) as u32),
+            byte_offset: Some((rot_size + trans_size + t_start) as u32),
             byte_stride: None,
             extensions: Default::default(),
             extras: Default::default(),
@@ -224,7 +219,6 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         buffer_v_vec.push(rot_buffer_view);
         buffer_v_vec.push(trans_buffer_view);
         buffer_v_vec.push(time_buffer_view);
-        
 
         let rot_sampler = json::animation::Sampler {
             input: json::Index::new(time_sampler_idx),
@@ -266,7 +260,6 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
             extras: None,
         };
 
-
         sampler_vec.push(rot_sampler);
         sampler_vec.push(trans_sampler);
 
@@ -276,7 +269,6 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         rot_sampler_chanel += 2;
         trans_sampler_chanel += 2;
         node_idx += 1;
-        
     }
 
     let anim_node = json::animation::Animation {
@@ -287,24 +279,21 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
         extras: None,
     };
 
-    debug!("{:#?}",anim_node);
- 
-        // write rot trans and time 
-        // buffer_v 
-        // acc for rot trans time
+    debug!("{:#?}", anim_node);
 
+    // write rot trans and time
+    // buffer_v
+    // acc for rot trans time
 
-        // create sampler input:acc_time output:acc_trans
-        // create sampler input:acc_time output:acc_rot
+    // create sampler input:acc_time output:acc_trans
+    // create sampler input:acc_time output:acc_rot
 
-        // node target maps to idx in RDAnim
-        // create chanel sampler_trans
-        // create chanel sampler_rot
+    // node target maps to idx in RDAnim
+    // create chanel sampler_trans
+    // create chanel sampler_rot
 
-    
     //let mut anim_buf = rot_anim_buf.chain(trans_anim_buf);
 
-    
     let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
 
     writer.write_all(&rot_anim_buf).expect("I/O error");
@@ -312,147 +301,339 @@ pub fn rdm_anim(anim: &RDAnim) -> (json::Buffer,Vec<json::buffer::View>,Vec<json
     writer.write_all(&t_anim_buf).expect("I/O error");
 
     let anim_buffer = json::Buffer {
-        byte_length: (rot_anim_buf.len()+trans_anim_buf.len()+t_anim_buf.len()) as u32,
+        byte_length: (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u32,
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
         uri: Some("buffer4.bin".into()),
     };
 
-    (anim_buffer,buffer_v_vec,acc_vec,anim_node)
+    (anim_buffer, buffer_v_vec, acc_vec, anim_node)
 }
 
-pub fn rdm_joint_weights(input_vec: &Vec<VertexFormat>) -> (
-    json::Buffer,
-    json::buffer::View,
-    json::Accessor,
-    json::buffer::View,
-    json::Accessor,
-) {
-    let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
-    let mut weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
+struct RDGltfBuilder {
+    name: Option<String>,
+    buffers: Vec<json::Buffer>,
+    buffer_views: Vec<json::buffer::View>,
+    accessors: Vec<json::Accessor>,
+    nodes: Vec<json::Node>,
+    attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
+    idx : Option<u32>,
 
-    for vert in input_vec {
-        match vert {
-            VertexFormat::P4h_N4b_T2h_I4b( _, _, _, i4b) | VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
-                joint_weight_buf.put_slice(&i4b.blend_idx);
-                joint_weight_buf.put_f32_le(weight[0]);
-                joint_weight_buf.put_f32_le(weight[1]);
-                joint_weight_buf.put_f32_le(weight[2]);
-                joint_weight_buf.put_f32_le(weight[3]);
-            }
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(_,_,_,i4b,w4b) => {
-                weight = [
-                    w4b.blend_weight[0] as f32 /255.0,
-                    w4b.blend_weight[1] as f32 /255.0,
-                    w4b.blend_weight[2] as f32 /255.0,
-                    w4b.blend_weight[3] as f32 /255.0,
-                ];
+    rdm: RDModell,
+    obj: RDGltf, // private
+    skin: Option<json::Skin>,
+}
 
-                joint_weight_buf.put_slice(&i4b.blend_idx);
-                joint_weight_buf.put_f32_le(weight[0]);
-                joint_weight_buf.put_f32_le(weight[1]);
-                joint_weight_buf.put_f32_le(weight[2]);
-                joint_weight_buf.put_f32_le(weight[3]);
-            }
+impl RDGltfBuilder {
+    fn new(rdm: RDModell) -> Self {
+        RDGltfBuilder {
+            name: None,
+            buffers: Vec::new(),
+            buffer_views: Vec::new(),
+            accessors: Vec::new(),
+            nodes: Vec::new(),
+            attr_map: HashMap::new(),
+            rdm: rdm,
+            obj: RDGltf::new(),
+            skin: None,
+            idx: None,
+        }
+    }
+    fn put_joint_weight(
+        &mut self,
+    ) -> (
+        json::Buffer,
+        json::buffer::View,
+        json::Accessor,
+        json::buffer::View,
+        json::Accessor,
+    ) {
+        let input_vec = &self.rdm.vertices;
 
-            _ => panic!("not supported !"),
+        let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
+        let mut weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
+
+        for vert in input_vec {
+            match vert {
+                VertexFormat::P4h_N4b_T2h_I4b(_, _, _, i4b)
+                | VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
+                    joint_weight_buf.put_slice(&i4b.blend_idx);
+                    joint_weight_buf.put_f32_le(weight[0]);
+                    joint_weight_buf.put_f32_le(weight[1]);
+                    joint_weight_buf.put_f32_le(weight[2]);
+                    joint_weight_buf.put_f32_le(weight[3]);
+                }
+                VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, i4b, w4b) => {
+                    weight = [
+                        w4b.blend_weight[0] as f32 / 255.0,
+                        w4b.blend_weight[1] as f32 / 255.0,
+                        w4b.blend_weight[2] as f32 / 255.0,
+                        w4b.blend_weight[3] as f32 / 255.0,
+                    ];
+
+                    joint_weight_buf.put_slice(&i4b.blend_idx);
+                    joint_weight_buf.put_f32_le(weight[0]);
+                    joint_weight_buf.put_f32_le(weight[1]);
+                    joint_weight_buf.put_f32_le(weight[2]);
+                    joint_weight_buf.put_f32_le(weight[3]);
+                }
+
+                _ => panic!("not supported !"),
+            };
+        }
+
+        let real_len = joint_weight_buf.len() as u32;
+        joint_weight_buf.put_u32_le(0);
+
+        let mut writer = fs::File::create("triangle/buffer3.bin").expect("I/O error");
+        writer.write_all(&joint_weight_buf).expect("I/O error");
+
+        let jw_buffer = json::Buffer {
+            byte_length: joint_weight_buf.len() as u32,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some("buffer3.bin".into()),
         };
+
+        let joint_buffer_view = json::buffer::View {
+            buffer: json::Index::new(3),
+            byte_length: real_len,
+            byte_offset: None,
+            byte_stride: Some(20),
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        let joint_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(3)),
+            byte_offset: 0,
+            count: input_vec.len() as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::U8,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        let weight_buffer_view = json::buffer::View {
+            buffer: json::Index::new(3),
+            byte_length: real_len,
+            byte_offset: Some(4),
+            byte_stride: Some(20),
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        let weight_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(4)),
+            byte_offset: 0,
+            count: input_vec.len() as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        (
+            jw_buffer,
+            joint_buffer_view,
+            joint_accessor,
+            weight_buffer_view,
+            weight_accessor,
+        )
     }
 
-    let real_len = joint_weight_buf.len() as u32;
-    joint_weight_buf.put_u32_le(0);
+    fn put_joint_nodes(&mut self, cfg: JointOption) {
+        let mut joints_vec: Vec<RDJoint> = self.rdm.joints.clone().unwrap();
+        let mut invbind_buf = BytesMut::with_capacity(64 * joints_vec.len());
 
-    let mut writer = fs::File::create("triangle/buffer3.bin").expect("I/O error");
-    writer.write_all(&joint_weight_buf).expect("I/O error");
+        // inverseBindMatrices
+        {
+            for joint in &joints_vec {
+                let child_quaternion = joint.quaternion;
 
+                let rx = child_quaternion[0];
+                let ry = child_quaternion[1];
+                let rz = child_quaternion[2];
+                let rw = child_quaternion[3];
 
+                let q = Quaternion::new(rw, rx, ry, rz);
+                let uq = UnitQuaternion::from_quaternion(q);
 
-    let jw_buffer = json::Buffer {
-        byte_length: joint_weight_buf.len() as u32,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        uri: Some("buffer3.bin".into()),
-    };
+                let child_trans = joint.transition;
+                let tx = child_trans[0];
+                let ty = child_trans[1];
+                let tz = child_trans[2];
 
-    let joint_buffer_view = json::buffer::View {
-        buffer: json::Index::new(3),
-        byte_length: real_len,
-        byte_offset: None,
-        byte_stride: Some(20),
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        target: None,
-    };
+                let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-    let joint_accessor = json::Accessor {
-        buffer_view: Some(json::Index::new(3)),
-        byte_offset: 0,
-        count: input_vec.len() as u32,
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::U8,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Vec4),
-        min: None,
-        max: None,
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
+                let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
+                let inv_bindmat = bindmat.try_inverse().unwrap();
+                let invbind_buf_len = invbind_buf.len();
 
-    let weight_buffer_view = json::buffer::View {
-        buffer: json::Index::new(3),
-        byte_length: real_len,
-        byte_offset: Some(4),
-        byte_stride: Some(20),
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        target: None,
-    };
+                invbind_buf.put_f32_le(inv_bindmat.m11);
+                invbind_buf.put_f32_le(inv_bindmat.m21);
+                invbind_buf.put_f32_le(inv_bindmat.m31);
+                invbind_buf.put_f32_le(inv_bindmat.m41);
 
-    let weight_accessor = json::Accessor {
-        buffer_view: Some(json::Index::new(4)),
-        byte_offset: 0,
-        count: input_vec.len() as u32,
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::F32,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Vec4),
-        min: None,
-        max: None,
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
+                invbind_buf.put_f32_le(inv_bindmat.m12);
+                invbind_buf.put_f32_le(inv_bindmat.m22);
+                invbind_buf.put_f32_le(inv_bindmat.m32);
+                invbind_buf.put_f32_le(inv_bindmat.m42);
 
-    (jw_buffer,joint_buffer_view,joint_accessor,weight_buffer_view,weight_accessor)
+                invbind_buf.put_f32_le(inv_bindmat.m13);
+                invbind_buf.put_f32_le(inv_bindmat.m23);
+                invbind_buf.put_f32_le(inv_bindmat.m33);
+                invbind_buf.put_f32_le(inv_bindmat.m43);
 
-}
+                invbind_buf.put_f32_le(inv_bindmat.m14);
+                invbind_buf.put_f32_le(inv_bindmat.m24);
+                invbind_buf.put_f32_le(inv_bindmat.m34);
+                invbind_buf.put_f32_le(inv_bindmat.m44);
 
-pub fn rdm_joint_to_nodes(
-    cfg: JointOption,
-    mut joints_vec: Vec<RDJoint>,
-    start_jindex: u32,
-) -> (
-    u32,
-    Vec<json::Node>,
-    json::Buffer,
-    json::buffer::View,
-    json::Accessor,
-) {
-    let mut invbind_buf = BytesMut::with_capacity(64 * joints_vec.len());
+                let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
+                assert_eq!(invbind_buf_written, 64);
+            }
 
-    // inverseBindMatrices
-    {
-        for joint in &joints_vec {
-            let child_quaternion = joint.quaternion;
+            //let bin = to_padded_byte_vector(invbind_buf);
+            //let mut writer = fs::File::create("triangle/buffer2.bin").expect("I/O error");
+            //writer.write_all(&invbind_buf).expect("I/O error");
+
+            
+        }
+        let invbind_buf_p = self.obj.push_buffer(invbind_buf.to_vec());
+
+        let mat_buffer = json::Buffer {
+            byte_length: invbind_buf.len() as u32,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(invbind_buf_p.file_name),
+        };
+
+        let mat_buffer_view = json::buffer::View {
+            buffer: json::Index::new(invbind_buf_p.idx),
+            byte_length: invbind_buf.len() as u32,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        let mut mat_accessor = json::Accessor {
+            buffer_view: Some(json::Index::new(2)),
+            byte_offset: 0,
+            count: joints_vec.len() as u32,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Mat4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        // end inverseBindMatrices
+        let mut skin_nodes: Vec<json::Node> = Vec::new();
+
+        let mut arm: Vec<json::root::Index<_>> = Vec::new();
+
+        for i in 0..joints_vec.len() {
+            if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot {
+                joints_vec[i].locked = true;
+                arm.push(json::Index::new(i as u32));
+            }
+        }
+
+        let main_node = json::Node {
+            camera: None,
+            children: Some(arm),
+            extensions: None,
+            extras: None,
+            matrix: None,
+            mesh: Some(json::Index::new(0)),
+            name: Some(String::from("armature")),
+            rotation: None,
+            scale: None,
+            translation: None,
+            skin: Some(json::Index::new(0)),
+            weights: None,
+        };
+
+        let jlen = joints_vec.len();
+
+        let mut tb_rel: VecDeque<(usize, usize)> = VecDeque::new();
+
+        let mut child_list: VecDeque<_> = VecDeque::new();
+        for z in 0..jlen {
+            let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
+            for j in 0..jlen {
+                if joints_vec[j].parent == z as u8
+                    && joints_vec[z].locked == true
+                    && joints_vec[j].locked == false
+                {
+                    joints_vec[j].locked = true;
+                    child.push(gltf_json::Index::new(j as u32));
+                    tb_rel.push_back((z, j));
+                }
+            }
+
+            if !child.is_empty() && cfg == JointOption::ResolveParentNode {
+                child_list.push_back(Some(child))
+            } else {
+                child_list.push_back(None);
+            }
+        }
+
+        while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
+            let target = tb_rel.pop_back().unwrap();
+
+            let master_idx = target.0;
+            let child_idx = target.1;
+
+            let master_trans = joints_vec[master_idx].transition;
+            let mx = master_trans[0];
+            let my = master_trans[1];
+            let mz = master_trans[2];
+
+            //
+
+            let master_quaternion = joints_vec[master_idx].quaternion;
+
+            let mqx = master_quaternion[0];
+            let mqy = master_quaternion[1];
+            let mqz = master_quaternion[2];
+            let mqw = master_quaternion[3];
+
+            let mq = Quaternion::new(mqw, mqx, mqy, mqz);
+            let muq = UnitQuaternion::from_quaternion(mq);
+
+            let child_quaternion = joints_vec[child_idx].quaternion;
 
             let rx = child_quaternion[0];
             let ry = child_quaternion[1];
@@ -462,543 +643,362 @@ pub fn rdm_joint_to_nodes(
             let q = Quaternion::new(rw, rx, ry, rz);
             let uq = UnitQuaternion::from_quaternion(q);
 
-            let child_trans = joint.transition;
+            let rel_uq = (muq.inverse()) * uq;
+            let uqc = rel_uq.quaternion().coords;
+
+            joints_vec[child_idx].quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
+
+            //
+
+            let child_trans = joints_vec[child_idx].transition;
             let tx = child_trans[0];
             let ty = child_trans[1];
             let tz = child_trans[2];
 
-            let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
+            let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
+            let ct: Translation3<f32> = Translation3::new(tx, ty, tz).inverse();
 
-            let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
-            let inv_bindmat = bindmat.try_inverse().unwrap();
-            let invbind_buf_len = invbind_buf.len();
+            let nx = ct.x - mt.x;
+            let ny = ct.y - mt.y;
+            let nz = ct.z - mt.z;
 
-            invbind_buf.put_f32_le(inv_bindmat.m11);
-            invbind_buf.put_f32_le(inv_bindmat.m21);
-            invbind_buf.put_f32_le(inv_bindmat.m31);
-            invbind_buf.put_f32_le(inv_bindmat.m41);
+            let trans_inter_point = Point3::new(nx, ny, nz);
 
-            invbind_buf.put_f32_le(inv_bindmat.m12);
-            invbind_buf.put_f32_le(inv_bindmat.m22);
-            invbind_buf.put_f32_le(inv_bindmat.m32);
-            invbind_buf.put_f32_le(inv_bindmat.m42);
+            let uik = muq.inverse_transform_point(&trans_inter_point);
 
-            invbind_buf.put_f32_le(inv_bindmat.m13);
-            invbind_buf.put_f32_le(inv_bindmat.m23);
-            invbind_buf.put_f32_le(inv_bindmat.m33);
-            invbind_buf.put_f32_le(inv_bindmat.m43);
+            let uik_x = uik.x;
+            let uik_y = uik.y;
+            let uik_z = uik.z;
 
-            invbind_buf.put_f32_le(inv_bindmat.m14);
-            invbind_buf.put_f32_le(inv_bindmat.m24);
-            invbind_buf.put_f32_le(inv_bindmat.m34);
-            invbind_buf.put_f32_le(inv_bindmat.m44);
-
-            let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
-            assert_eq!(invbind_buf_written, 64);
+            let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
+            joints_vec[child_idx].transition = [trans_point.x, trans_point.y, trans_point.z];
         }
 
-        //let bin = to_padded_byte_vector(invbind_buf);
-        let mut writer = fs::File::create("triangle/buffer2.bin").expect("I/O error");
-        writer.write_all(&invbind_buf).expect("I/O error");
-    }
-
-    let mat_buffer = json::Buffer {
-        byte_length: invbind_buf.len() as u32,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        uri: Some("buffer2.bin".into()),
-    };
-
-    let mat_buffer_view = json::buffer::View {
-        buffer: json::Index::new(2),
-        byte_length: invbind_buf.len() as u32,
-        byte_offset: None,
-        byte_stride: None,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        target: None,
-    };
-
-    let mat_accessor = json::Accessor {
-        buffer_view: Some(json::Index::new(2)),
-        byte_offset: 0,
-        count: joints_vec.len() as u32,
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::F32,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Mat4),
-        min: None,
-        max: None,
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
-
-    // end inverseBindMatrices
-    let mut skin_nodes: Vec<json::Node> = Vec::new();
-
-    let mut arm: Vec<json::root::Index<_>> = Vec::new();
-
-    for i in 0..joints_vec.len() {
-        if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot {
-            joints_vec[i].locked = true;
-            arm.push(json::Index::new(start_jindex + i as u32));
-        }
-    }
-
-    let main_node = json::Node {
-        camera: None,
-        children: Some(arm),
-        extensions: None,
-        extras: None,
-        matrix: None,
-        mesh: Some(json::Index::new(0)),
-        name: Some(String::from("armature")),
-        rotation: None,
-        scale: None,
-        translation: None,
-        skin: Some(json::Index::new(0)),
-        weights: None,
-    };
-
-    let jlen = joints_vec.len();
-
-    let mut tb_rel: VecDeque<(usize, usize)> = VecDeque::new();
-
-    let mut child_list: VecDeque<_> = VecDeque::new();
-    for z in 0..jlen {
-        let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
-        for j in 0..jlen {
-            if joints_vec[j].parent == z as u8
-                && joints_vec[z].locked == true
-                && joints_vec[j].locked == false
-            {
-                joints_vec[j].locked = true;
-                child.push(gltf_json::Index::new(start_jindex + j as u32));
-                tb_rel.push_back((z, j));
-            }
+        for joint in &joints_vec {
+            let ijoint = json::Node {
+                camera: None,
+                children: {
+                    let p = child_list.pop_front().unwrap();
+                    p
+                },
+                extensions: None,
+                extras: None,
+                matrix: None,
+                mesh: None,
+                name: Some(String::from(&joint.name)),
+                rotation: Some(json::scene::UnitQuaternion(joint.quaternion)),
+                scale: None,
+                translation: Some(joint.transition),
+                skin: None,
+                weights: None,
+            };
+            skin_nodes.push(ijoint);
         }
 
-        if !child.is_empty() && cfg == JointOption::ResolveParentNode {
-            child_list.push_back(Some(child))
-        } else {
-            child_list.push_back(None);
-        }
-    }
+        skin_nodes.push(main_node);
+        let nodes_count = skin_nodes.len()-1;
 
-    while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
-        let target = tb_rel.pop_back().unwrap();
+        
+        self.buffers.push(mat_buffer);
+        self.buffer_views.push(mat_buffer_view);
 
-        let master_idx = target.0;
-        let child_idx = target.1;
+        let mat_buffer_view_idx = (self.buffer_views.len()-1) as u32;
 
-        let master_trans = joints_vec[master_idx].transition;
-        let mx = master_trans[0];
-        let my = master_trans[1];
-        let mz = master_trans[2];
+        mat_accessor.buffer_view = Some(json::Index::new(mat_buffer_view_idx));
+        self.accessors.push(mat_accessor);
+        let mat_accessor_idx = (self.accessors.len()-1) as u32;
+        
 
-        //
+        self.nodes.append(&mut skin_nodes);
 
-        let master_quaternion = joints_vec[master_idx].quaternion;
-
-        let mqx = master_quaternion[0];
-        let mqy = master_quaternion[1];
-        let mqz = master_quaternion[2];
-        let mqw = master_quaternion[3];
-
-        let mq = Quaternion::new(mqw, mqx, mqy, mqz);
-        let muq = UnitQuaternion::from_quaternion(mq);
-
-        let child_quaternion = joints_vec[child_idx].quaternion;
-
-        let rx = child_quaternion[0];
-        let ry = child_quaternion[1];
-        let rz = child_quaternion[2];
-        let rw = child_quaternion[3];
-
-        let q = Quaternion::new(rw, rx, ry, rz);
-        let uq = UnitQuaternion::from_quaternion(q);
-
-        let rel_uq = (muq.inverse()) * uq;
-        let uqc = rel_uq.quaternion().coords;
-
-        joints_vec[child_idx].quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
-
-        //
-
-        let child_trans = joints_vec[child_idx].transition;
-        let tx = child_trans[0];
-        let ty = child_trans[1];
-        let tz = child_trans[2];
-
-        let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
-        let ct: Translation3<f32> = Translation3::new(tx, ty, tz).inverse();
-
-        let nx = ct.x - mt.x;
-        let ny = ct.y - mt.y;
-        let nz = ct.z - mt.z;
-
-        let trans_inter_point = Point3::new(nx, ny, nz);
-
-        let uik = muq.inverse_transform_point(&trans_inter_point);
-
-        let uik_x = uik.x;
-        let uik_y = uik.y;
-        let uik_z = uik.z;
-
-        let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
-        joints_vec[child_idx].transition = [trans_point.x, trans_point.y, trans_point.z];
-    }
-
-    for joint in &joints_vec {
-        let ijoint = json::Node {
-            camera: None,
-            children: {
-                let p = child_list.pop_front().unwrap();
-                p
-            },
-            extensions: None,
-            extras: None,
-            matrix: None,
-            mesh: None,
-            name: Some(String::from(&joint.name)),
-            rotation: Some(json::scene::UnitQuaternion(joint.quaternion)),
-            scale: None,
-            translation: Some(joint.transition),
-            skin: None,
-            weights: None,
-        };
-        skin_nodes.push(ijoint);
-    }
-
-    skin_nodes.push(main_node);
-    (
-        skin_nodes.len() as u32,
-        skin_nodes,
-        mat_buffer,
-        mat_buffer_view,
-        mat_accessor,
-    )
-}
-
-fn rdm_vertex_to_gltf(rdm : &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
-
-    let input_vec = &rdm.vertices;
-
-
-    let mut out: Vec<Vertex> = Vec::new();
-
-    let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
-    let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
-
-    for vert in input_vec {
-        let p4h = vert.get_p4h();
-        let x = p4h.pos[0].to_f32();
-        let y = p4h.pos[1].to_f32();
-        let z = p4h.pos[2].to_f32();
-
-        min[0] = x.min(min[0]);
-        min[1] = y.min(min[1]);
-        min[2] = z.min(min[2]);
-
-        max[0] = x.max(max[0]);
-        max[1] = y.max(max[1]);
-        max[2] = z.max(max[2]);
-
-        let t = Vertex {
-            position: [x, y, z],
-        };
-        out.push(t);
-    }
-    (out, min, max)
-}
-
-
-
-pub fn build(rdm: RDModell) {
-
-    let _ = fs::create_dir("triangle");
-
-    let mut obj = RDGltf::new();
-    
-    
-    let conv = rdm_vertex_to_gltf(&rdm);
-
-    let triangle_vertices = conv.0;
-    let min = conv.1;
-    let max = conv.2;
-    let triangle_len = triangle_vertices.len() as u32;
-
-    let triangle_idx: Vec<Triangle> = rdm.triangle_indices.clone();
-    warn!("{}",rdm.triangle_indices.len());
-    warn!("{}",triangle_idx.len());
-    
- 
-    // single vertex buffer
-
-    let buffer_p = obj.push_buffer(triangle_vertices);
-    let buffer_length = buffer_p.len as u32;
-    let buffer = json::Buffer {
-        byte_length: buffer_length,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        uri: Some(buffer_p.file_name),
-    };
-    let buffer_view = json::buffer::View {
-        buffer: json::Index::new(buffer_p.idx),
-        byte_length: buffer.byte_length,
-        byte_offset: None,
-        byte_stride: None,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        target: Some(Valid(json::buffer::Target::ArrayBuffer)),
-    };
-    let triangle_acc = json::Accessor {
-        buffer_view: Some(json::Index::new(0)),
-        byte_offset: 0,
-        count: triangle_len,
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::F32,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Vec3),
-        min: Some(json::Value::from(min)),
-        max: Some(json::Value::from(max)),
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
-
-    // end single vertex buffer
-
-    // Indexed triangle list
-
-    let triangle_idx_p = obj.push_buffer(triangle_idx);
-    let triangle_idx_len_b = triangle_idx_p.len as u32;
-
-    let buffer_idx = json::Buffer {
-        byte_length: triangle_idx_len_b,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        uri: Some(triangle_idx_p.file_name),
-    };
-    let buffer_idx_view = json::buffer::View {
-        buffer: json::Index::new(1),
-        byte_length: triangle_idx_len_b,
-        byte_offset: None,
-        byte_stride: None,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        target: Some(Valid(json::buffer::Target::ElementArrayBuffer)),
-    };
-
-    let idx = json::Accessor {
-        buffer_view: Some(json::Index::new(triangle_idx_p.idx)),
-        byte_offset: 0,
-        count: (triangle_idx_p.num * 3),
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::U16,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Scalar),
-        min: None,
-        max: None,
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
-
-    // end Indexed triangle list
-
-    let primitive = json::mesh::Primitive {
-        attributes: {
-            let mut map = std::collections::HashMap::new();
-            map.insert(Valid(json::mesh::Semantic::Positions), json::Index::new(0));
-            if rdm.has_skin() {
-                map.insert(Valid(json::mesh::Semantic::Joints(0)), json::Index::new(3));
-                map.insert(Valid(json::mesh::Semantic::Weights(0)), json::Index::new(4));
-            }
-            map
-        },
-        extensions: Default::default(),
-        extras: Default::default(),
-        indices: Some(json::Index::new(1)),
-        material: None,
-        mode: Valid(json::mesh::Mode::Triangles),
-        targets: None,
-    };
-
-    let mesh = json::Mesh {
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        primitives: vec![primitive],
-        weights: None,
-    };
-
-    let mut nlen = json::Index::new(0);
-    let mut node_with_joints: Option<Vec<json::Node>> = None;
-
-    let mut vec_acc = vec![triangle_acc, idx];
-    let mut vec_buff = vec![buffer, buffer_idx];
-    let mut vec_buff_v = vec![buffer_view, buffer_idx_view];
-
-    let mut sk = None;
-
-    if rdm.has_skin() {
-
-        // skinning joints and weights
-        let jw = rdm_joint_weights(&rdm.vertices);
-        //
-
-        let comb = rdm_joint_to_nodes(JointOption::ResolveParentNode, rdm.joints.unwrap(), 0);
-
-        let nlen_u32 = comb.0-1;
-        nlen = json::Index::new(nlen_u32);
-        node_with_joints = Some(comb.1);
+        // skin root node
 
         let mut joint_indi_vec: Vec<json::root::Index<_>> = Vec::new();
-        for i in 0..nlen_u32 {
+        for i in 0..nodes_count {
             joint_indi_vec.push(json::Index::new(i as u32));
         }
 
-        sk = Some(json::Skin {
+        self.skin = Some(json::Skin {
             joints: joint_indi_vec,
             extensions: None,
-            inverse_bind_matrices: Some(json::Index::new(2)),
+            inverse_bind_matrices: Some(json::Index::new(mat_accessor_idx)),
             skeleton: None,
             extras: None,
             name: None,
         });
-
-        //
-        let mat_buff = comb.2;
-        vec_buff.push(mat_buff);
-        
-        let jw_buff = jw.0;
-        vec_buff.push(jw_buff);
-        //
-
-        //
-        let mat_buff_v = comb.3;
-        vec_buff_v.push(mat_buff_v);
-
-        let joint_buff_v = jw.1;
-        let weight_buff_v = jw.3;
-        vec_buff_v.push(joint_buff_v);
-        vec_buff_v.push(weight_buff_v);
-        //
-
-        //
-        let mat_acc = comb.4;
-        vec_acc.push(mat_acc);
-
-        let joint_acc = jw.2;
-        let weight_acc = jw.4;
-        vec_acc.push(joint_acc);
-        vec_acc.push(weight_acc);
-        //
     }
 
-    let mut anim_node = None;
-
-    if rdm.anim.is_some() {
-        // ugly mess 
-        let anim = rdm.anim.clone().unwrap();
-        
-        let mut acc_v_anim = rdm_anim(&anim);
-
-        vec_buff.push(acc_v_anim.0);
-        vec_buff_v.append(&mut acc_v_anim.1);
-        vec_acc.append(&mut acc_v_anim.2);
-
-        anim_node = Some(acc_v_anim.3);
+    fn get_skins_or_default(&self) -> Vec<json::Skin>{
+        if self.skin.is_some() {
+            vec![self.skin.clone().unwrap()]
+        } else {
+            Default::default()
+        }
     }
 
+    fn get_next_index_for_acc(&self) -> u32 {
+        (self.accessors.len()-1) as u32
+    }
 
-    warn!("nlen: {}", nlen);
+    fn rdm_vertex_to_gltf(rdm: &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
+        let input_vec = &rdm.vertices;
 
-    let node_def = json::Node {
-        camera: None,
-        children: None,
-        extensions: Default::default(),
-        extras: Default::default(),
-        matrix: None,
-        mesh: Some(json::Index::new(0)),
-        name: None,
-        rotation: None,
-        scale: None,
-        translation: None,
-        skin: None,
-        weights: None,
-    };
+        let mut out: Vec<Vertex> = Vec::new();
 
-    let root = json::Root {
-        accessors: vec_acc,
-        buffers: vec_buff,
-        buffer_views: vec_buff_v,
-        meshes: vec![mesh],
-        nodes: node_with_joints.unwrap_or_else(|| vec![node_def]),
-        scenes: vec![json::Scene {
+        let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
+        let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
+
+        for vert in input_vec {
+            let p4h = vert.get_p4h();
+            let x = p4h.pos[0].to_f32();
+            let y = p4h.pos[1].to_f32();
+            let z = p4h.pos[2].to_f32();
+
+            min[0] = x.min(min[0]);
+            min[1] = y.min(min[1]);
+            min[2] = z.min(min[2]);
+
+            max[0] = x.max(max[0]);
+            max[1] = y.max(max[1]);
+            max[2] = z.max(max[2]);
+
+            let t = Vertex {
+                position: [x, y, z],
+            };
+            out.push(t);
+        }
+        (out, min, max)
+    }
+
+    fn put_vertex(&mut self) {
+        let conv = RDGltfBuilder::rdm_vertex_to_gltf(&self.rdm);
+
+        let triangle_vertices = conv.0;
+        let min = conv.1;
+        let max = conv.2;
+        let triangle_len = triangle_vertices.len() as u32;
+
+        // single vertex buffer
+
+        let buffer_p = self.obj.push_buffer(triangle_vertices);
+        let buffer_length = buffer_p.len as u32;
+        let buffer = json::Buffer {
+            byte_length: buffer_length,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            nodes: vec![nlen],
-        }],
-        skins: if sk.is_some() { vec![sk.unwrap()] } else { Default::default() },
-        animations: if anim_node.is_some() {vec![anim_node.unwrap()]} else { Default::default() },
-        ..Default::default()
-    };
+            uri: Some(buffer_p.file_name),
+        };
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffer_p.idx),
+            byte_length: buffer.byte_length,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: Some(Valid(json::buffer::Target::ArrayBuffer)),
+        };
+        let triangle_acc = json::Accessor {
+            buffer_view: Some(json::Index::new(0)),
+            byte_offset: 0,
+            count: triangle_len,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec3),
+            min: Some(json::Value::from(min)),
+            max: Some(json::Value::from(max)),
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
 
-    
+        self.buffers.push(buffer);
+        self.buffer_views.push(buffer_view);
+        self.accessors.push(triangle_acc);
 
-    obj.root = Some(root);
+        let accessors_idx = (self.accessors.len()-1) as u32;
 
-    obj.write_gltf();
+        self.attr_map
+            .insert(Valid(json::mesh::Semantic::Positions), json::Index::new(accessors_idx));
+        // end single vertex buffer
+    }
+
+    fn put_idx(&mut self) {
+        // Indexed triangle list
+        let triangle_idx: Vec<Triangle> = self.rdm.triangle_indices.clone();
+        warn!("{}", self.rdm.triangle_indices.len());
+        warn!("{}", triangle_idx.len());
+
+        let triangle_idx_p = self.obj.push_buffer(triangle_idx);
+        let triangle_idx_len_b = triangle_idx_p.len as u32;
+
+        let buffer_idx = json::Buffer {
+            byte_length: triangle_idx_len_b,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(triangle_idx_p.file_name),
+        };
+        self.buffers.push(buffer_idx); 
+
+        let buffer_idx_view = json::buffer::View {
+            buffer: json::Index::new(triangle_idx_p.idx),
+            byte_length: triangle_idx_len_b,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: Some(Valid(json::buffer::Target::ElementArrayBuffer)),
+        };
+        
+        self.buffer_views.push(buffer_idx_view);
+
+        let buffer_idx_view_idx = (self.buffer_views.len()-1) as u32;
+
+        let idx = json::Accessor {
+            buffer_view: Some(json::Index::new(buffer_idx_view_idx)),
+            byte_offset: 0,
+            count: (triangle_idx_p.num * 3),
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::U16,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Scalar),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        
+        self.accessors.push(idx);
+
+        let accessors_idx = (self.accessors.len()-1) as u32;
+        self.idx = Some(accessors_idx);
+        // end Indexed triangle list
+    }
+
+    pub fn build(mut self) -> RDGltf {
+        
+        let skins = self.get_skins_or_default();
+
+        let primitive = json::mesh::Primitive {
+            attributes: self.attr_map,
+            extensions: Default::default(),
+            extras: Default::default(),
+            indices: Some(json::Index::new(self.idx.unwrap())),
+            material: None,
+            mode: Valid(json::mesh::Mode::Triangles),
+            targets: None,
+        };
+
+        let mesh = json::Mesh {
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            primitives: vec![primitive],
+            weights: None,
+        };
+
+        let node_def = json::Node {
+            camera: None,
+            children: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            matrix: None,
+            mesh: Some(json::Index::new(0)),
+            name: None,
+            rotation: None,
+            scale: None,
+            translation: None,
+            skin: None,
+            weights: None,
+        };
+
+        //TODO better check
+        if self.nodes.len() == 0 {
+            self.nodes.push(node_def);
+        }
+
+        //TODO : must be root node
+        let node_len = json::Index::new((self.nodes.len() - 1) as u32);
+        
+        let root = json::Root {
+            accessors: self.accessors,
+            buffers: self.buffers,
+            buffer_views: self.buffer_views,
+            meshes: vec![mesh],
+            nodes: self.nodes,
+            scenes: vec![json::Scene {
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+                nodes: vec![node_len],
+            }],
+            skins: skins,
+            ..Default::default()
+        };
+
+        self.obj.root = Some(root);
+
+        self.obj
+    }
 }
 
+impl From<RDModell> for RDGltfBuilder {
+    fn from(rdm: RDModell) -> Self {
+        let mut b = RDGltfBuilder::new(rdm);
+        b.put_idx();
+        b.put_vertex();
+        b.put_joint_nodes(JointOption::ResolveParentNode);
 
-struct RDGltf  {
+        
+        //b.put_joint_weight();
+        b
+    }
+}
+
+pub fn build(rdm: RDModell) {
+    let b = RDGltfBuilder::from(rdm);
+    let p = b.build();
+
+    p.write_gltf();
+}
+
+struct RDGltf {
     unified: bool,
     buffers: Vec<Vec<u8>>,
-
-    attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
-
     root: Option<json::Root>,
 }
 
 impl RDGltf {
-
     fn new() -> Self {
         RDGltf {
             unified: false,
             buffers: vec![],
             root: None,
-            attr_map: std::collections::HashMap::new(),
         }
     }
 
-
     fn write_gltf(mut self) {
+        let _ = fs::create_dir("triangle");
+
         let writer = fs::File::create("triangle/triangle.gltf").expect("I/O error");
-        json::serialize::to_writer_pretty(writer, &self.root.unwrap()).expect("Serialization error");
-    
-        
-        let mut idx = self.buffers.len()-1;
+        json::serialize::to_writer_pretty(writer, &self.root.unwrap())
+            .expect("Serialization error");
+
+        let mut idx = self.buffers.len() - 1;
         while !self.buffers.is_empty() {
             let e = self.buffers.pop().unwrap();
             let bin = e;
-            let file_path = format!("triangle/buffer{}.bin",idx);
+            let file_path = format!("triangle/buffer{}.bin", idx);
             let mut writer = fs::File::create(file_path).expect("I/O error");
             writer.write_all(&bin).expect("I/O error");
 
@@ -1006,14 +1006,10 @@ impl RDGltf {
         }
     }
 
-    fn push_buffer<T>(&mut self,vec: Vec<T>) -> PushBufferResult {
+    fn push_buffer<T>(&mut self, vec: Vec<T>) -> PushBufferResult {
         let idx = self.buffers.len();
 
-        const FILE_BASE_NAME: &str = "buffer";
-        const FILE_BASE_EXT: &str  = ".bin";
-
-
-        let file_name = format!("buffer{}.bin",idx);
+        let file_name = format!("buffer{}.bin", idx);
         let num = vec.len();
 
         let padded_byte_vector = to_padded_byte_vector(vec);
@@ -1032,6 +1028,6 @@ impl RDGltf {
 struct PushBufferResult {
     file_name: String,
     num: u32,
-    len : u32,
+    len: u32,
     idx: u32,
 }

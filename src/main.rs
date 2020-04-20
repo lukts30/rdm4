@@ -110,7 +110,7 @@ impl GetVertex for Bytes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RDJoint {
     name: String,
     nameptr: u32,
@@ -120,6 +120,7 @@ pub struct RDJoint {
     locked: bool,
 }
 
+#[allow(dead_code)]
 impl RDModell {
     const META_OFFSET: u32 = 32;
     const META_COUNT: u32 = 8; //neg
@@ -187,7 +188,7 @@ impl RDModell {
             let uqt = UnitQuaternion::from_quaternion(q);
             let uq = UnitQuaternion::from_quaternion(q);
 
-            let mut uqc = uq.quaternion().coords;
+            let uqc = uq.quaternion().coords;
 
             let t: Translation3<f32> = Translation3::new(tx, ty, tz);
 
@@ -196,7 +197,7 @@ impl RDModell {
             let y = inv_bindmat.m24;
             let z = inv_bindmat.m34;
 
-            let mut trans_point = Translation3::new(x, y, z).inverse();
+            let trans_point = Translation3::new(x, y, z).inverse();
 
             let parent_id = skin_buffer.get_u8();
 

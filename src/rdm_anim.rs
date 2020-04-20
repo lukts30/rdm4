@@ -63,7 +63,7 @@ impl RDAnim {
         info!("joint_targets: {}", joint_targets_num);
     
         let mut jtable: Vec<(usize, usize)> = Vec::with_capacity(joint_targets_num);
-        for i in 0..joint_targets_num {
+        for _ in 0..joint_targets_num {
             jtable.push((buffer.get_u32_le() as usize, buffer.get_u32_le() as usize));
     
             buffer.advance(16);
@@ -90,7 +90,7 @@ impl RDAnim {
     
             let mut frame: Vec<Frame> = Vec::new();
     
-            for k in 0..ent_child_count {
+            for _ in 0..ent_child_count {
                 let kframe = Frame {
                     rotation: [
                         buffer.get_f32_le(),
