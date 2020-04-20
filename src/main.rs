@@ -19,6 +19,9 @@ mod gltf_export;
 mod rdm_anim;
 use crate::rdm_anim::RDAnim;
 
+use std::process::Command;
+use serde_json::{Result, Value};
+
 pub struct RDModell {
     size: u32,
     buffer: Bytes,
@@ -660,6 +663,41 @@ mod tests {
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
         );
+
+        gltf_export::build(rdm);
+
+        let output = if cfg!(target_os = "windows") {
+            Command::new("gltf_validator.exe")
+                .args(&["-a", "triangle/triangle.gltf"])
+                .output()
+                .expect("failed to execute process")
+        } else {
+            unimplemented!("todo linux");
+        };
+
+        let hello = String::from_utf8_lossy(&output.stderr);
+        let info: Vec<&str> = hello
+            .lines()
+            .nth(1)
+            .unwrap()
+            .split_terminator(',')
+            .map(|f| f.trim())
+            .collect();
+
+        println!("gltf_validator: {:#?}", info);
+
+        assert_eq!(r#"Errors: 0"#, info[0]);
+        assert_eq!(r#"Warnings: 0"#, info[1]);
+
+        let mut f = File::open("triangle/triangle.gltf.report.json").unwrap();
+        let mut buffer = Vec::new();
+        std::io::Read::read_to_end(&mut f, &mut buffer).ok();
+
+        let report = str::from_utf8(&buffer).unwrap();
+        let v: serde_json::Value = serde_json::from_str(report).unwrap();
+
+        println!("{}",v["info"]["totalVertexCount"].to_string().parse::<u32>().unwrap());
+
     }
 
     #[test]
@@ -694,8 +732,8 @@ fn main() {
 
     if !true {
         args_main();
-    } 
-    
+    }
+
     if !false {
         let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
         //info!("rdm: {:#?}", rdm);

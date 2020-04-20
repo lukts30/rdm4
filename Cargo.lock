@@ -483,6 +483,7 @@ dependencies = [
  "half",
  "log",
  "nalgebra",
+ "serde_json",
 ]
 
 [[package]]

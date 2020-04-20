@@ -45,272 +45,6 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     }
     new_vec
 }
-
-pub fn rdm_anim(
-    anim: &RDAnim,
-) -> (
-    json::Buffer,
-    Vec<json::buffer::View>,
-    Vec<json::Accessor>,
-    json::animation::Animation,
-) {
-    let anim_vec = &anim.anim_vec;
-
-    let anim_vec_len = anim_vec.len();
-    let mut size: usize = 0;
-    for janim in anim_vec {
-        size += janim.len as usize;
-    }
-
-    let rot_size = size * 16;
-    let trans_size = size * 12;
-    let t_size = size * 4;
-
-    let mut rot_anim_buf = BytesMut::with_capacity(rot_size);
-    let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
-    let mut t_anim_buf = BytesMut::with_capacity(t_size);
-
-    // alloc one buffer
-    // vec buffer_v
-    let mut buffer_v_vec = Vec::new();
-
-    // vec acc
-    let mut acc_vec = Vec::new();
-
-    // ** animations
-
-    let buffv_idx = 4;
-    let mut acc_idx = 5;
-
-    // anim node
-    let time_f32_max = (anim.time_max as f32) / 1000.0;
-
-    let mut rot_sampler_chanel = 0;
-    let mut trans_sampler_chanel = 1;
-    let mut node_idx = 0;
-
-    let mut sampler_vec = Vec::new();
-    let mut chanel_vec = Vec::new();
-
-    for janim in anim_vec {
-        let count = janim.len as usize;
-
-        let rot_start = rot_anim_buf.len();
-        let trans_start = trans_anim_buf.len();
-        let t_start = t_anim_buf.len();
-
-        for f in &janim.frames {
-            rot_anim_buf.put_f32_le(f.rotation[0]);
-            rot_anim_buf.put_f32_le(f.rotation[1]);
-            rot_anim_buf.put_f32_le(f.rotation[2]);
-            rot_anim_buf.put_f32_le(-f.rotation[3]);
-
-            trans_anim_buf.put_f32_le(f.translation[0]);
-            trans_anim_buf.put_f32_le(f.translation[1]);
-            trans_anim_buf.put_f32_le(f.translation[2]);
-
-            t_anim_buf.put_f32_le(f.time);
-        }
-        let rot_end = rot_anim_buf.len();
-        warn!("{}", rot_start);
-        warn!("{}", rot_end);
-
-        let trans_end = trans_anim_buf.len();
-        let t_end = t_anim_buf.len();
-
-        let rot_real_len = rot_end - rot_start;
-        let trans_real_len = trans_end - trans_start;
-
-        let t_real_len = t_end - t_start;
-
-        let rot_buffer_view = json::buffer::View {
-            buffer: json::Index::new(buffv_idx),
-            byte_length: rot_real_len as u32,
-            byte_offset: Some(0 + rot_start as u32),
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: None,
-        };
-
-        let rot_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(acc_idx)),
-            byte_offset: 0,
-            count: count as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Vec4),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-        let rot_sampler_idx = acc_idx;
-        acc_vec.push(rot_accessor);
-        acc_idx += 1;
-
-        let trans_buffer_view = json::buffer::View {
-            buffer: json::Index::new(buffv_idx),
-            byte_length: trans_real_len as u32,
-            byte_offset: Some((rot_size + trans_start) as u32),
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: None,
-        };
-
-        let trans_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(acc_idx)),
-            byte_offset: 0,
-            count: count as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Vec3),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-        let trans_sampler_idx = acc_idx;
-        acc_vec.push(trans_accessor);
-        acc_idx += 1;
-
-        let time_buffer_view = json::buffer::View {
-            buffer: json::Index::new(buffv_idx),
-            byte_length: t_real_len as u32,
-            byte_offset: Some((rot_size + trans_size + t_start) as u32),
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: None,
-        };
-
-        let time_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(acc_idx)),
-            byte_offset: 0,
-            count: count as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Scalar),
-            min: Some(json::Value::from(vec![0.0])),
-            max: Some(json::Value::from(vec![time_f32_max])),
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-        let time_sampler_idx = acc_idx;
-        acc_vec.push(time_accessor);
-        acc_idx += 1;
-
-        buffer_v_vec.push(rot_buffer_view);
-        buffer_v_vec.push(trans_buffer_view);
-        buffer_v_vec.push(time_buffer_view);
-
-        let rot_sampler = json::animation::Sampler {
-            input: json::Index::new(time_sampler_idx),
-            interpolation: Valid(json::animation::Interpolation::Linear),
-            output: json::Index::new(rot_sampler_idx),
-            extensions: None,
-            extras: None,
-        };
-
-        let trans_sampler = json::animation::Sampler {
-            input: json::Index::new(time_sampler_idx),
-            interpolation: Valid(json::animation::Interpolation::Linear),
-            output: json::Index::new(trans_sampler_idx),
-            extensions: None,
-            extras: None,
-        };
-
-        let rot_chanel = json::animation::Channel {
-            sampler: json::Index::new(rot_sampler_chanel),
-            target: json::animation::Target {
-                node: json::Index::new(node_idx),
-                path: Valid(json::animation::Property::Rotation),
-                extensions: None,
-                extras: None,
-            },
-            extensions: None,
-            extras: None,
-        };
-
-        let trans_chanel = json::animation::Channel {
-            sampler: json::Index::new(trans_sampler_chanel),
-            target: json::animation::Target {
-                node: json::Index::new(node_idx),
-                path: Valid(json::animation::Property::Translation),
-                extensions: None,
-                extras: None,
-            },
-            extensions: None,
-            extras: None,
-        };
-
-        sampler_vec.push(rot_sampler);
-        sampler_vec.push(trans_sampler);
-
-        chanel_vec.push(rot_chanel);
-        chanel_vec.push(trans_chanel);
-
-        rot_sampler_chanel += 2;
-        trans_sampler_chanel += 2;
-        node_idx += 1;
-    }
-
-    let anim_node = json::animation::Animation {
-        name: Some(anim.name.clone()),
-        samplers: sampler_vec,
-        channels: chanel_vec,
-        extensions: None,
-        extras: None,
-    };
-
-    debug!("{:#?}", anim_node);
-
-    // write rot trans and time
-    // buffer_v
-    // acc for rot trans time
-
-    // create sampler input:acc_time output:acc_trans
-    // create sampler input:acc_time output:acc_rot
-
-    // node target maps to idx in RDAnim
-    // create chanel sampler_trans
-    // create chanel sampler_rot
-
-    //let mut anim_buf = rot_anim_buf.chain(trans_anim_buf);
-
-    let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
-
-    writer.write_all(&rot_anim_buf).expect("I/O error");
-    writer.write_all(&trans_anim_buf).expect("I/O error");
-    writer.write_all(&t_anim_buf).expect("I/O error");
-
-    let anim_buffer = json::Buffer {
-        byte_length: (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u32,
-        extensions: Default::default(),
-        extras: Default::default(),
-        name: None,
-        uri: Some("buffer4.bin".into()),
-    };
-
-    (anim_buffer, buffer_v_vec, acc_vec, anim_node)
-}
-
 struct RDGltfBuilder {
     name: Option<String>,
     buffers: Vec<json::Buffer>,
@@ -318,11 +52,12 @@ struct RDGltfBuilder {
     accessors: Vec<json::Accessor>,
     nodes: Vec<json::Node>,
     attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
-    idx : Option<u32>,
+    idx: Option<u32>,
 
     rdm: RDModell,
     obj: RDGltf, // private
     skin: Option<json::Skin>,
+    anim_node: Option<json::Animation>,
 }
 
 impl RDGltfBuilder {
@@ -338,17 +73,266 @@ impl RDGltfBuilder {
             obj: RDGltf::new(),
             skin: None,
             idx: None,
+            anim_node: None,
         }
     }
-    fn put_joint_weight(
+
+    pub fn put_rdm_anim(
         &mut self,
-    ) -> (
-        json::Buffer,
-        json::buffer::View,
-        json::Accessor,
-        json::buffer::View,
-        json::Accessor,
     ) {
+        let anim = self.rdm.anim.clone().unwrap();
+        let anim_vec = anim.anim_vec.clone();
+
+        let anim_vec_len = anim_vec.len();
+        let mut size: usize = 0;
+        for janim in &anim_vec {
+            size += janim.len as usize;
+        }
+
+        let rot_size = size * 16;
+        let trans_size = size * 12;
+        let t_size = size * 4;
+
+        let mut rot_anim_buf = BytesMut::with_capacity(rot_size);
+        let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
+        let mut t_anim_buf = BytesMut::with_capacity(t_size);
+
+        // alloc one buffer
+        // vec buffer_v
+        let mut buffer_v_vec = Vec::new();
+
+        // vec acc
+        let mut acc_vec = Vec::new();
+
+        // ** animations
+
+        let buffv_idx = 4;
+        let mut acc_idx = 5;
+
+        // anim node
+        let time_f32_max = (anim.time_max as f32) / 1000.0;
+
+        let mut rot_sampler_chanel = 0;
+        let mut trans_sampler_chanel = 1;
+        let mut node_idx = 0;
+
+        let mut sampler_vec = Vec::new();
+        let mut chanel_vec = Vec::new();
+
+        for janim in &anim_vec {
+            let count = janim.len as usize;
+
+            let rot_start = rot_anim_buf.len();
+            let trans_start = trans_anim_buf.len();
+            let t_start = t_anim_buf.len();
+
+            for f in &janim.frames {
+                rot_anim_buf.put_f32_le(f.rotation[0]);
+                rot_anim_buf.put_f32_le(f.rotation[1]);
+                rot_anim_buf.put_f32_le(f.rotation[2]);
+                rot_anim_buf.put_f32_le(-f.rotation[3]);
+
+                trans_anim_buf.put_f32_le(f.translation[0]);
+                trans_anim_buf.put_f32_le(f.translation[1]);
+                trans_anim_buf.put_f32_le(f.translation[2]);
+
+                t_anim_buf.put_f32_le(f.time);
+            }
+            let rot_end = rot_anim_buf.len();
+            warn!("{}", rot_start);
+            warn!("{}", rot_end);
+
+            let trans_end = trans_anim_buf.len();
+            let t_end = t_anim_buf.len();
+
+            let rot_real_len = rot_end - rot_start;
+            let trans_real_len = trans_end - trans_start;
+
+            let t_real_len = t_end - t_start;
+
+            let rot_buffer_view = json::buffer::View {
+                buffer: json::Index::new(buffv_idx),
+                byte_length: rot_real_len as u32,
+                byte_offset: Some(0 + rot_start as u32),
+                byte_stride: None,
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+                target: None,
+            };
+
+            let rot_accessor = json::Accessor {
+                buffer_view: Some(json::Index::new(acc_idx)),
+                byte_offset: 0,
+                count: count as u32,
+                component_type: Valid(json::accessor::GenericComponentType(
+                    json::accessor::ComponentType::F32,
+                )),
+                extensions: Default::default(),
+                extras: Default::default(),
+                type_: Valid(json::accessor::Type::Vec4),
+                min: None,
+                max: None,
+                name: None,
+                normalized: false,
+                sparse: None,
+            };
+            let rot_sampler_idx = acc_idx;
+            acc_vec.push(rot_accessor);
+            acc_idx += 1;
+
+            let trans_buffer_view = json::buffer::View {
+                buffer: json::Index::new(buffv_idx),
+                byte_length: trans_real_len as u32,
+                byte_offset: Some((rot_size + trans_start) as u32),
+                byte_stride: None,
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+                target: None,
+            };
+
+            let trans_accessor = json::Accessor {
+                buffer_view: Some(json::Index::new(acc_idx)),
+                byte_offset: 0,
+                count: count as u32,
+                component_type: Valid(json::accessor::GenericComponentType(
+                    json::accessor::ComponentType::F32,
+                )),
+                extensions: Default::default(),
+                extras: Default::default(),
+                type_: Valid(json::accessor::Type::Vec3),
+                min: None,
+                max: None,
+                name: None,
+                normalized: false,
+                sparse: None,
+            };
+            let trans_sampler_idx = acc_idx;
+            acc_vec.push(trans_accessor);
+            acc_idx += 1;
+
+            let time_buffer_view = json::buffer::View {
+                buffer: json::Index::new(buffv_idx),
+                byte_length: t_real_len as u32,
+                byte_offset: Some((rot_size + trans_size + t_start) as u32),
+                byte_stride: None,
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+                target: None,
+            };
+
+            let time_accessor = json::Accessor {
+                buffer_view: Some(json::Index::new(acc_idx)),
+                byte_offset: 0,
+                count: count as u32,
+                component_type: Valid(json::accessor::GenericComponentType(
+                    json::accessor::ComponentType::F32,
+                )),
+                extensions: Default::default(),
+                extras: Default::default(),
+                type_: Valid(json::accessor::Type::Scalar),
+                min: Some(json::Value::from(vec![0.0])),
+                max: Some(json::Value::from(vec![time_f32_max])),
+                name: None,
+                normalized: false,
+                sparse: None,
+            };
+            let time_sampler_idx = acc_idx;
+            acc_vec.push(time_accessor);
+            acc_idx += 1;
+
+            buffer_v_vec.push(rot_buffer_view);
+            buffer_v_vec.push(trans_buffer_view);
+            buffer_v_vec.push(time_buffer_view);
+
+            let rot_sampler = json::animation::Sampler {
+                input: json::Index::new(time_sampler_idx),
+                interpolation: Valid(json::animation::Interpolation::Linear),
+                output: json::Index::new(rot_sampler_idx),
+                extensions: None,
+                extras: None,
+            };
+
+            let trans_sampler = json::animation::Sampler {
+                input: json::Index::new(time_sampler_idx),
+                interpolation: Valid(json::animation::Interpolation::Linear),
+                output: json::Index::new(trans_sampler_idx),
+                extensions: None,
+                extras: None,
+            };
+
+            let rot_chanel = json::animation::Channel {
+                sampler: json::Index::new(rot_sampler_chanel),
+                target: json::animation::Target {
+                    node: json::Index::new(node_idx),
+                    path: Valid(json::animation::Property::Rotation),
+                    extensions: None,
+                    extras: None,
+                },
+                extensions: None,
+                extras: None,
+            };
+
+            let trans_chanel = json::animation::Channel {
+                sampler: json::Index::new(trans_sampler_chanel),
+                target: json::animation::Target {
+                    node: json::Index::new(node_idx),
+                    path: Valid(json::animation::Property::Translation),
+                    extensions: None,
+                    extras: None,
+                },
+                extensions: None,
+                extras: None,
+            };
+
+            sampler_vec.push(rot_sampler);
+            sampler_vec.push(trans_sampler);
+
+            chanel_vec.push(rot_chanel);
+            chanel_vec.push(trans_chanel);
+
+            rot_sampler_chanel += 2;
+            trans_sampler_chanel += 2;
+            node_idx += 1;
+        }
+
+        let anim_node = json::animation::Animation {
+            name: Some(anim.name.clone()),
+            samplers: sampler_vec,
+            channels: chanel_vec,
+            extensions: None,
+            extras: None,
+        };
+
+        debug!("{:#?}", anim_node);
+
+        let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
+
+        writer.write_all(&rot_anim_buf).expect("I/O error");
+        writer.write_all(&trans_anim_buf).expect("I/O error");
+        writer.write_all(&t_anim_buf).expect("I/O error");
+
+        let anim_buffer = json::Buffer {
+            byte_length: (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u32,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some("buffer4.bin".into()),
+        };
+
+
+        self.buffers.push(anim_buffer);
+
+        self.buffer_views.append(&mut buffer_v_vec);
+
+        self.accessors.append(&mut acc_vec);
+
+        self.anim_node = Some(anim_node);
+    }
+
+    fn put_joint_weight(&mut self) {
         let input_vec = &self.rdm.vertices;
 
         let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
@@ -386,19 +370,20 @@ impl RDGltfBuilder {
         let real_len = joint_weight_buf.len() as u32;
         joint_weight_buf.put_u32_le(0);
 
-        let mut writer = fs::File::create("triangle/buffer3.bin").expect("I/O error");
-        writer.write_all(&joint_weight_buf).expect("I/O error");
+        let jw_buffer_p = self.obj.push_buffer(joint_weight_buf.to_vec());
 
         let jw_buffer = json::Buffer {
             byte_length: joint_weight_buf.len() as u32,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            uri: Some("buffer3.bin".into()),
+            uri: Some(jw_buffer_p.file_name.clone()),
         };
 
+        self.buffers.push(jw_buffer);
+
         let joint_buffer_view = json::buffer::View {
-            buffer: json::Index::new(3),
+            buffer: json::Index::new(jw_buffer_p.idx),
             byte_length: real_len,
             byte_offset: None,
             byte_stride: Some(20),
@@ -407,9 +392,11 @@ impl RDGltfBuilder {
             name: None,
             target: None,
         };
+        self.buffer_views.push(joint_buffer_view);
+        let joint_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
 
         let joint_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(3)),
+            buffer_view: Some(json::Index::new(joint_buffer_view_idx)),
             byte_offset: 0,
             count: input_vec.len() as u32,
             component_type: Valid(json::accessor::GenericComponentType(
@@ -424,9 +411,11 @@ impl RDGltfBuilder {
             normalized: false,
             sparse: None,
         };
+        self.accessors.push(joint_accessor);
+        let joint_accessor_idx = (self.accessors.len() - 1) as u32;
 
         let weight_buffer_view = json::buffer::View {
-            buffer: json::Index::new(3),
+            buffer: json::Index::new(jw_buffer_p.idx),
             byte_length: real_len,
             byte_offset: Some(4),
             byte_stride: Some(20),
@@ -435,9 +424,11 @@ impl RDGltfBuilder {
             name: None,
             target: None,
         };
+        self.buffer_views.push(weight_buffer_view);
+        let weight_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
 
         let weight_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(4)),
+            buffer_view: Some(json::Index::new(weight_buffer_view_idx)),
             byte_offset: 0,
             count: input_vec.len() as u32,
             component_type: Valid(json::accessor::GenericComponentType(
@@ -452,14 +443,17 @@ impl RDGltfBuilder {
             normalized: false,
             sparse: None,
         };
+        self.accessors.push(weight_accessor);
+        let weight_accessor_idx = (self.accessors.len() - 1) as u32;
 
-        (
-            jw_buffer,
-            joint_buffer_view,
-            joint_accessor,
-            weight_buffer_view,
-            weight_accessor,
-        )
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::Joints(0)),
+            json::Index::new(joint_accessor_idx),
+        );
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::Weights(0)),
+            json::Index::new(weight_accessor_idx),
+        );
     }
 
     fn put_joint_nodes(&mut self, cfg: JointOption) {
@@ -514,11 +508,6 @@ impl RDGltfBuilder {
                 assert_eq!(invbind_buf_written, 64);
             }
 
-            //let bin = to_padded_byte_vector(invbind_buf);
-            //let mut writer = fs::File::create("triangle/buffer2.bin").expect("I/O error");
-            //writer.write_all(&invbind_buf).expect("I/O error");
-
-            
         }
         let invbind_buf_p = self.obj.push_buffer(invbind_buf.to_vec());
 
@@ -696,18 +685,16 @@ impl RDGltfBuilder {
         }
 
         skin_nodes.push(main_node);
-        let nodes_count = skin_nodes.len()-1;
+        let nodes_count = skin_nodes.len() - 1;
 
-        
         self.buffers.push(mat_buffer);
         self.buffer_views.push(mat_buffer_view);
 
-        let mat_buffer_view_idx = (self.buffer_views.len()-1) as u32;
+        let mat_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
 
         mat_accessor.buffer_view = Some(json::Index::new(mat_buffer_view_idx));
         self.accessors.push(mat_accessor);
-        let mat_accessor_idx = (self.accessors.len()-1) as u32;
-        
+        let mat_accessor_idx = (self.accessors.len() - 1) as u32;
 
         self.nodes.append(&mut skin_nodes);
 
@@ -728,7 +715,7 @@ impl RDGltfBuilder {
         });
     }
 
-    fn get_skins_or_default(&self) -> Vec<json::Skin>{
+    fn get_skins_or_default(&self) -> Vec<json::Skin> {
         if self.skin.is_some() {
             vec![self.skin.clone().unwrap()]
         } else {
@@ -736,8 +723,29 @@ impl RDGltfBuilder {
         }
     }
 
+    /*
+    fn put_anim(&mut self) {
+        if self.rdm.anim.is_some() {
+            // TODO ugly mess
+            let anim = self.rdm.anim.clone().unwrap();
+
+            let mut acc_v_anim = rdm_anim(&anim);
+
+            self.buffers.push(acc_v_anim.0);
+
+            self.buffer_views.append(&mut acc_v_anim.1);
+            self.accessors.append(&mut acc_v_anim.2);
+
+            self.anim_node = Some(acc_v_anim.3);
+        } else {
+            error!("no anim provieded !");
+        }
+    }
+    */
+
+    //TODO probably use of std::ops::Range
     fn get_next_index_for_acc(&self) -> u32 {
-        (self.accessors.len()-1) as u32
+        (self.accessors.len() - 1) as u32
     }
 
     fn rdm_vertex_to_gltf(rdm: &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
@@ -745,6 +753,7 @@ impl RDGltfBuilder {
 
         let mut out: Vec<Vertex> = Vec::new();
 
+        //TODO FIXME arbitrarily chosen
         let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
         let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
 
@@ -799,8 +808,13 @@ impl RDGltfBuilder {
             name: None,
             target: Some(Valid(json::buffer::Target::ArrayBuffer)),
         };
+
+        self.buffers.push(buffer);
+        self.buffer_views.push(buffer_view);
+        let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
+
         let triangle_acc = json::Accessor {
-            buffer_view: Some(json::Index::new(0)),
+            buffer_view: Some(json::Index::new(buffer_views_idx)),
             byte_offset: 0,
             count: triangle_len,
             component_type: Valid(json::accessor::GenericComponentType(
@@ -816,14 +830,14 @@ impl RDGltfBuilder {
             sparse: None,
         };
 
-        self.buffers.push(buffer);
-        self.buffer_views.push(buffer_view);
         self.accessors.push(triangle_acc);
 
-        let accessors_idx = (self.accessors.len()-1) as u32;
+        let accessors_idx = (self.accessors.len() - 1) as u32;
 
-        self.attr_map
-            .insert(Valid(json::mesh::Semantic::Positions), json::Index::new(accessors_idx));
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::Positions),
+            json::Index::new(accessors_idx),
+        );
         // end single vertex buffer
     }
 
@@ -843,7 +857,7 @@ impl RDGltfBuilder {
             name: None,
             uri: Some(triangle_idx_p.file_name),
         };
-        self.buffers.push(buffer_idx); 
+        self.buffers.push(buffer_idx);
 
         let buffer_idx_view = json::buffer::View {
             buffer: json::Index::new(triangle_idx_p.idx),
@@ -855,10 +869,10 @@ impl RDGltfBuilder {
             name: None,
             target: Some(Valid(json::buffer::Target::ElementArrayBuffer)),
         };
-        
+
         self.buffer_views.push(buffer_idx_view);
 
-        let buffer_idx_view_idx = (self.buffer_views.len()-1) as u32;
+        let buffer_idx_view_idx = (self.buffer_views.len() - 1) as u32;
 
         let idx = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_idx_view_idx)),
@@ -877,17 +891,20 @@ impl RDGltfBuilder {
             sparse: None,
         };
 
-        
         self.accessors.push(idx);
 
-        let accessors_idx = (self.accessors.len()-1) as u32;
+        let accessors_idx = (self.accessors.len() - 1) as u32;
         self.idx = Some(accessors_idx);
         // end Indexed triangle list
     }
 
     pub fn build(mut self) -> RDGltf {
-        
         let skins = self.get_skins_or_default();
+        let animation = if self.anim_node.is_some() {
+            vec![self.anim_node.unwrap()]
+        } else {
+            Default::default()
+        };
 
         let primitive = json::mesh::Primitive {
             attributes: self.attr_map,
@@ -929,7 +946,7 @@ impl RDGltfBuilder {
 
         //TODO : must be root node
         let node_len = json::Index::new((self.nodes.len() - 1) as u32);
-        
+
         let root = json::Root {
             accessors: self.accessors,
             buffers: self.buffers,
@@ -943,6 +960,7 @@ impl RDGltfBuilder {
                 nodes: vec![node_len],
             }],
             skins: skins,
+            animations: animation,
             ..Default::default()
         };
 
@@ -954,13 +972,22 @@ impl RDGltfBuilder {
 
 impl From<RDModell> for RDGltfBuilder {
     fn from(rdm: RDModell) -> Self {
-        let mut b = RDGltfBuilder::new(rdm);
-        b.put_idx();
-        b.put_vertex();
-        b.put_joint_nodes(JointOption::ResolveParentNode);
+        let has_skin = rdm.has_skin();
+        let has_anim = rdm.anim.is_some();
 
-        
-        //b.put_joint_weight();
+        let mut b = RDGltfBuilder::new(rdm);
+
+        b.put_vertex();
+        b.put_idx();
+
+        if has_skin {
+            b.put_joint_nodes(JointOption::ResolveParentNode);
+            b.put_joint_weight();
+
+            if has_anim {
+                b.put_rdm_anim();
+            }
+        }
         b
     }
 }
