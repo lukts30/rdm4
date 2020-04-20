@@ -691,20 +691,20 @@ fn main() {
 
     info!("init !");
 
-    if true {
+    if !true {
         args_main();
     } 
     
-    if false {
-        let mut rdm = RDModell::from("giant_pumping_station_oil_baron_lod2.rdm");
+    if !false {
+        let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
         //info!("rdm: {:#?}", rdm);
 
         rdm.add_skin();
 
-        let anim = RDAnim::from("giant_pumping_station_oil_baron_work03.rdm");
+        let anim = RDAnim::from("basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
-        gltf_export::export(rdm);
+        gltf_export::build(rdm);
     }
 }
 
@@ -732,7 +732,7 @@ fn args_main() {
             }
         }
         info!("running gltf_export ...");
-        gltf_export::export(rdm);
+        gltf_export::build(rdm);
     } else {
         error!("Not enough arguments provided");
     }

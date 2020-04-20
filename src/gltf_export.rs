@@ -18,6 +18,18 @@ use crate::rdm_anim::RDAnim;
 use nalgebra::*;
 use std::collections::VecDeque;
 
+
+use std::collections::HashMap;
+use gltf::mesh::Semantic;
+
+
+struct RDGltfBuilder {
+    name: String,
+    buffers: Vec<json::Buffer>,
+    buffer_views: Vec<json::buffer::View>,
+    accessors: Vec<json::Accessor>,
+}
+
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 struct Vertex {
@@ -705,9 +717,13 @@ fn rdm_vertex_to_gltf(rdm : &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
     (out, min, max)
 }
 
-pub fn export(rdm: RDModell) {
+
+
+pub fn build(rdm: RDModell) {
 
     let _ = fs::create_dir("triangle");
+
+    let mut obj = RDGltf::new();
     
     
     let conv = rdm_vertex_to_gltf(&rdm);
@@ -715,22 +731,26 @@ pub fn export(rdm: RDModell) {
     let triangle_vertices = conv.0;
     let min = conv.1;
     let max = conv.2;
+    let triangle_len = triangle_vertices.len() as u32;
 
     let triangle_idx: Vec<Triangle> = rdm.triangle_indices.clone();
     warn!("{}",rdm.triangle_indices.len());
     warn!("{}",triangle_idx.len());
     
+ 
+    // single vertex buffer
 
-    let buffer_length = (triangle_vertices.len() * mem::size_of::<Vertex>()) as u32;
+    let buffer_p = obj.push_buffer(triangle_vertices);
+    let buffer_length = buffer_p.len as u32;
     let buffer = json::Buffer {
         byte_length: buffer_length,
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
-        uri: Some("buffer0.bin".into()),
+        uri: Some(buffer_p.file_name),
     };
     let buffer_view = json::buffer::View {
-        buffer: json::Index::new(0),
+        buffer: json::Index::new(buffer_p.idx),
         byte_length: buffer.byte_length,
         byte_offset: None,
         byte_stride: None,
@@ -739,10 +759,10 @@ pub fn export(rdm: RDModell) {
         name: None,
         target: Some(Valid(json::buffer::Target::ArrayBuffer)),
     };
-    let positions = json::Accessor {
+    let triangle_acc = json::Accessor {
         buffer_view: Some(json::Index::new(0)),
         byte_offset: 0,
-        count: triangle_vertices.len() as u32,
+        count: triangle_len,
         component_type: Valid(json::accessor::GenericComponentType(
             json::accessor::ComponentType::F32,
         )),
@@ -756,14 +776,19 @@ pub fn export(rdm: RDModell) {
         sparse: None,
     };
 
-    let triangle_idx_len_b = (triangle_idx.len() * mem::size_of::<Triangle>()) as u32;
+    // end single vertex buffer
+
+    // Indexed triangle list
+
+    let triangle_idx_p = obj.push_buffer(triangle_idx);
+    let triangle_idx_len_b = triangle_idx_p.len as u32;
 
     let buffer_idx = json::Buffer {
         byte_length: triangle_idx_len_b,
         extensions: Default::default(),
         extras: Default::default(),
         name: None,
-        uri: Some("buffer1.bin".into()),
+        uri: Some(triangle_idx_p.file_name),
     };
     let buffer_idx_view = json::buffer::View {
         buffer: json::Index::new(1),
@@ -777,9 +802,9 @@ pub fn export(rdm: RDModell) {
     };
 
     let idx = json::Accessor {
-        buffer_view: Some(json::Index::new(1)),
+        buffer_view: Some(json::Index::new(triangle_idx_p.idx)),
         byte_offset: 0,
-        count: (triangle_idx.len() * 3) as u32,
+        count: (triangle_idx_p.num * 3),
         component_type: Valid(json::accessor::GenericComponentType(
             json::accessor::ComponentType::U16,
         )),
@@ -792,6 +817,8 @@ pub fn export(rdm: RDModell) {
         normalized: false,
         sparse: None,
     };
+
+    // end Indexed triangle list
 
     let primitive = json::mesh::Primitive {
         attributes: {
@@ -820,9 +847,9 @@ pub fn export(rdm: RDModell) {
     };
 
     let mut nlen = json::Index::new(0);
-    let mut njvec: Option<Vec<json::Node>> = None;
+    let mut node_with_joints: Option<Vec<json::Node>> = None;
 
-    let mut vec_acc = vec![positions, idx];
+    let mut vec_acc = vec![triangle_acc, idx];
     let mut vec_buff = vec![buffer, buffer_idx];
     let mut vec_buff_v = vec![buffer_view, buffer_idx_view];
 
@@ -838,7 +865,7 @@ pub fn export(rdm: RDModell) {
 
         let nlen_u32 = comb.0-1;
         nlen = json::Index::new(nlen_u32);
-        njvec = Some(comb.1);
+        node_with_joints = Some(comb.1);
 
         let mut joint_indi_vec: Vec<json::root::Index<_>> = Vec::new();
         for i in 0..nlen_u32 {
@@ -901,7 +928,7 @@ pub fn export(rdm: RDModell) {
 
     warn!("nlen: {}", nlen);
 
-    let node = json::Node {
+    let node_def = json::Node {
         camera: None,
         children: None,
         extensions: Default::default(),
@@ -921,7 +948,7 @@ pub fn export(rdm: RDModell) {
         buffers: vec_buff,
         buffer_views: vec_buff_v,
         meshes: vec![mesh],
-        nodes: njvec.unwrap_or_else(|| vec![node]),
+        nodes: node_with_joints.unwrap_or_else(|| vec![node_def]),
         scenes: vec![json::Scene {
             extensions: Default::default(),
             extras: Default::default(),
@@ -935,14 +962,76 @@ pub fn export(rdm: RDModell) {
 
     
 
-    let writer = fs::File::create("triangle/triangle.gltf").expect("I/O error");
-    json::serialize::to_writer_pretty(writer, &root).expect("Serialization error");
+    obj.root = Some(root);
 
-    let bin = to_padded_byte_vector(triangle_vertices);
-    let mut writer = fs::File::create("triangle/buffer0.bin").expect("I/O error");
-    writer.write_all(&bin).expect("I/O error");
+    obj.write_gltf();
+}
 
-    let bin2 = to_padded_byte_vector(triangle_idx);
-    let mut writer2 = fs::File::create("triangle/buffer1.bin").expect("I/O error");
-    writer2.write_all(&bin2).expect("I/O error");
+
+struct RDGltf  {
+    unified: bool,
+    buffers: Vec<Vec<u8>>,
+
+    attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
+
+    root: Option<json::Root>,
+}
+
+impl RDGltf {
+
+    fn new() -> Self {
+        RDGltf {
+            unified: false,
+            buffers: vec![],
+            root: None,
+            attr_map: std::collections::HashMap::new(),
+        }
+    }
+
+
+    fn write_gltf(mut self) {
+        let writer = fs::File::create("triangle/triangle.gltf").expect("I/O error");
+        json::serialize::to_writer_pretty(writer, &self.root.unwrap()).expect("Serialization error");
+    
+        
+        let mut idx = self.buffers.len()-1;
+        while !self.buffers.is_empty() {
+            let e = self.buffers.pop().unwrap();
+            let bin = e;
+            let file_path = format!("triangle/buffer{}.bin",idx);
+            let mut writer = fs::File::create(file_path).expect("I/O error");
+            writer.write_all(&bin).expect("I/O error");
+
+            idx = idx.saturating_sub(1);
+        }
+    }
+
+    fn push_buffer<T>(&mut self,vec: Vec<T>) -> PushBufferResult {
+        let idx = self.buffers.len();
+
+        const FILE_BASE_NAME: &str = "buffer";
+        const FILE_BASE_EXT: &str  = ".bin";
+
+
+        let file_name = format!("buffer{}.bin",idx);
+        let num = vec.len();
+
+        let padded_byte_vector = to_padded_byte_vector(vec);
+        let len = padded_byte_vector.len();
+        self.buffers.push(padded_byte_vector);
+
+        PushBufferResult {
+            file_name: file_name,
+            num: num as u32,
+            len: len as u32,
+            idx: idx as u32,
+        }
+    }
+}
+
+struct PushBufferResult {
+    file_name: String,
+    num: u32,
+    len : u32,
+    idx: u32,
 }
