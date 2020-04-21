@@ -19,7 +19,7 @@ mod gltf_export;
 mod rdm_anim;
 use crate::rdm_anim::RDAnim;
 
-use serde_json::{Result, Value};
+#[cfg(test)]
 use std::process::Command;
 
 pub struct RDModell {
@@ -54,62 +54,54 @@ trait GetVertex {
 
 impl GetVertex for Bytes {
     fn get_p4h(&mut self) -> P4h {
-        let p4h = P4h {
+        P4h {
             pos: [
                 f16::from_bits(self.get_u16_le()),
                 f16::from_bits(self.get_u16_le()),
                 f16::from_bits(self.get_u16_le()),
                 f16::from_bits(self.get_u16_le()),
             ],
-        };
-        p4h
+        }
     }
     fn get_n4b(&mut self) -> N4b {
-        let n4b = N4b {
+        N4b {
             normals: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        n4b
+        }
     }
     fn get_g4b(&mut self) -> G4b {
-        let g4b = G4b {
+        G4b {
             tangent: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        g4b
+        }
     }
     fn get_b4b(&mut self) -> B4b {
-        let b4b = B4b {
+        B4b {
             binormal: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        b4b
+        }
     }
     fn get_t2h(&mut self) -> T2h {
-        let t2h = T2h {
+        T2h {
             tex: [
                 f16::from_bits(self.get_u16_le()),
                 f16::from_bits(self.get_u16_le()),
             ],
-        };
-        t2h
+        }
     }
     fn get_i4b(&mut self) -> I4b {
-        let i4b = I4b {
+        I4b {
             blend_idx: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        i4b
+        }
     }
 
     fn get_w4b(&mut self) -> W4b {
-        let w4b = W4b {
+        W4b {
             blend_weight: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        w4b
+        }
     }
 
     fn get_c4c(&mut self) -> C4c {
-        let c4c = C4c {
+        C4c {
             unknown: [self.get_u8(), self.get_u8(), self.get_u8(), self.get_u8()],
-        };
-        c4c
+        }
     }
 }
 
@@ -173,7 +165,7 @@ impl RDModell {
             let len_joint_name = joint_name_buffer.get_u32_le();
             assert_eq!(joint_name_buffer.get_u32_le(), 1);
             let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
-            let k = String::from(name);
+            let joint_name = String::from(name);
             joint_name_buffer.advance(len_joint_name as usize);
 
             let nameptr = skin_buffer.get_u32_le();
@@ -187,28 +179,33 @@ impl RDModell {
             let rz = -skin_buffer.get_f32_le();
             let rw = -skin_buffer.get_f32_le();
 
-            let q = Quaternion::new(rw, rx, ry, rz);
-            let uqt = UnitQuaternion::from_quaternion(q);
-            let uq = UnitQuaternion::from_quaternion(q);
+            let quaternion = Quaternion::new(rw, rx, ry, rz);
+            let unit_quaternion = UnitQuaternion::from_quaternion(quaternion);
 
-            let uqc = uq.quaternion().coords;
+            let quaternion_mat4 = unit_quaternion.quaternion().coords;
 
-            let t: Translation3<f32> = Translation3::new(tx, ty, tz);
+            let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-            let inv_bindmat = (uqt.to_homogeneous()) * (t.to_homogeneous());
-            let x = inv_bindmat.m14;
-            let y = inv_bindmat.m24;
-            let z = inv_bindmat.m34;
+            let inv_bindmat =
+                (unit_quaternion.to_homogeneous()) * (joint_translatio.to_homogeneous());
+            let iv_x = inv_bindmat.m14;
+            let iv_y = inv_bindmat.m24;
+            let iv_z = inv_bindmat.m34;
 
-            let trans_point = Translation3::new(x, y, z).inverse();
+            let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
 
             let parent_id = skin_buffer.get_u8();
 
             let joint = RDJoint {
-                name: k,
-                nameptr: nameptr,
+                name: joint_name,
+                nameptr,
                 transition: [trans_point.x, trans_point.y, trans_point.z],
-                quaternion: [uqc.x, uqc.y, uqc.z, uqc.w],
+                quaternion: [
+                    quaternion_mat4.x,
+                    quaternion_mat4.y,
+                    quaternion_mat4.z,
+                    quaternion_mat4.w,
+                ],
                 parent: parent_id,
                 locked: false,
             };
@@ -229,11 +226,7 @@ impl RDModell {
         let meta = nbuffer.get_u32_le();
 
         nbuffer.get_u32_le();
-        let skin_there = if nbuffer.get_u32_le() > 0 {
-            true
-        } else {
-            false
-        };
+        let skin_there = nbuffer.get_u32_le() > 0;
 
         nbuffer.advance((meta - (size - nbuffer.remaining() as u32)) as usize);
         nbuffer.advance(RDModell::VERTEX_META as usize);
@@ -247,206 +240,14 @@ impl RDModell {
         let vertices_count = nbuffer.get_u32_le();
         let vertex_buffer_size = nbuffer.get_u32_le();
 
-        let mut vert_read_buf = nbuffer.clone();
+        let vert_read_buf = nbuffer.clone();
 
-        let vertices_vec: Option<Vec<VertexFormat>> = match vertex_buffer_size {
-            VertexFormatSize::P4h => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let k = VertexFormat::P4h(p4h);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_T2h if !skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let t2h = vert_read_buf.get_t2h();
-
-                    let k = VertexFormat::P4h_N4b_T2h(p4h, n4b, t2h);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_T2h ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_T2h_C4c if !skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let t2h = vert_read_buf.get_t2h();
-                    let c4c = vert_read_buf.get_c4c();
-
-                    let k = VertexFormat::P4h_N4b_T2h_C4c(p4h, n4b, t2h, c4c);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_T2h_C4c ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_T2h_I4b if skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let t2h = vert_read_buf.get_t2h();
-                    let i4b = vert_read_buf.get_i4b();
-
-                    let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b, t2h, i4b);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_T2h_I4b ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h if !skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let g4b = vert_read_buf.get_g4b();
-                    let b4b = vert_read_buf.get_b4b();
-                    let t2h = vert_read_buf.get_t2h();
-                    let k = VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_G4b_B4b_T2h ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_T2h_I4b_W4b if skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let t2h = vert_read_buf.get_t2h();
-
-                    let i4b = vert_read_buf.get_i4b();
-                    let w4b = vert_read_buf.get_w4b();
-
-                    let k = VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, n4b, t2h, i4b, w4b);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_T2h_I4b_W4b ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_C4c if !skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let g4b = vert_read_buf.get_g4b();
-                    let b4b = vert_read_buf.get_b4b();
-                    let t2h = vert_read_buf.get_t2h();
-                    let c4c = vert_read_buf.get_c4c();
-                    let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, n4b, g4b, b4b, t2h, c4c);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_C4c ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-
-                Some(verts_vec)
-            }
-
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b if skin_there => {
-                vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-                assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-                let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-                for _ in 0..vertices_count {
-                    let p4h = vert_read_buf.get_p4h();
-                    let n4b = vert_read_buf.get_n4b();
-                    let g4b = vert_read_buf.get_g4b();
-                    let b4b = vert_read_buf.get_b4b();
-                    let t2h = vert_read_buf.get_t2h();
-                    let i4b = vert_read_buf.get_i4b();
-                    let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
-                    verts_vec.push(k);
-                }
-                assert_eq!(verts_vec.len(), vertices_count as usize);
-                assert_eq!(vert_read_buf.is_empty(), true);
-                info!(
-                    "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_I4b ({} bytes)",
-                    verts_vec.len(),
-                    vertex_buffer_size
-                );
-
-                Some(verts_vec)
-            }
-            _ => {
-                error!("vertices use unrecognised size of {}", vertex_buffer_size);
-                None
-            }
-        };
+        let vertices_vec = RDModell::read_vertices_vec(
+            vertex_buffer_size,
+            vertices_count,
+            skin_there,
+            vert_read_buf,
+        );
 
         let triangles_count_off = triangles_offset - RDModell::META_COUNT;
         nbuffer.advance((triangles_count_off - (size - nbuffer.remaining() as u32)) as usize);
@@ -456,7 +257,9 @@ impl RDModell {
         // read indices for triangles
         assert_eq!(triangles_idx_size, 2);
         assert_eq!(triangles_idx_count % 3, 0);
-        let mut triangles_idx_buffer = nbuffer.clone();
+
+        //let mut triangles_idx_buffer = nbuffer.clone();
+        let mut triangles_idx_buffer = nbuffer;
         triangles_idx_buffer.truncate((triangles_idx_size * triangles_idx_count) as usize);
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
@@ -471,24 +274,302 @@ impl RDModell {
             triangles.push(t);
         }
 
-        let modell = RDModell {
-            size: size,
-            buffer: buffer,
+        RDModell {
+            size,
+            buffer,
             joints: None,
             vertices: vertices_vec.unwrap(),
             triangle_indices: triangles,
-            meta: meta,
-            vertex_offset: vertex_offset,
-            vertices_count: vertices_count,
-            vertex_buffer_size: vertex_buffer_size,
+            meta,
+            vertex_offset,
+            vertices_count,
+            vertex_buffer_size,
 
-            triangles_offset: triangles_offset,
-            triangles_idx_count: triangles_idx_count,
-            triangles_idx_size: triangles_idx_size,
+            triangles_offset,
+            triangles_idx_count,
+            triangles_idx_size,
 
             anim: None,
-        };
-        modell
+        }
+    }
+
+    fn read_vertices_vec(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        skin_there: bool,
+        vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        match vertex_buffer_size {
+            VertexFormatSize::P4h => {
+                RDModell::read_p4h(vertex_buffer_size, vertices_count, vert_read_buf)
+            }
+            VertexFormatSize::P4h_N4b_T2h if !skin_there => {
+                RDModell::read_p4h_n4b_t2h(vertex_buffer_size, vertices_count, vert_read_buf)
+            }
+            VertexFormatSize::P4h_N4b_T2h_C4c if !skin_there => {
+                RDModell::read_p4h_n4b_t2h_c4c(vertex_buffer_size, vertices_count, vert_read_buf)
+            }
+            VertexFormatSize::P4h_N4b_T2h_I4b if skin_there => {
+                RDModell::read_p4h_n4b_t2h_i4b(vertex_buffer_size, vertices_count, vert_read_buf)
+            }
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h if !skin_there => {
+                RDModell::read_p4h_n4b_g4b_b4b_t2h(
+                    vertex_buffer_size,
+                    vertices_count,
+                    vert_read_buf,
+                )
+            }
+            VertexFormatSize::P4h_N4b_T2h_I4b_W4b if skin_there => {
+                RDModell::read_p4h_n4b_t2h_i4b_w4b(
+                    vertex_buffer_size,
+                    vertices_count,
+                    vert_read_buf,
+                )
+            }
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_C4c if !skin_there => {
+                RDModell::read_p4h_n4b_g4b_b4b_t2h_c4c(
+                    vertex_buffer_size,
+                    vertices_count,
+                    vert_read_buf,
+                )
+            }
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b if skin_there => {
+                RDModell::read_p4h_n4b_g4b_b4b_t2h_i4b(
+                    vertex_buffer_size,
+                    vertices_count,
+                    vert_read_buf,
+                )
+            }
+            _ => {
+                error!("vertices use unrecognised size of {}", vertex_buffer_size);
+                None
+            }
+        }
+    }
+
+    fn read_p4h(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let k = VertexFormat::P4h(p4h);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_t2h(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let t2h = vert_read_buf.get_t2h();
+
+            let k = VertexFormat::P4h_N4b_T2h(p4h, n4b, t2h);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_T2h ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_t2h_c4c(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let t2h = vert_read_buf.get_t2h();
+            let c4c = vert_read_buf.get_c4c();
+
+            let k = VertexFormat::P4h_N4b_T2h_C4c(p4h, n4b, t2h, c4c);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_T2h_C4c ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_t2h_i4b(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let t2h = vert_read_buf.get_t2h();
+            let i4b = vert_read_buf.get_i4b();
+
+            let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b, t2h, i4b);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_T2h_I4b ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_g4b_b4b_t2h(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let g4b = vert_read_buf.get_g4b();
+            let b4b = vert_read_buf.get_b4b();
+            let t2h = vert_read_buf.get_t2h();
+            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_t2h_i4b_w4b(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let t2h = vert_read_buf.get_t2h();
+
+            let i4b = vert_read_buf.get_i4b();
+            let w4b = vert_read_buf.get_w4b();
+
+            let k = VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, n4b, t2h, i4b, w4b);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_T2h_I4b_W4b ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_g4b_b4b_t2h_c4c(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let g4b = vert_read_buf.get_g4b();
+            let b4b = vert_read_buf.get_b4b();
+            let t2h = vert_read_buf.get_t2h();
+            let c4c = vert_read_buf.get_c4c();
+            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, n4b, g4b, b4b, t2h, c4c);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_C4c ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+
+        Some(verts_vec)
+    }
+
+    fn read_p4h_n4b_g4b_b4b_t2h_i4b(
+        vertex_buffer_size: u32,
+        vertices_count: u32,
+        mut vert_read_buf: Bytes,
+    ) -> Option<Vec<VertexFormat>> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
+
+        for _ in 0..vertices_count {
+            let p4h = vert_read_buf.get_p4h();
+            let n4b = vert_read_buf.get_n4b();
+            let g4b = vert_read_buf.get_g4b();
+            let b4b = vert_read_buf.get_b4b();
+            let t2h = vert_read_buf.get_t2h();
+            let i4b = vert_read_buf.get_i4b();
+            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
+            verts_vec.push(k);
+        }
+        assert_eq!(verts_vec.len(), vertices_count as usize);
+        assert_eq!(vert_read_buf.is_empty(), true);
+        info!(
+            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_I4b ({} bytes)",
+            verts_vec.len(),
+            vertex_buffer_size
+        );
+
+        Some(verts_vec)
     }
 }
 
@@ -583,7 +664,7 @@ pub enum VertexFormat {
 
 impl VertexFormat {
     fn get_p4h(&self) -> &P4h {
-        let p4h = match self {
+        match self {
             VertexFormat::P4h(p4h) => p4h,
             VertexFormat::P4h_N4b_T2h(p4h, _, _) => p4h,
             VertexFormat::P4h_N4b_T2h_C4c(p4h, _, _, _) => p4h,
@@ -592,8 +673,7 @@ impl VertexFormat {
             VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, _, _, _, _) => p4h,
             VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, _, _, _, _, _) => p4h,
             VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, _, _, _, _, _) => p4h,
-        };
-        p4h
+        }
     }
 }
 
@@ -621,8 +701,7 @@ impl From<&Path> for RDModell {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        let rdm = RDModell::new(buffer);
-        rdm
+        RDModell::new(buffer)
     }
 }
 
@@ -738,17 +817,16 @@ fn main() {
 
     info!("init !");
 
-    if !true {
+    let standalone_cli = false;
+    if standalone_cli {
         args_main();
-    }
-
-    if !false {
-        let mut rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
+    } else {
+        let mut rdm = RDModell::from("tests/basalt_crusher_others_lod2.rdm");
         //info!("rdm: {:#?}", rdm);
 
         rdm.add_skin();
 
-        let anim = RDAnim::from("basalt_crusher_others_work01.rdm");
+        let anim = RDAnim::from("tests/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
         gltf_export::build(rdm);

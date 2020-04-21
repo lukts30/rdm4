@@ -117,9 +117,9 @@ impl RDAnim {
         debug!("anim: {:?}", anim_vec);
 
         RDAnim {
-            anim_vec: anim_vec,
+            anim_vec,
             name: name_anim,
-            time_max: time_max,
+            time_max,
         }
     }
 }
@@ -134,11 +134,11 @@ impl From<&Path> for RDAnim {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        let anim = RDAnim::new(
+
+        RDAnim::new(
             buffer,
             String::from(f_path.file_stem().unwrap().to_str().unwrap()),
-        );
-        anim
+        )
     }
 }
 

@@ -9,7 +9,6 @@ use json::validation::Checked::Valid;
 
 use std::io::Write;
 
-use crate::rdm_anim::RDAnim;
 use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
@@ -46,6 +45,7 @@ fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
     new_vec
 }
 struct RDGltfBuilder {
+    #[allow(dead_code)]
     name: Option<String>,
     buffers: Vec<json::Buffer>,
     buffer_views: Vec<json::buffer::View>,
@@ -69,7 +69,7 @@ impl RDGltfBuilder {
             accessors: Vec::new(),
             nodes: Vec::new(),
             attr_map: HashMap::new(),
-            rdm: rdm,
+            rdm,
             obj: RDGltf::new(),
             skin: None,
             idx: None,
@@ -81,7 +81,7 @@ impl RDGltfBuilder {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
-        let anim_vec_len = anim_vec.len();
+        
         let mut size: usize = 0;
         for janim in &anim_vec {
             size += janim.len as usize;
@@ -112,12 +112,12 @@ impl RDGltfBuilder {
 
         let mut rot_sampler_chanel = 0;
         let mut trans_sampler_chanel = 1;
-        let mut node_idx = 0;
+        
 
         let mut sampler_vec = Vec::new();
         let mut chanel_vec = Vec::new();
 
-        for janim in &anim_vec {
+        for (node_idx, janim) in anim_vec.iter().enumerate() {
             let count = janim.len as usize;
 
             let rot_start = rot_anim_buf.len();
@@ -151,7 +151,7 @@ impl RDGltfBuilder {
             let rot_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
                 byte_length: rot_real_len as u32,
-                byte_offset: Some(0 + rot_start as u32),
+                byte_offset: Some(rot_start as u32),
                 byte_stride: None,
                 extensions: Default::default(),
                 extras: Default::default(),
@@ -264,7 +264,7 @@ impl RDGltfBuilder {
             let rot_chanel = json::animation::Channel {
                 sampler: json::Index::new(rot_sampler_chanel),
                 target: json::animation::Target {
-                    node: json::Index::new(node_idx),
+                    node: json::Index::new(node_idx as u32),
                     path: Valid(json::animation::Property::Rotation),
                     extensions: None,
                     extras: None,
@@ -276,7 +276,7 @@ impl RDGltfBuilder {
             let trans_chanel = json::animation::Channel {
                 sampler: json::Index::new(trans_sampler_chanel),
                 target: json::animation::Target {
-                    node: json::Index::new(node_idx),
+                    node: json::Index::new(node_idx as u32),
                     path: Valid(json::animation::Property::Translation),
                     extensions: None,
                     extras: None,
@@ -293,11 +293,11 @@ impl RDGltfBuilder {
 
             rot_sampler_chanel += 2;
             trans_sampler_chanel += 2;
-            node_idx += 1;
+            
         }
 
         let anim_node = json::animation::Animation {
-            name: Some(anim.name.clone()),
+            name: Some(anim.name),
             samplers: sampler_vec,
             channels: chanel_vec,
             extensions: None,
@@ -548,9 +548,10 @@ impl RDGltfBuilder {
 
         let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
-        for i in 0..joints_vec.len() {
-            if joints_vec[i].parent == 255 || cfg == JointOption::ResolveAllRoot {
-                joints_vec[i].locked = true;
+        //for (i, <item>) in joints_vec.iter_mut().enumerate()
+        for (i, joint) in joints_vec.iter_mut().enumerate() {
+            if joint.parent == 255 || cfg == JointOption::ResolveAllRoot {
+                joint.locked = true;
                 arm.push(json::Index::new(i as u32));
             }
         }
@@ -579,8 +580,8 @@ impl RDGltfBuilder {
             let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
             for j in 0..jlen {
                 if joints_vec[j].parent == z as u8
-                    && joints_vec[z].locked == true
-                    && joints_vec[j].locked == false
+                    && joints_vec[z].locked
+                    && !joints_vec[j].locked
                 {
                     joints_vec[j].locked = true;
                     child.push(gltf_json::Index::new(j as u32));
@@ -663,8 +664,7 @@ impl RDGltfBuilder {
             let ijoint = json::Node {
                 camera: None,
                 children: {
-                    let p = child_list.pop_front().unwrap();
-                    p
+                    child_list.pop_front().unwrap()
                 },
                 extensions: None,
                 extras: None,
@@ -717,31 +717,6 @@ impl RDGltfBuilder {
         } else {
             Default::default()
         }
-    }
-
-    /*
-    fn put_anim(&mut self) {
-        if self.rdm.anim.is_some() {
-            // TODO ugly mess
-            let anim = self.rdm.anim.clone().unwrap();
-
-            let mut acc_v_anim = rdm_anim(&anim);
-
-            self.buffers.push(acc_v_anim.0);
-
-            self.buffer_views.append(&mut acc_v_anim.1);
-            self.accessors.append(&mut acc_v_anim.2);
-
-            self.anim_node = Some(acc_v_anim.3);
-        } else {
-            error!("no anim provieded !");
-        }
-    }
-    */
-
-    //TODO probably use of std::ops::Range
-    fn get_next_index_for_acc(&self) -> u32 {
-        (self.accessors.len() - 1) as u32
     }
 
     fn rdm_vertex_to_gltf(rdm: &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
@@ -936,7 +911,7 @@ impl RDGltfBuilder {
         };
 
         //TODO better check
-        if self.nodes.len() == 0 {
+        if self.nodes.is_empty() {
             self.nodes.push(node_def);
         }
 
@@ -955,7 +930,7 @@ impl RDGltfBuilder {
                 name: None,
                 nodes: vec![node_len],
             }],
-            skins: skins,
+            skins,
             animations: animation,
             ..Default::default()
         };
@@ -996,7 +971,6 @@ pub fn build(rdm: RDModell) {
 }
 
 struct RDGltf {
-    unified: bool,
     buffers: Vec<Vec<u8>>,
     root: Option<json::Root>,
 }
@@ -1004,7 +978,6 @@ struct RDGltf {
 impl RDGltf {
     fn new() -> Self {
         RDGltf {
-            unified: false,
             buffers: vec![],
             root: None,
         }
@@ -1040,7 +1013,7 @@ impl RDGltf {
         self.buffers.push(padded_byte_vector);
 
         PushBufferResult {
-            file_name: file_name,
+            file_name,
             num: num as u32,
             len: len as u32,
             idx: idx as u32,
