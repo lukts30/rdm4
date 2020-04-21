@@ -672,7 +672,7 @@ mod tests {
                 .output()
                 .expect("failed to execute process")
         } else {
-            Command::new("gltf_validator")
+            Command::new("./gltf_validator")
                 .args(&["-a", "triangle/triangle.gltf"])
                 .output()
                 .expect("failed to execute process")
