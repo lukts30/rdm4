@@ -3,3 +3,4 @@
 *.rdm
 *.glb
 *.exe
+!/tests/*.rdm

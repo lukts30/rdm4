@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn fishery_others_lod2() {
-        let rdm = RDModell::from("fishery_others_lod2.rdm");
+        let rdm = RDModell::from("tests/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertices_count, 3291);
         assert_eq!(rdm.triangles_idx_count, 7473);
 
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn basalt_crusher_others_lod2() {
-        let rdm = RDModell::from("basalt_crusher_others_lod2.rdm");
+        let rdm = RDModell::from("tests/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertices_count, 2615);
 
         assert_eq!(
@@ -710,7 +710,7 @@ mod tests {
 
     #[test]
     fn fishery_others_cutout_lod0() {
-        let rdm = RDModell::from("fishery_others_cutout_lod0.rdm");
+        let rdm = RDModell::from("tests/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertices_count, 32);
         assert_eq!(rdm.triangles_idx_count, 78);
 
@@ -722,7 +722,7 @@ mod tests {
 
     #[test]
     fn ark_waterfall2() {
-        let rdm = RDModell::from("ark_waterfall2.rdm");
+        let rdm = RDModell::from("tests/ark_waterfall2.rdm");
         assert_eq!(rdm.vertices_count, 105);
 
         assert_eq!(

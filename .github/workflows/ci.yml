@@ -30,7 +30,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --lib --tests -- -D warnings
+          args: --tests -- -D warnings
 
   test:
     name: Test
@@ -39,6 +39,8 @@ jobs:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: get glTF Validator
+      - run: wget -qO- https://github.com/KhronosGroup/glTF-Validator/releases/download/2.0.0-dev.3.2/gltf_validator-2.0.0-dev.3.2-linux64.tar.xz | tar xvfJ -
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
         with:
