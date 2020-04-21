@@ -28,68 +28,65 @@ pub struct RDAnim {
 }
 
 impl RDAnim {
-
-    pub fn new(buffer: Vec<u8>,name_anim : String) -> Self {
-    
+    pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut buffer = Bytes::from(buffer);
         let size = buffer.len();
-    
+
         buffer.advance(44);
-    
+
         let base_offset = buffer.get_u32_le() as usize;
-    
+
         buffer.advance(base_offset - (size - buffer.remaining()));
-    
+
         let model_str_ptr = buffer.get_u32_le() as usize;
         buffer.advance(4);
         let time_max = buffer.get_u32_le();
-        
-    
+
         buffer.advance(model_str_ptr - RDModell::META_COUNT as usize - (size - buffer.remaining()));
-    
+
         let model_str_len = buffer.get_u32_le() as usize;
         assert_eq!(model_str_len > 1, true);
         assert_eq!(buffer.get_u32_le(), 1);
-    
+
         let model_str = str::from_utf8(&buffer[..model_str_len]).unwrap();
         let model = String::from(model_str);
-    
+
         info!("target model name: {}", model);
         buffer.advance(model_str_len);
-    
+
         let joint_targets_num = buffer.get_u32_le() as usize;
         let joint_targets_tables_size = buffer.get_u32_le();
         assert_eq!(joint_targets_tables_size, 24);
         info!("joint_targets: {}", joint_targets_num);
-    
+
         let mut jtable: Vec<(usize, usize)> = Vec::with_capacity(joint_targets_num);
         for _ in 0..joint_targets_num {
             jtable.push((buffer.get_u32_le() as usize, buffer.get_u32_le() as usize));
-    
+
             buffer.advance(16);
         }
-    
+
         info!("jtable: {:?}", jtable);
-    
+
         let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(joint_targets_num);
-    
+
         for ent in &jtable {
             buffer.advance(ent.0 - RDModell::META_COUNT as usize - (size - buffer.remaining()));
             let ent_str_len = buffer.get_u32_le() as usize;
             assert_eq!(ent_str_len > 1, true);
             assert_eq!(buffer.get_u32_le(), 1);
-    
+
             let ent_model_str = str::from_utf8(&buffer[..ent_str_len]).unwrap();
             let ent_model = String::from(ent_model_str);
-    
+
             info!("joint: {}", ent_model_str);
             buffer.advance(ent_str_len);
-    
+
             let ent_child_count = buffer.get_u32_le();
             assert_eq!(buffer.get_u32_le(), 32);
-    
+
             let mut frame: Vec<Frame> = Vec::new();
-    
+
             for _ in 0..ent_child_count {
                 let kframe = Frame {
                     rotation: [
@@ -107,21 +104,24 @@ impl RDAnim {
                 };
                 frame.push(kframe);
             }
-    
+
             let ent = FrameCollection {
                 name: ent_model,
                 len: ent_child_count,
                 frames: frame,
             };
-    
+
             anim_vec.push(ent);
         }
-    
-        debug!("anim: {:?}", anim_vec);
-    
-        RDAnim { anim_vec: anim_vec, name: name_anim , time_max: time_max}
-    }
 
+        debug!("anim: {:?}", anim_vec);
+
+        RDAnim {
+            anim_vec: anim_vec,
+            name: name_anim,
+            time_max: time_max,
+        }
+    }
 }
 
 impl From<&Path> for RDAnim {
@@ -134,7 +134,10 @@ impl From<&Path> for RDAnim {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        let anim = RDAnim::new(buffer,String::from(f_path.file_stem().unwrap().to_str().unwrap()));
+        let anim = RDAnim::new(
+            buffer,
+            String::from(f_path.file_stem().unwrap().to_str().unwrap()),
+        );
         anim
     }
 }

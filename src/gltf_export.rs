@@ -77,9 +77,7 @@ impl RDGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(
-        &mut self,
-    ) {
+    pub fn put_rdm_anim(&mut self) {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
@@ -322,7 +320,6 @@ impl RDGltfBuilder {
             uri: Some("buffer4.bin".into()),
         };
 
-
         self.buffers.push(anim_buffer);
 
         self.buffer_views.append(&mut buffer_v_vec);
@@ -507,7 +504,6 @@ impl RDGltfBuilder {
                 let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
                 assert_eq!(invbind_buf_written, 64);
             }
-
         }
         let invbind_buf_p = self.obj.push_buffer(invbind_buf.to_vec());
 

@@ -19,8 +19,8 @@ mod gltf_export;
 mod rdm_anim;
 use crate::rdm_anim::RDAnim;
 
-use std::process::Command;
 use serde_json::{Result, Value};
+use std::process::Command;
 
 pub struct RDModell {
     size: u32,
@@ -672,7 +672,10 @@ mod tests {
                 .output()
                 .expect("failed to execute process")
         } else {
-            unimplemented!("todo linux");
+            Command::new("gltf_validator")
+                .args(&["-a", "triangle/triangle.gltf"])
+                .output()
+                .expect("failed to execute process")
         };
 
         let hello = String::from_utf8_lossy(&output.stderr);
@@ -696,8 +699,13 @@ mod tests {
         let report = str::from_utf8(&buffer).unwrap();
         let v: serde_json::Value = serde_json::from_str(report).unwrap();
 
-        println!("{}",v["info"]["totalVertexCount"].to_string().parse::<u32>().unwrap());
-
+        assert_eq!(
+            2615,
+            v["info"]["totalVertexCount"]
+                .to_string()
+                .parse::<u32>()
+                .unwrap()
+        );
     }
 
     #[test]
