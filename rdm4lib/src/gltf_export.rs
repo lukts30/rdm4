@@ -81,7 +81,6 @@ impl RDGltfBuilder {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
-        
         let mut size: usize = 0;
         for janim in &anim_vec {
             size += janim.len as usize;
@@ -112,7 +111,6 @@ impl RDGltfBuilder {
 
         let mut rot_sampler_chanel = 0;
         let mut trans_sampler_chanel = 1;
-        
 
         let mut sampler_vec = Vec::new();
         let mut chanel_vec = Vec::new();
@@ -293,7 +291,6 @@ impl RDGltfBuilder {
 
             rot_sampler_chanel += 2;
             trans_sampler_chanel += 2;
-            
         }
 
         let anim_node = json::animation::Animation {
@@ -579,9 +576,7 @@ impl RDGltfBuilder {
         for z in 0..jlen {
             let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
             for j in 0..jlen {
-                if joints_vec[j].parent == z as u8
-                    && joints_vec[z].locked
-                    && !joints_vec[j].locked
+                if joints_vec[j].parent == z as u8 && joints_vec[z].locked && !joints_vec[j].locked
                 {
                     joints_vec[j].locked = true;
                     child.push(gltf_json::Index::new(j as u32));
@@ -663,9 +658,7 @@ impl RDGltfBuilder {
         for joint in &joints_vec {
             let ijoint = json::Node {
                 camera: None,
-                children: {
-                    child_list.pop_front().unwrap()
-                },
+                children: { child_list.pop_front().unwrap() },
                 extensions: None,
                 extras: None,
                 matrix: None,

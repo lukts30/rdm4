@@ -1,6 +1,7 @@
 /target
 /triangle
+/rdm4lib/triangle
 *.rdm
 *.glb
 *.exe
-!/tests/*.rdm
+!/rdm4lib/rdm/*.rdm
