@@ -474,7 +474,10 @@ impl RDGltfBuilder {
 
                 let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
+                // global transform matrix = T * R * S
                 let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
+
+                // matrix is the inverse of the global transform of the respective joint, in its initial configuration.
                 let inv_bindmat = bindmat.try_inverse().unwrap();
                 let invbind_buf_len = invbind_buf.len();
 
@@ -545,7 +548,6 @@ impl RDGltfBuilder {
 
         let mut arm: Vec<json::root::Index<_>> = Vec::new();
 
-        //for (i, <item>) in joints_vec.iter_mut().enumerate()
         for (i, joint) in joints_vec.iter_mut().enumerate() {
             if joint.parent == 255 || cfg == JointOption::ResolveAllRoot {
                 joint.locked = true;
@@ -591,6 +593,8 @@ impl RDGltfBuilder {
             }
         }
 
+        // the rdm model file stores global space transforms.
+        // in gltf all transforms are relative to there parent nodes
         while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
             let target = tb_rel.pop_back().unwrap();
 
@@ -945,7 +949,7 @@ impl From<RDModell> for RDGltfBuilder {
         b.put_idx();
 
         if has_skin {
-            b.put_joint_nodes(JointOption::ResolveParentNode);
+            b.put_joint_nodes(JointOption::ResolveAllRoot);
             b.put_joint_weight();
 
             if has_anim {

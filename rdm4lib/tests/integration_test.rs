@@ -1,6 +1,8 @@
 use rdm4lib::RDModell;
 
 use rdm4lib::gltf_export;
+use rdm4lib::rdm_anim::RDAnim;
+use rdm4lib::rdm_writer::RDWriter;
 
 use std::fs::File;
 use std::process::Command;
@@ -24,13 +26,18 @@ mod tests {
 
     #[test]
     fn basalt_crusher_others_lod2() {
-        let rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
+        let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertices_count, 2615);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
         );
+
+        rdm.add_skin();
+
+        let anim = RDAnim::from("rdm/basalt_crusher_others_work01.rdm");
+        rdm.add_anim(anim);
 
         gltf_export::build(rdm);
 
@@ -55,8 +62,6 @@ mod tests {
             .map(|f| f.trim())
             .collect();
 
-        println!("gltf_validator: {:#?}", info);
-
         assert_eq!(r#"Errors: 0"#, info[0]);
         assert_eq!(r#"Warnings: 0"#, info[1]);
 
@@ -70,6 +75,31 @@ mod tests {
         assert_eq!(
             2615,
             v["info"]["totalVertexCount"]
+                .to_string()
+                .parse::<u32>()
+                .unwrap()
+        );
+
+        assert_eq!(
+            1,
+            v["info"]["animationCount"]
+                .to_string()
+                .parse::<u32>()
+                .unwrap()
+        );
+        
+
+        assert_eq!(
+            0,
+            v["issues"]["numErrors"]
+                .to_string()
+                .parse::<u32>()
+                .unwrap()
+        );
+
+        assert_eq!(
+            0,
+            v["issues"]["numWarnings"]
                 .to_string()
                 .parse::<u32>()
                 .unwrap()
@@ -97,5 +127,25 @@ mod tests {
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
         );
+    }
+
+    #[test]
+    fn exp_rdm_inv_basalt_crusher_others_lod2() {
+        let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
+        rdm.add_skin();
+        assert_eq!(rdm.vertices_count, 2615);
+
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let exp_rdm = RDWriter::from(rdm);
+        exp_rdm.write_rdm();
+    }
+
+    #[test]
+    fn read_invb() {
+        //RDWriter::read_inv();
     }
 }

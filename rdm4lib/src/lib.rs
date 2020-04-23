@@ -14,8 +14,12 @@ use nalgebra::*;
 extern crate log;
 use env_logger::Env;
 
+#[macro_use]
+extern crate approx;
+
 pub mod gltf_export;
 pub mod rdm_anim;
+pub mod rdm_writer;
 use crate::rdm_anim::RDAnim;
 
 pub struct RDModell {

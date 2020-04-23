@@ -1,6 +1,8 @@
 /target
 /triangle
 /rdm4lib/triangle
+/rdm4lib/rdm_exp
+/rdm4lib/rdm/*.bin
 *.rdm
 *.glb
 *.exe

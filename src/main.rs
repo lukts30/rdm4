@@ -9,9 +9,10 @@ use rdm4lib::rdm_anim::RDAnim;
 extern crate log;
 
 use std::env;
+use env_logger::Env;
 
 fn main() {
-    env_logger::init();
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 2 {
