@@ -18,6 +18,7 @@ use env_logger::Env;
 extern crate approx;
 
 pub mod gltf_export;
+pub mod gltf_reader;
 pub mod rdm_anim;
 pub mod rdm_writer;
 use crate::rdm_anim::RDAnim;
@@ -673,6 +674,45 @@ impl VertexFormat {
             VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, _, _, _, _) => p4h,
             VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, _, _, _, _, _) => p4h,
             VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, _, _, _, _, _) => p4h,
+        }
+    }
+
+    fn get_t2h(&self) -> &T2h {
+        match self {
+            VertexFormat::P4h(_) => unimplemented!(),
+            VertexFormat::P4h_N4b_T2h(_, _, t2h) => t2h,
+            VertexFormat::P4h_N4b_T2h_C4c(_, _, t2h, _) => t2h,
+            VertexFormat::P4h_N4b_T2h_I4b(_, _, t2h, _) => t2h,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, _, _, t2h) => t2h,
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, t2h, _, _) => t2h,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, _, _, _, t2h, _) => t2h,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, t2h, _) => t2h,
+        }
+    }
+
+    fn get_n4b(&self) -> &N4b {
+        match self {
+            VertexFormat::P4h(_) => unimplemented!(),
+            VertexFormat::P4h_N4b_T2h(_, n4b, _) => n4b,
+            VertexFormat::P4h_N4b_T2h_C4c(_, n4b, _, _) => n4b,
+            VertexFormat::P4h_N4b_T2h_I4b(_, n4b, _, _) => n4b,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, n4b, _, _, _) => n4b,
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, n4b, _, _, _) => n4b,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, n4b, _, _, _, _) => n4b,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, n4b, _, _, _, _) => n4b,
+        }
+    }
+
+    fn get_g4b(&self) -> &G4b {
+        match self {
+            VertexFormat::P4h(_) => unimplemented!(),
+            VertexFormat::P4h_N4b_T2h(_, _, _) => unimplemented!(),
+            VertexFormat::P4h_N4b_T2h_C4c(_, _, _, _) => unimplemented!(),
+            VertexFormat::P4h_N4b_T2h_I4b(_, _, _, _) => unimplemented!(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, g4b, _, _) => g4b,
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, _, _) => unimplemented!(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, _, g4b, _, _, _) => g4b,
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, g4b, _, _, _) => g4b,
         }
     }
 }

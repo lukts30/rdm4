@@ -20,6 +20,7 @@ use std::collections::VecDeque;
 use gltf::mesh::Semantic;
 use std::collections::HashMap;
 
+
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 struct Vertex {
@@ -103,8 +104,8 @@ impl RDGltfBuilder {
 
         // ** animations
 
-        let buffv_idx = 4;
-        let mut acc_idx = 5;
+        let buffv_idx = 7;
+        let mut acc_idx = 8;
 
         // anim node
         let time_f32_max = (anim.time_max as f32) / 1000.0;
@@ -303,7 +304,7 @@ impl RDGltfBuilder {
 
         debug!("{:#?}", anim_node);
 
-        let mut writer = fs::File::create("triangle/buffer4.bin").expect("I/O error");
+        let mut writer = fs::File::create("triangle/buffer10.bin").expect("I/O error");
 
         writer.write_all(&rot_anim_buf).expect("I/O error");
         writer.write_all(&trans_anim_buf).expect("I/O error");
@@ -314,7 +315,7 @@ impl RDGltfBuilder {
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            uri: Some("buffer4.bin".into()),
+            uri: Some("buffer10.bin".into()),
         };
 
         self.buffers.push(anim_buffer);
@@ -809,6 +810,240 @@ impl RDGltfBuilder {
         // end single vertex buffer
     }
 
+    fn put_tex(&mut self) {
+        let mut buff = BytesMut::with_capacity(1000);
+        let input_vec = &self.rdm.vertices;
+
+        for vert in input_vec {
+            let t2h = vert.get_t2h();
+            buff.put_f32_le(t2h.tex[0].to_f32());
+            buff.put_f32_le(t2h.tex[1].to_f32());
+        }
+
+        let vec = buff.to_vec(); //stupid
+        let tex_len = input_vec.len() as u32;
+
+        let buffer_p = self.obj.push_buffer(vec);
+        let buffer_length = buffer_p.len as u32;
+        let buffer = json::Buffer {
+            byte_length: buffer_length,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(buffer_p.file_name),
+        };
+
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffer_p.idx),
+            byte_length: buffer.byte_length,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        self.buffers.push(buffer);
+        self.buffer_views.push(buffer_view);
+        let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
+
+        let tex_acc = json::Accessor {
+            buffer_view: Some(json::Index::new(buffer_views_idx)),
+            byte_offset: 0,
+            count: tex_len,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec2),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        self.accessors.push(tex_acc);
+
+        let accessors_idx = (self.accessors.len() - 1) as u32;
+
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::TexCoords(0)),
+            json::Index::new(accessors_idx),
+        );
+
+    }
+
+    fn put_normal(&mut self) {
+        let mut buff = BytesMut::with_capacity(1000);
+        let input_vec = &self.rdm.vertices;
+
+        for vert in input_vec {
+            let n4b = vert.get_n4b();
+
+            let nx = ((2.0f32*n4b.normals[0] as f32)/255.0f32)-1.0f32;
+            let ny = ((2.0f32*n4b.normals[1] as f32)/255.0f32)-1.0f32;
+            let nz = ((2.0f32*n4b.normals[2] as f32)/255.0f32)-1.0f32;
+
+            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT 
+            //let len = ((nx*nx)+(ny*ny)+(nz*nz)).sqrt();
+            //let unx = nx/len;
+            //let uny = ny/len;
+            //let unz = nz/len;
+
+            buff.put_f32_le(nx);
+            buff.put_f32_le(ny);
+            buff.put_f32_le(nz);
+        }
+
+        let vec = buff.to_vec(); //stupid
+        let tex_len = input_vec.len() as u32;
+
+        let buffer_p = self.obj.push_buffer(vec);
+        let buffer_length = buffer_p.len as u32;
+        let buffer = json::Buffer {
+            byte_length: buffer_length,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(buffer_p.file_name),
+        };
+
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffer_p.idx),
+            byte_length: buffer.byte_length,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        self.buffers.push(buffer);
+        self.buffer_views.push(buffer_view);
+        let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
+
+        let normals_acc = json::Accessor {
+            buffer_view: Some(json::Index::new(buffer_views_idx)),
+            byte_offset: 0,
+            count: tex_len,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec3),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        self.accessors.push(normals_acc);
+
+        let accessors_idx = (self.accessors.len() - 1) as u32;
+
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::Normals),
+            json::Index::new(accessors_idx),
+        );
+
+        
+    }
+
+    fn put_tangent(&mut self) {
+        let mut buff = BytesMut::with_capacity(1000);
+        let input_vec = &self.rdm.vertices;
+
+        for vert in input_vec {
+            let g4b = vert.get_g4b();
+
+            let tx = ((2.0f32*g4b.tangent[0] as f32)/255.0f32)-1.0f32;
+            let ty = ((2.0f32*g4b.tangent[1] as f32)/255.0f32)-1.0f32;
+            let tz = ((2.0f32*g4b.tangent[2] as f32)/255.0f32)-1.0f32;
+            let tw_u8 = g4b.tangent[3];
+
+            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT 
+            // let len = ((tx*tx)+(ty*ty)+(tz*tz)).sqrt();
+            // let utx = tx/len;
+            // let uty = ty/len;
+            // let utz = tz/len;
+
+            
+
+            buff.put_f32_le(tx);
+            buff.put_f32_le(ty);
+            buff.put_f32_le(tz);
+
+            if tw_u8 == 1 {
+                buff.put_f32_le(1.0);
+            } else {
+                buff.put_f32_le(-1.0);
+            }
+            
+        }
+
+        let vec = buff.to_vec(); //stupid
+        let tang_len = input_vec.len() as u32;
+
+        let buffer_p = self.obj.push_buffer(vec);
+        let buffer_length = buffer_p.len as u32;
+        let buffer = json::Buffer {
+            byte_length: buffer_length,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(buffer_p.file_name),
+        };
+
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffer_p.idx),
+            byte_length: buffer.byte_length,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target: None,
+        };
+
+        self.buffers.push(buffer);
+        self.buffer_views.push(buffer_view);
+        let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
+
+        let tang_acc = json::Accessor {
+            buffer_view: Some(json::Index::new(buffer_views_idx)),
+            byte_offset: 0,
+            count: tang_len,
+            component_type: Valid(json::accessor::GenericComponentType(
+                json::accessor::ComponentType::F32,
+            )),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(json::accessor::Type::Vec4),
+            min: None,
+            max: None,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        self.accessors.push(tang_acc);
+
+        let accessors_idx = (self.accessors.len() - 1) as u32;
+
+        self.attr_map.insert(
+            Valid(json::mesh::Semantic::Tangents),
+            json::Index::new(accessors_idx),
+        );
+
+        
+    }
+
     fn put_idx(&mut self) {
         // Indexed triangle list
         let triangle_idx: Vec<Triangle> = self.rdm.triangle_indices.clone();
@@ -948,14 +1183,20 @@ impl From<RDModell> for RDGltfBuilder {
         b.put_vertex();
         b.put_idx();
 
+        b.put_tex();
+        b.put_normal();
+
+        b.put_tangent();
+
         if has_skin {
-            b.put_joint_nodes(JointOption::ResolveAllRoot);
+            b.put_joint_nodes(JointOption::ResolveParentNode);
             b.put_joint_weight();
 
             if has_anim {
                 b.put_rdm_anim();
             }
         }
+        
         b
     }
 }

@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn exp_rdm_inv_basalt_crusher_others_lod2() {
+    fn exp_rdm_inv_basalt_crusher_others_lod0() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
         assert_eq!(rdm.vertices_count, 2615);
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn read_invb() {
-        //RDWriter::read_inv();
+    fn read_gltf() {
+        
     }
 }
