@@ -5,8 +5,6 @@ use std::io::Write;
 
 use crate::*;
 
-
-
 pub struct RDWriter {
     meta_deref: u32,
     input: RDModell,
@@ -21,8 +19,19 @@ impl RDWriter {
             buf: BytesMut::with_capacity(5000),
         };
 
+        /*
         rdw.read_inv();
-        rdw.read_pos_norm_tang_bi();
+
+        let gltf_imp = gltf_reader::start().unwrap();
+        rdw.input.vertices = gltf_imp.0;
+        rdw.input.vertex_buffer_size = 28;
+        rdw.input.vertices_count = rdw.input.vertices.len() as u32;
+
+        rdw.input.triangle_indices = gltf_imp.1;
+        rdw.input.triangles_idx_count = rdw.input.triangle_indices.len() as u32*3;
+        rdw.input.triangles_idx_size = 2 as u32;
+        //rdw.read_pos_norm_tang_bi();
+        */
 
         rdw.put_header();
         rdw.put_vertex_buffer();
@@ -36,26 +45,23 @@ impl RDWriter {
     }
 
     fn put_header(&mut self) {
-
         static RAW_DATA: [u8; 156] = [
-            0x52, 0x44, 0x4D, 0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x04, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-            0x30, 0x00, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x4B, 0x01, 0x00, 0x00,
-            0x7F, 0x57, 0x01, 0x00, 0x72, 0x58, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00,
-            0xA4, 0x00, 0x00, 0x00, 0x25, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+            0x52, 0x44, 0x4D, 0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+            0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00,
+            0x54, 0x00, 0x00, 0x00, 0x4B, 0x01, 0x00, 0x00, 0x7F, 0x57, 0x01, 0x00, 0x72, 0x58,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00,
+            0xA4, 0x00, 0x00, 0x00, 0x25, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
         ];
 
         self.buf.put_slice(&RAW_DATA);
 
-        
         //let export_name = br"G:\graphic_backup\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_rig02.max";
         let export_name = br"\\rds.local\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
 
@@ -71,7 +77,6 @@ impl RDWriter {
             self.buf[buff_off + 3] = path_str_ptr[3];
         }
         self.buf.put_slice(export_name);
-        
 
         let export_name_2 = br"Anno5_Building_Skin_1Blend.rmp";
         self.buf.put_u32_le(export_name_2.len() as u32);
@@ -85,9 +90,8 @@ impl RDWriter {
             self.buf[buff_off + 3] = file_str_ptr[3];
         }
         self.buf.put_slice(export_name_2);
-        
 
-        // meta table 
+        // meta table
         {
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(92);
@@ -108,54 +112,49 @@ impl RDWriter {
             // u32: 0x00_00_00_00 or 0x_FF_FF_FF_FF
             // 24 bytes: 12 f16 with bounding box like data (3*4 a f16)
 
-            self.buf.put_u32_le(self.buf.len() as u32+8+92);
+            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 92);
 
             static META_TABLE: [u8; 24] = [
-                0xF5, 0x01, 0x00, 0x00, 0x7D, 0x02,
-                0x00, 0x00, 0xBD, 0x02, 0x00, 0x00, 0xC9, 0x20, 0x01, 
-                0x00, 0x99, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0xF5, 0x01, 0x00, 0x00, 0x7D, 0x02, 0x00, 0x00, 0xBD, 0x02, 0x00, 0x00, 0xC9, 0x20,
+                0x01, 0x00, 0x99, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
 
             self.buf.put_slice(&META_TABLE);
 
             static META_BOX: [u8; 24] = [
-                0x00, 0x80, 0xF8, 0xBF, 0x00, 0x40, 0x22, 0xC0, 0x00, 0x60, 0xF7, 0xBF,
-                0x00, 0x80, 0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F
+                0x00, 0x80, 0xF8, 0xBF, 0x00, 0x40, 0x22, 0xC0, 0x00, 0x60, 0xF7, 0xBF, 0x00, 0x80,
+                0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
             ];
 
             self.buf.put_slice(&META_BOX);
 
             static META_ZERO: [u8; 40] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
 
             self.buf.put_slice(&META_ZERO);
         }
-
 
         {
             // MODEL_NAME_PTR
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(28);
 
-            self.buf.put_u32_le(self.buf.len() as u32+8+28);
+            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 28);
 
             static MODEL_PTR_ZERO: [u8; 24] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
 
             self.buf.put_slice(&MODEL_PTR_ZERO);
         }
-        
-        
+
         {
             // MODEL_STR
-            let model_str = br"basalt_crusher_others_lod0"; 
+            let model_str = br"basalt_crusher_others_lod0";
             self.buf.put_u32_le(model_str.len() as u32);
             self.buf.put_u32_le(1);
 
@@ -166,8 +165,8 @@ impl RDWriter {
             // VERTEX_FORMAT_IDENTIFIER_PTR
 
             static VERTEX_FORMAT_IDENTIFIER_PTR_ZERO: [u8; 16] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
             ];
 
             self.buf.put_u32_le(1);
@@ -175,27 +174,26 @@ impl RDWriter {
 
             {
                 let meta_id_ptr = (self.buf.len() as u32).to_le_bytes();
-                let buff_off = (self.meta_deref+4) as usize;
+                let buff_off = (self.meta_deref + 4) as usize;
                 self.buf[buff_off] = meta_id_ptr[0];
                 self.buf[buff_off + 1] = meta_id_ptr[1];
                 self.buf[buff_off + 2] = meta_id_ptr[2];
                 self.buf[buff_off + 3] = meta_id_ptr[3];
             }
 
-            self.buf.put_u32_le(self.buf.len() as u32+8+24);
+            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 24);
 
-            // unknown maybe shader id 
-            // 0: no anim 
+            // unknown maybe shader id
+            // 0: no anim
             // 1: _Ib4
             // 2:
             // 3: I4b_W4b (eve)
             // 4: I4b_W4b (other npc)
             if self.input.has_skin() {
-                self.buf.put_u32_le(1); 
+                self.buf.put_u32_le(1);
             } else {
-                self.buf.put_u32_le(0); 
+                self.buf.put_u32_le(0);
             }
-            
 
             self.buf.put_slice(&VERTEX_FORMAT_IDENTIFIER_PTR_ZERO);
         }
@@ -203,38 +201,41 @@ impl RDWriter {
         {
             // VERTEX_FORMAT_IDENTIFIER
             static P4H_IDENTIFIER: [u8; 16] = [
-                0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x04, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+                0x00, 0x00,
             ];
 
             static N4B_IDENTIFIER: [u8; 16] = [
-                0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00 
+                0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
             ];
 
             static G4B_IDENTIFIER: [u8; 16] = [
-                0x02, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00
+                0x02, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
             ];
 
             static B4B_IDENTIFIER: [u8; 16] = [
-                0x03, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00
+                0x03, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
             ];
 
             static T2H_IDENTIFIER: [u8; 16] = [
-                0x04, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x02, 0x00, 0x00, 0x00
+                0x04, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
+                0x00, 0x00,
             ];
 
             static I4B_IDENTIFIER: [u8; 16] = [
-                0x07, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00
+                0x07, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
             ];
 
-            // P4h_N4b_G4b_B4b_T2h_I4b
+            //P4h_N4b_G4b_B4b_T2h_I4b
             self.buf.put_u32_le(6);
             self.buf.put_u32_le(16);
+
+            //self.buf.put_u32_le(4);
+            //self.buf.put_u32_le(16);
 
             self.buf.put_slice(&P4H_IDENTIFIER);
             self.buf.put_slice(&N4B_IDENTIFIER);
@@ -242,17 +243,16 @@ impl RDWriter {
             self.buf.put_slice(&B4B_IDENTIFIER);
             self.buf.put_slice(&T2H_IDENTIFIER);
             self.buf.put_slice(&I4B_IDENTIFIER);
-            
         }
 
         {
-            // unknown const 
+            // unknown const
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(20);
 
             {
                 let meta_unknown_ptr = (self.buf.len() as u32).to_le_bytes();
-                let buff_off = (self.meta_deref+8) as usize;
+                let buff_off = (self.meta_deref + 8) as usize;
                 self.buf[buff_off] = meta_unknown_ptr[0];
                 self.buf[buff_off + 1] = meta_unknown_ptr[1];
                 self.buf[buff_off + 2] = meta_unknown_ptr[2];
@@ -260,14 +260,11 @@ impl RDWriter {
             }
 
             static UNKNOWN: [u8; 20] = [
-                0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
             self.buf.put_slice(&UNKNOWN);
-        
         }
-
-        
 
         {
             self.buf.put_u32_le(1);
@@ -275,7 +272,7 @@ impl RDWriter {
 
             {
                 let triangle_count_ptr = (self.buf.len() as u32).to_le_bytes();
-                let buff_off = (self.meta_deref+20) as usize;
+                let buff_off = (self.meta_deref + 20) as usize;
                 self.buf[buff_off] = triangle_count_ptr[0];
                 self.buf[buff_off + 1] = triangle_count_ptr[1];
                 self.buf[buff_off + 2] = triangle_count_ptr[2];
@@ -285,16 +282,14 @@ impl RDWriter {
             self.buf.put_u32_le(0);
             self.buf.put_u32_le(self.input.triangles_idx_count);
             static ZERO_20_OF_28: [u8; 20] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
 
             self.buf.put_slice(&ZERO_20_OF_28);
         }
 
-
-
-        assert_eq!(self.buf.len(),704); 
+        assert_eq!(self.buf.len(), 704);
 
         //to be patched:
         // anim off 40
@@ -336,6 +331,12 @@ impl RDWriter {
                     self.buf.put_n4b(n4b);
                     self.buf.put_g4b(g4b);
                     self.buf.put_b4b(b4b);
+                    self.buf.put_t2h(t2h);
+                    self.buf.put_i4b(i4b);
+                }
+                VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b, t2h, i4b) => {
+                    self.buf.put_p4h(p4h);
+                    self.buf.put_n4b(n4b);
                     self.buf.put_t2h(t2h);
                     self.buf.put_i4b(i4b);
                 }
@@ -382,11 +383,11 @@ impl RDWriter {
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(28);
 
-            self.buf.put_u32_le(self.buf.len() as u32+8+28);
+            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 28);
 
             static UNKNOWN: [u8; 24] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
             self.buf.put_slice(&UNKNOWN);
         }
@@ -396,45 +397,39 @@ impl RDWriter {
             self.buf.put_u32_le(48);
 
             static UNKNOWN2: [u8; 40] = [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
             ];
 
             let material = br"Default Standard12432142134";
             let dummy_png_path = br"d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png";
 
-            self.buf.put_u32_le(self.buf.len() as u32+8+48);
-            self.buf.put_u32_le(self.buf.len() as u32+8+48+material.len() as u32+8-4); // -4 advanced: 4 bytes
+            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 48);
+            self.buf
+                .put_u32_le(self.buf.len() as u32 + 8 + 48 + material.len() as u32 + 8 - 4); // -4 advanced: 4 bytes
             self.buf.put_slice(&UNKNOWN2);
-            
 
             self.buf.put_u32_le(material.len() as u32);
             self.buf.put_u32_le(1);
             self.buf.put_slice(material);
 
-            
-
             self.buf.put_u32_le(dummy_png_path.len() as u32);
             self.buf.put_u32_le(1);
             self.buf.put_slice(dummy_png_path);
-
         }
 
         let end = self.buf.len();
 
-        let written = end-start;
+        let written = end - start;
 
-        assert_eq!(written,243);
+        assert_eq!(written, 243);
 
         // 8+1*28 : -> (0 -> next)
         // 8+1*48 : (0 -> next) (4 -> next+1)
         // 8+27*1
         // 8+108*1
         // = 243
-
-
     }
 
     fn put_skin(&mut self) {
@@ -484,10 +479,9 @@ impl RDWriter {
                 let tz = trans[2];
                 let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-                println!("ct : {:#?}",ct);
+                println!("ct : {:#?}", ct);
 
                 let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
-
 
                 let inv_bindmat = bindmat.try_inverse().unwrap();
 
@@ -563,12 +557,10 @@ impl RDWriter {
 
         println!("buffer size: {}", buffer_len);
 
-        assert_eq!(buffer_len%(4*4*4),0);
-        let count = buffer_len/(4*4*4);
+        assert_eq!(buffer_len % (4 * 4 * 4), 0);
+        let count = buffer_len / (4 * 4 * 4);
 
         let mut mat4: Matrix4<f32> = Matrix4::identity();
-
-        
 
         let mut rbuffer = Bytes::from(buffer);
 
@@ -594,55 +586,48 @@ impl RDWriter {
             mat4.m24 = rbuffer.get_f32_le();
             mat4.m34 = rbuffer.get_f32_le();
             mat4.m44 = rbuffer.get_f32_le();
-        
 
             let mat3 = Matrix3::new(
-                mat4.m11, mat4.m12, mat4.m13,
-                mat4.m21, mat4.m22, mat4.m23,
-                mat4.m31, mat4.m32, mat4.m33
+                mat4.m11, mat4.m12, mat4.m13, mat4.m21, mat4.m22, mat4.m23, mat4.m31, mat4.m32,
+                mat4.m33,
             );
             let rot = Rotation3::from_matrix(&mat3);
             let q = UnitQuaternion::from_rotation_matrix(&rot).inverse().coords;
 
-            let qq = Quaternion::new(q.w,q.x ,q.y,q.z);
+            let qq = Quaternion::new(q.w, q.x, q.y, q.z);
             let uq = UnitQuaternion::from_quaternion(qq);
 
-            println!("rots : {:#?}",uq);
+            println!("rots : {:#?}", uq);
 
             let tx = mat4.m14;
             let ty = mat4.m24;
             let tz = mat4.m34;
             let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-            
-
-            let inv_bindmat =
-                    (uq.to_homogeneous()) * (joint_translatio.to_homogeneous());
+            let inv_bindmat = (uq.to_homogeneous()) * (joint_translatio.to_homogeneous());
             let iv_x = inv_bindmat.m14;
             let iv_y = inv_bindmat.m24;
             let iv_z = inv_bindmat.m34;
 
             let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
 
-            println!("trans : {:#?}",trans_point);
+            println!("trans : {:#?}", trans_point);
 
             let quaternion_mat4 = uq.quaternion().coords;
-            assert_relative_eq!(quaternion_mat4.x,input_joints[i].quaternion[0]);
-            assert_relative_eq!(quaternion_mat4.y,input_joints[i].quaternion[1]);
-            assert_relative_eq!(quaternion_mat4.z,input_joints[i].quaternion[2]);
-            assert_relative_eq!(quaternion_mat4.w,input_joints[i].quaternion[3]);
+            assert_relative_eq!(quaternion_mat4.x, input_joints[i].quaternion[0]);
+            assert_relative_eq!(quaternion_mat4.y, input_joints[i].quaternion[1]);
+            assert_relative_eq!(quaternion_mat4.z, input_joints[i].quaternion[2]);
+            assert_relative_eq!(quaternion_mat4.w, input_joints[i].quaternion[3]);
 
-            
             /*
-            will fail because float 
+            will fail because float
             left  = -0.002778834
             right = -0.0027786891
-            
+
             assert_relative_eq!(trans_point.x,input_joints[i].transition[0]);
             assert_relative_eq!(trans_point.y,input_joints[i].transition[1]);
             assert_relative_eq!(trans_point.z,input_joints[i].transition[2]);
             */
-            
 
             // exp test
 
@@ -651,21 +636,15 @@ impl RDWriter {
             input_joints[i].quaternion[2] = quaternion_mat4.z;
             input_joints[i].quaternion[3] = quaternion_mat4.w;
 
-
             input_joints[i].transition[0] = trans_point.x;
             input_joints[i].transition[1] = trans_point.y;
             input_joints[i].transition[2] = trans_point.z;
-
-            
-            
-
         }
-        
+
         self.input.joints = Some(input_joints);
     }
 
     pub fn read_pos_norm_tang_bi(&mut self) {
-
         println!("read_pos_norm_tang_bi");
 
         let mut pos_buffer;
@@ -718,7 +697,6 @@ impl RDWriter {
             uv_buffer = Bytes::from(buffer);
         }
 
-
         {
             // normal list
             let file = "rdm/buffer3.bin";
@@ -763,16 +741,16 @@ impl RDWriter {
             jw_buffer = Bytes::from(buffer);
         }
 
-        let vertices_count = pos_buffer.len()/(3*4);
+        let vertices_count = pos_buffer.len() / (3 * 4);
         let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-        for _ in 0..vertices_count{
+        for _ in 0..vertices_count {
             let p4h = P4h {
                 pos: [
                     f16::from_f32(pos_buffer.get_f32_le()),
                     f16::from_f32(pos_buffer.get_f32_le()),
                     f16::from_f32(pos_buffer.get_f32_le()),
                     f16::from_f32(0.0),
-                ]
+                ],
             };
 
             let nx = normal_buffer.get_f32_le();
@@ -781,60 +759,59 @@ impl RDWriter {
 
             let n4b = N4b {
                 normals: [
-                    (nx*(255.0/2.0)+255.0/2.0) as u8,
-                    (ny*(255.0/2.0)+255.0/2.0) as u8,
-                    (nz*(255.0/2.0)+255.0/2.0) as u8,
+                    (nx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                    (ny * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                    (nz * (255.0 / 2.0) + 255.0 / 2.0) as u8,
                     0,
-                ]
+                ],
             };
-            
+
             let tx = tang_buffer.get_f32_le();
             let ty = tang_buffer.get_f32_le();
             let tz = tang_buffer.get_f32_le();
             let tw = tang_buffer.get_f32_le();
-            
+
             let g4b = G4b {
                 tangent: [
-                    (tx *(255.0/2.0)+255.0/2.0) as u8,
-                    (ty *(255.0/2.0)+255.0/2.0) as u8,
-                    (tz *(255.0/2.0)+255.0/2.0) as u8,
+                    (tx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                    (ty * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                    (tz * (255.0 / 2.0) + 255.0 / 2.0) as u8,
                     {
-                        let is_neg = relative_eq!(tw,-1.0);
+                        let is_neg = relative_eq!(tw, -1.0);
                         if is_neg {
                             0
                         } else {
                             1
                         }
                     },
-                ]
+                ],
             };
 
-            let normal = Vector3::new(nx,ny,nz);
-            let tangent = Vector3::new(tx,ty,tz);
+            let normal = Vector3::new(nx, ny, nz);
+            let tangent = Vector3::new(tx, ty, tz);
 
-            let b: Matrix3x1<f32> = (normal.cross(&tangent))*(tw);
-            
+            let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
             //println!("bbbbb: {:?}",b);
-            
+
             let b4b = B4b {
-                binormal : [
-                    ((b.x *(255.0/2.0)+255.0/2.0) as u8).saturating_add(1),
-                    ((b.y *(255.0/2.0)+255.0/2.0) as u8).saturating_add(1),
-                    ((b.z *(255.0/2.0)+255.0/2.0) as u8).saturating_add(1),
+                binormal: [
+                    ((b.x * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
+                    ((b.y * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
+                    ((b.z * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
                     0,
                 ],
             };
-            
+
             let t2h = T2h {
                 tex: [
                     f16::from_f32(uv_buffer.get_f32_le()),
                     f16::from_f32(uv_buffer.get_f32_le()),
-                ]
+                ],
             };
 
             let i4b = I4b {
-                blend_idx : [
+                blend_idx: [
                     jw_buffer.get_u8(),
                     jw_buffer.get_u8(),
                     jw_buffer.get_u8(),
@@ -842,16 +819,14 @@ impl RDWriter {
                 ],
             };
 
-            jw_buffer.advance(20-4);
+            jw_buffer.advance(20 - 4);
 
             let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
             verts_vec.push(k);
-            
         }
-        assert_eq!(verts_vec.len(),2615);
+        assert_eq!(verts_vec.len(), 2615);
 
         self.input.vertices = verts_vec;
-
     }
 }
 
