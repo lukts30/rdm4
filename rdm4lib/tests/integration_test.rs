@@ -4,6 +4,8 @@ use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RDAnim;
 use rdm4lib::rdm_writer::RDWriter;
 
+use rdm4lib::gltf_reader;
+
 use std::fs::File;
 use std::process::Command;
 use std::str;
@@ -87,14 +89,10 @@ mod tests {
                 .parse::<u32>()
                 .unwrap()
         );
-        
 
         assert_eq!(
             0,
-            v["issues"]["numErrors"]
-                .to_string()
-                .parse::<u32>()
-                .unwrap()
+            v["issues"]["numErrors"].to_string().parse::<u32>().unwrap()
         );
 
         assert_eq!(
@@ -146,6 +144,14 @@ mod tests {
 
     #[test]
     fn read_gltf() {
-        
+        let mut rdm = gltf_reader::conv();
+        assert_eq!(rdm.vertices_count, 2615);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let exp_rdm = RDWriter::from(rdm);
+        exp_rdm.write_rdm();
     }
 }

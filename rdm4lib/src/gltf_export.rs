@@ -20,7 +20,6 @@ use std::collections::VecDeque;
 use gltf::mesh::Semantic;
 use std::collections::HashMap;
 
-
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 struct Vertex {
@@ -304,6 +303,7 @@ impl RDGltfBuilder {
 
         debug!("{:#?}", anim_node);
 
+        let _ = fs::create_dir("triangle");
         let mut writer = fs::File::create("triangle/buffer10.bin").expect("I/O error");
 
         writer.write_all(&rot_anim_buf).expect("I/O error");
@@ -873,7 +873,6 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::TexCoords(0)),
             json::Index::new(accessors_idx),
         );
-
     }
 
     fn put_normal(&mut self) {
@@ -883,11 +882,11 @@ impl RDGltfBuilder {
         for vert in input_vec {
             let n4b = vert.get_n4b();
 
-            let nx = ((2.0f32*n4b.normals[0] as f32)/255.0f32)-1.0f32;
-            let ny = ((2.0f32*n4b.normals[1] as f32)/255.0f32)-1.0f32;
-            let nz = ((2.0f32*n4b.normals[2] as f32)/255.0f32)-1.0f32;
+            let nx = ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32;
+            let ny = ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32;
+            let nz = ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32;
 
-            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT 
+            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
             //let len = ((nx*nx)+(ny*ny)+(nz*nz)).sqrt();
             //let unx = nx/len;
             //let uny = ny/len;
@@ -951,8 +950,6 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::Normals),
             json::Index::new(accessors_idx),
         );
-
-        
     }
 
     fn put_tangent(&mut self) {
@@ -962,18 +959,16 @@ impl RDGltfBuilder {
         for vert in input_vec {
             let g4b = vert.get_g4b();
 
-            let tx = ((2.0f32*g4b.tangent[0] as f32)/255.0f32)-1.0f32;
-            let ty = ((2.0f32*g4b.tangent[1] as f32)/255.0f32)-1.0f32;
-            let tz = ((2.0f32*g4b.tangent[2] as f32)/255.0f32)-1.0f32;
+            let tx = ((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32;
+            let ty = ((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32;
+            let tz = ((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32;
             let tw_u8 = g4b.tangent[3];
 
-            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT 
+            // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
             // let len = ((tx*tx)+(ty*ty)+(tz*tz)).sqrt();
             // let utx = tx/len;
             // let uty = ty/len;
             // let utz = tz/len;
-
-            
 
             buff.put_f32_le(tx);
             buff.put_f32_le(ty);
@@ -984,7 +979,6 @@ impl RDGltfBuilder {
             } else {
                 buff.put_f32_le(-1.0);
             }
-            
         }
 
         let vec = buff.to_vec(); //stupid
@@ -1040,8 +1034,6 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::Tangents),
             json::Index::new(accessors_idx),
         );
-
-        
     }
 
     fn put_idx(&mut self) {
@@ -1196,7 +1188,7 @@ impl From<RDModell> for RDGltfBuilder {
                 b.put_rdm_anim();
             }
         }
-        
+
         b
     }
 }
