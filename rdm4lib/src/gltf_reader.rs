@@ -15,15 +15,55 @@ use nalgebra::*;
 
 use half::f16;
 
-use bytes::{Buf, Bytes};
-use std::collections::HashMap;
+use bytes::Bytes;
 
 use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
+use nalgebra::*;
+
 #[test]
-pub fn anim() {
+fn find_parent() {
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+    for scene in gltf.scenes() {}
+}
+
+#[test]
+fn root() {
+    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+    for scene in gltf.scenes() {
+        for node in scene.nodes() {
+            println!(
+                "Node #{} has {} children",
+                node.index(),
+                node.children().count(),
+            );
+            trav(node.children());
+        }
+    }
+}
+
+fn trav<'a>(a: gltf::scene::iter::Children<'a>) {
+    for node in a {
+        if node.skin().is_some() {
+            println!("..");
+            break;
+        }
+        println!("#{} has {} children", node.index(), node.children().count(),);
+
+        for n in node.children() {
+            if n.index() == 3 {
+                panic!("--");
+            }
+        }
+        trav(node.children());
+    }
+}
+
+pub fn anim() -> Option<RDAnim> {
+    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+
+    let mut anim = None;
 
     for animation in gltf.animations() {
         println!("animations #{}", animation.name().unwrap());
@@ -41,6 +81,11 @@ pub fn anim() {
             let mut output = reader.read_outputs().unwrap();
 
             println!("{}", time.len());
+            println!(
+                "channel #{} |  {:?} ",
+                channel.target().node().name().unwrap(),
+                channel.target().property()
+            );
 
             // ugly as hell
             t_max = t_max.max(
@@ -61,9 +106,10 @@ pub fn anim() {
                 Rotations(rot) => {
                     let mut rot_iter = rot.into_f32();
                     for t in time {
+                        let r = rot_iter.next().unwrap();
                         let f = Frame {
                             time: t,
-                            rotation: rot_iter.next().unwrap(),
+                            rotation: [r[0], r[1], r[2], -r[3]],
                             translation: [0.0, 0.0, 0.0],
                         };
                         frames_rot.push(f);
@@ -79,11 +125,15 @@ pub fn anim() {
                         frames_trans.push(f);
                     }
                 }
-                _ => todo!("not supported !"),
+                _ => {
+                    println!("not supported !");
+                    continue;
+                }
             };
 
             // merge rot and trans vecs. assumse one rotation and trans successive
-            if (j % 2 == 1) {
+
+            if j % 2 == 1 {
                 for (j, f) in frames_rot.iter_mut().enumerate() {
                     f.translation = frames_trans[j].translation;
                 }
@@ -97,24 +147,40 @@ pub fn anim() {
                 frames_trans.clear();
             }
 
-            println!(
-                "channel #{} |  {:?} ",
-                channel.target().node().name().unwrap(),
-                channel.target().property()
-            );
+            /*
+            if frames_rot.len()>0 {
+                for (k, f) in frames_trans.iter_mut().enumerate() {
+                    f.rotation = frames_rot[k].rotation;
+                }
+                let c = FrameCollection {
+                    name: String::from(channel.target().node().name().unwrap()),
+                    len: frames_rot.len() as u32,
+                    frames: frames_trans,
+                };
+                anim_vec.push(c);
+
+                frames_trans = Vec::new();
+                frames_rot.clear();
+
+                println!("pushed: {}",channel.target().node().name().unwrap());
+            }
+            */
         }
 
-        let anim = RDAnim {
+        anim = Some(RDAnim {
             time_max: (t_max * 1000.0) as u32,
             anim_vec,
             name: String::from(animation.name().unwrap()),
-        };
+        });
 
+        /*
         println!("time_max : {}", anim.time_max);
         for a in anim.anim_vec.iter() {
             println!(" : {}", a.name);
         }
+        */
     }
+    anim
 }
 
 pub fn conv() -> RDModell {
@@ -172,7 +238,7 @@ fn skin() -> Vec<RDJoint> {
 
         println!("{:?}", node_names_vec);
         //let mut search_vec = node_names_vec.into_iter().cycle();
-        let mut node_vec: Vec<u8> = vec![255; 9];
+        let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
 
         for (i, node) in skin.joints().into_iter().enumerate() {
             let master_name = node.name().unwrap();
@@ -232,12 +298,19 @@ fn skin() -> Vec<RDJoint> {
             let rot = Rotation3::from_matrix(&mat3);
             let q = UnitQuaternion::from_rotation_matrix(&rot).inverse().coords;
 
-            let qq = Quaternion::new(q.w, q.x, q.y, q.z);
-            let uq = UnitQuaternion::from_quaternion(qq);
 
+            let qq = Quaternion::new(q.w, q.x, q.y, q.z);
+            let mut uq = UnitQuaternion::from_quaternion(qq);
+
+            
+
+            println!("pq {:?}",uq);
+
+            
             let tx = mat4.m14;
             let ty = mat4.m24;
             let tz = mat4.m34;
+            
             let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
 
             let inv_bindmat = (uq.to_homogeneous()) * (joint_translatio.to_homogeneous());
@@ -248,7 +321,9 @@ fn skin() -> Vec<RDJoint> {
             let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
 
             println!("trans : {:#?}", trans_point);
+            
 
+            
             let quaternion_mat4 = uq.quaternion().coords;
 
             let rdjoint = RDJoint {
@@ -274,7 +349,6 @@ fn skin() -> Vec<RDJoint> {
 
 fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
-    //let (gltf, buffers, _) = gltf::import("rdm_exp/blender/blender.gltf").unwrap();
     for mesh in gltf.meshes() {
         println!("Mesh #{}", mesh.index());
         for primitive in mesh.primitives() {
@@ -283,7 +357,7 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
 
             let mut position_iter = reader.read_positions().unwrap();
 
-            let mut normal_iter = reader.read_normals().unwrap();
+            //let mut normal_iter = reader.read_normals().unwrap();
             //let mut tangent_iter = reader.read_tangents().unwrap();
 
             // let mut tex_iter = reader.read_tex_coords(0).unwrap().into_f32();
@@ -305,7 +379,8 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
                     ],
                 };
 
-                let normals = normal_iter.next().unwrap();
+                //let normals = normal_iter.next().unwrap();
+                let normals = [0.0,0.0,0.0,0.0];
                 let nx = normals[0];
                 let ny = normals[1];
                 let nz = normals[2];
@@ -410,4 +485,88 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
         }
     }
     None
+}
+
+#[test]
+fn rot_tran() {
+    
+    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+    for skin in gltf.skins() {
+        println!("skin #{}", skin.index());
+
+        let reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
+
+        let mut mats_iter = reader.read_inverse_bind_matrices().unwrap();
+
+        for j in skin.joints().into_iter() {
+
+            println!("Node: {} {:?}", j.name().unwrap(),j.transform());
+
+            let mut mat4: Matrix4<f32> = Matrix4::identity();
+            let mat = mats_iter.next().unwrap();
+
+            mat4.m11 = mat[0][0];
+            mat4.m21 = mat[0][1];
+            mat4.m31 = mat[0][2];
+            mat4.m41 = mat[0][3];
+
+            mat4.m12 = mat[1][0];
+            mat4.m22 = mat[1][1];
+            mat4.m32 = mat[1][2];
+            mat4.m42 = mat[1][3];
+
+            mat4.m13 = mat[2][0];
+            mat4.m23 = mat[2][1];
+            mat4.m33 = mat[2][2];
+            mat4.m43 = mat[2][3];
+
+            mat4.m14 = mat[3][0];
+            mat4.m24 = mat[3][1];
+            mat4.m34 = mat[3][2];
+            mat4.m44 = mat[3][3];
+
+
+            // Node Mat T * R * S
+            let node_transform_mat4 = j.transform().matrix();
+
+            let mut node_mat4: Matrix4<f32> = Matrix4::identity();
+            
+            node_mat4.m11 = node_transform_mat4[0][0];
+            node_mat4.m21 = node_transform_mat4[0][1];
+            node_mat4.m31 = node_transform_mat4[0][2];
+            node_mat4.m41 = node_transform_mat4[0][3];
+
+            node_mat4.m12 = node_transform_mat4[1][0];
+            node_mat4.m22 = node_transform_mat4[1][1];
+            node_mat4.m32 = node_transform_mat4[1][2];
+            node_mat4.m42 = node_transform_mat4[1][3];
+
+            node_mat4.m13 = node_transform_mat4[2][0];
+            node_mat4.m23 = node_transform_mat4[2][1];
+            node_mat4.m33 = node_transform_mat4[2][2];
+            node_mat4.m43 = node_transform_mat4[2][3];
+
+            node_mat4.m14 = node_transform_mat4[3][0];
+            node_mat4.m24 = node_transform_mat4[3][1];
+            node_mat4.m34 = node_transform_mat4[3][2];
+            node_mat4.m44 = node_transform_mat4[3][3];
+
+
+            let mat3 = Matrix3::new(
+                mat4.m11, mat4.m12, mat4.m13, mat4.m21, mat4.m22, mat4.m23, mat4.m31, mat4.m32,
+                mat4.m33,
+            );
+            let rot = Rotation3::from_matrix(&mat3);
+            let uq:UnitQuaternion<f32> = UnitQuaternion::from(rot);
+
+            println!("rot: {:?}",uq);
+            // 
+            let r_mat4 = mat4*node_mat4;
+
+            println!("r_mat4: {:#?}",r_mat4);
+            
+        }
+    
+    }
+
 }

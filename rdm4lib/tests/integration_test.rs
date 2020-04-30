@@ -4,6 +4,8 @@ use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RDAnim;
 use rdm4lib::rdm_writer::RDWriter;
 
+use rdm4lib::rdm_anim_writer::RDAnimWriter;
+
 use rdm4lib::gltf_reader;
 
 use std::fs::File;
@@ -144,8 +146,8 @@ mod tests {
 
     #[test]
     fn read_gltf() {
-        let mut rdm = gltf_reader::conv();
-        assert_eq!(rdm.vertices_count, 2615);
+        let rdm = gltf_reader::conv();
+        assert_eq!(rdm.vertices_count, 160);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
@@ -153,5 +155,13 @@ mod tests {
 
         let exp_rdm = RDWriter::from(rdm);
         exp_rdm.write_rdm();
+    }
+
+    #[test]
+    fn read_gltf_anim() {
+        //let anim = RDAnim::from("rdm/basalt_crusher_others_idle01.rdm");
+        let anim = gltf_reader::anim().unwrap();
+        let exp_rdm = RDAnimWriter::from(anim);
+        exp_rdm.write_anim_rdm();
     }
 }

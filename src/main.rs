@@ -8,8 +8,8 @@ use rdm4lib::rdm_anim::RDAnim;
 #[macro_use]
 extern crate log;
 
-use std::env;
 use env_logger::Env;
+use std::env;
 
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();

@@ -77,7 +77,7 @@ impl RDGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(&mut self) {
+    pub fn put_rdm_anim(&mut self, mut buffv_idx: u32, mut acc_idx : u32) {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
@@ -103,8 +103,8 @@ impl RDGltfBuilder {
 
         // ** animations
 
-        let buffv_idx = 7;
-        let mut acc_idx = 8;
+        //let buffv_idx = 7;
+        //let mut acc_idx = 8;
 
         // anim node
         let time_f32_max = (anim.time_max as f32) / 1000.0;
@@ -115,7 +115,19 @@ impl RDGltfBuilder {
         let mut sampler_vec = Vec::new();
         let mut chanel_vec = Vec::new();
 
+
+        let p = self.rdm.joints.clone().unwrap();
+        let mut modell_nodes = HashMap::new();
+
+        for (i,joint) in p.iter().enumerate() {
+            modell_nodes.insert(joint.name.clone(),i);
+        }
+
+
         for (node_idx, janim) in anim_vec.iter().enumerate() {
+
+            let target_node_idx = *modell_nodes.get(&janim.name).unwrap() as u32;
+
             let count = janim.len as usize;
 
             let rot_start = rot_anim_buf.len();
@@ -262,7 +274,7 @@ impl RDGltfBuilder {
             let rot_chanel = json::animation::Channel {
                 sampler: json::Index::new(rot_sampler_chanel),
                 target: json::animation::Target {
-                    node: json::Index::new(node_idx as u32),
+                    node: json::Index::new(target_node_idx as u32),
                     path: Valid(json::animation::Property::Rotation),
                     extensions: None,
                     extras: None,
@@ -274,7 +286,7 @@ impl RDGltfBuilder {
             let trans_chanel = json::animation::Channel {
                 sampler: json::Index::new(trans_sampler_chanel),
                 target: json::animation::Target {
-                    node: json::Index::new(node_idx as u32),
+                    node: json::Index::new(target_node_idx as u32),
                     path: Valid(json::animation::Property::Translation),
                     extensions: None,
                     extras: None,
@@ -1175,17 +1187,17 @@ impl From<RDModell> for RDGltfBuilder {
         b.put_vertex();
         b.put_idx();
 
-        b.put_tex();
-        b.put_normal();
+        //b.put_tex();
+        //b.put_normal();
 
-        b.put_tangent();
+        //b.put_tangent();
 
         if has_skin {
-            b.put_joint_nodes(JointOption::ResolveParentNode);
+            b.put_joint_nodes(JointOption::ResolveAllRoot);
             b.put_joint_weight();
 
             if has_anim {
-                b.put_rdm_anim();
+                //b.put_rdm_anim(4,5);
             }
         }
 
