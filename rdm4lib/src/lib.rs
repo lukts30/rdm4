@@ -21,6 +21,7 @@ pub mod gltf_export;
 pub mod gltf_reader;
 pub mod rdm_anim;
 pub mod rdm_writer;
+pub mod rdm_anim_writer;
 use crate::rdm_anim::RDAnim;
 
 pub struct RDModell {
