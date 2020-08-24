@@ -11,6 +11,8 @@ use rdm4lib::gltf_reader;
 use std::fs::File;
 use std::process::Command;
 use std::str;
+#[macro_use]
+extern crate approx;
 
 #[cfg(test)]
 mod tests {
@@ -159,7 +161,6 @@ mod tests {
 
     #[test]
     fn read_gltf_anim() {
-        //let anim = RDAnim::from("rdm/basalt_crusher_others_idle01.rdm");
         let rdm = gltf_reader::conv();
         assert_eq!(rdm.vertices_count, 5184
         );
@@ -170,10 +171,13 @@ mod tests {
 
         let jj = &rdm.joints.unwrap();
         let anim = gltf_reader::demo_anim(&jj, 6, 0.33333).unwrap();
-        //let mut anim = gltf_reader::anim(jj).unwrap();
-        //gltf_reader::idle_anim(&jj, &mut anim, 6, 0.33333);
 
         let exp_rdm = RDAnimWriter::from(anim);
         exp_rdm.write_anim_rdm();
+    }
+
+    #[test]
+    fn float() {
+        assert_relative_eq!(1.0, 0.9999998807907104f32);
     }
 }
