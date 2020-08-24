@@ -379,7 +379,7 @@ fn read_mesh(
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         println!("Mesh #{}", mesh.index());
-        
+
         #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
             println!("- Primitive #{}", primitive.index());
