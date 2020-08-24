@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn read_gltf() {
         let rdm = gltf_reader::conv();
-        assert_eq!(rdm.vertices_count, 160);
+        assert_eq!(rdm.vertices_count, 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
@@ -160,7 +160,19 @@ mod tests {
     #[test]
     fn read_gltf_anim() {
         //let anim = RDAnim::from("rdm/basalt_crusher_others_idle01.rdm");
-        let anim = gltf_reader::anim().unwrap();
+        let rdm = gltf_reader::conv();
+        assert_eq!(rdm.vertices_count, 5184
+        );
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let jj = &rdm.joints.unwrap();
+        let anim = gltf_reader::demo_anim(&jj, 6, 0.33333).unwrap();
+        //let mut anim = gltf_reader::anim(jj).unwrap();
+        //gltf_reader::idle_anim(&jj, &mut anim, 6, 0.33333);
+
         let exp_rdm = RDAnimWriter::from(anim);
         exp_rdm.write_anim_rdm();
     }

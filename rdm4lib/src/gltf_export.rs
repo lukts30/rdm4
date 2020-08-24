@@ -1187,17 +1187,17 @@ impl From<RDModell> for RDGltfBuilder {
         b.put_vertex();
         b.put_idx();
 
-        //b.put_tex();
+        b.put_tex();
         //b.put_normal();
 
         //b.put_tangent();
 
         if has_skin {
-            b.put_joint_nodes(JointOption::ResolveAllRoot);
+            b.put_joint_nodes(JointOption::ResolveParentNode);
             b.put_joint_weight();
 
             if has_anim {
-                //b.put_rdm_anim(4,5);
+                b.put_rdm_anim(4+1,5+1);
             }
         }
 

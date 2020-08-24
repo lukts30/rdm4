@@ -27,7 +27,7 @@ use crate::rdm_anim::RDAnim;
 pub struct RDModell {
     size: u32,
     buffer: Bytes,
-    joints: Option<Vec<RDJoint>>,
+    pub joints: Option<Vec<RDJoint>>,
     vertices: Vec<VertexFormat>,
     pub triangle_indices: Vec<Triangle>,
 
