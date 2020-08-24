@@ -12,7 +12,6 @@ use nalgebra::*;
 
 #[macro_use]
 extern crate log;
-use env_logger::Env;
 
 #[macro_use]
 extern crate approx;
@@ -756,21 +755,4 @@ impl From<&String> for RDModell {
     fn from(string_path: &String) -> Self {
         RDModell::from(Path::new(string_path))
     }
-}
-
-pub fn nain() {
-    //env_logger::init();
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
-
-    info!("init !");
-
-    let mut rdm = RDModell::from("tests/basalt_crusher_others_lod2.rdm");
-    //info!("rdm: {:#?}", rdm);
-
-    rdm.add_skin();
-
-    let anim = RDAnim::from("tests/basalt_crusher_others_work01.rdm");
-    rdm.add_anim(anim);
-
-    gltf_export::build(rdm);
 }

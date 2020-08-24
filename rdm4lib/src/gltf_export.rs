@@ -77,7 +77,7 @@ impl RDGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(&mut self, mut buffv_idx: u32, mut acc_idx : u32) {
+    pub fn put_rdm_anim(&mut self, buffv_idx: u32, mut acc_idx : u32) {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
@@ -124,7 +124,7 @@ impl RDGltfBuilder {
         }
 
 
-        for (node_idx, janim) in anim_vec.iter().enumerate() {
+        for (_, janim) in anim_vec.iter().enumerate() {
 
             let target_node_idx = *modell_nodes.get(&janim.name).unwrap() as u32;
 
@@ -349,11 +349,20 @@ impl RDGltfBuilder {
             match vert {
                 VertexFormat::P4h_N4b_T2h_I4b(_, _, _, i4b)
                 | VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
-                    joint_weight_buf.put_slice(&i4b.blend_idx);
-                    joint_weight_buf.put_f32_le(weight[0]);
-                    joint_weight_buf.put_f32_le(weight[1]);
-                    joint_weight_buf.put_f32_le(weight[2]);
-                    joint_weight_buf.put_f32_le(weight[3]);
+                    /* 'ACCESSOR_JOINTS_USED_ZERO_WEIGHT'
+                    Must only have one joint/blend_idx since the others are zero weight
+                    only problematic if gltf -> lossy rdm target while keeping all blend_idx from gltf -> gltf
+                    TODO: do not write all idx in rdm_writer  */
+                    
+                    joint_weight_buf.put_u8(i4b.blend_idx[0]);
+                    joint_weight_buf.put_u8(0);
+                    joint_weight_buf.put_u8(0);
+                    joint_weight_buf.put_u8(0);
+
+                    joint_weight_buf.put_f32_le(weight[0]); // > 0.0
+                    joint_weight_buf.put_f32_le(weight[1]); // 0.0
+                    joint_weight_buf.put_f32_le(weight[2]); // 0.0
+                    joint_weight_buf.put_f32_le(weight[3]); // 0.0
                 }
                 VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, i4b, w4b) => {
                     weight = [
@@ -512,8 +521,12 @@ impl RDGltfBuilder {
                 invbind_buf.put_f32_le(inv_bindmat.m14);
                 invbind_buf.put_f32_le(inv_bindmat.m24);
                 invbind_buf.put_f32_le(inv_bindmat.m34);
-                invbind_buf.put_f32_le(inv_bindmat.m44);
+                invbind_buf.put_f32_le(1.0f32);
 
+                // why is inv_bindmat.m44 not always 1.0 ?
+                // assert_relative_eq!(1.0, inv_bindmat.m44)
+                // assert_relative_eq!(1.0, 0.9999998807907104f32) => true but
+                // ACCESSOR_INVALID_IBM	Matrix element at index 143 (component index 15) contains invalid value: 0.9999998807907104.
                 let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
                 assert_eq!(invbind_buf_written, 64);
             }
@@ -887,6 +900,7 @@ impl RDGltfBuilder {
         );
     }
 
+    #[allow(dead_code)]
     fn put_normal(&mut self) {
         let mut buff = BytesMut::with_capacity(1000);
         let input_vec = &self.rdm.vertices;
@@ -964,6 +978,7 @@ impl RDGltfBuilder {
         );
     }
 
+    #[allow(dead_code)]
     fn put_tangent(&mut self) {
         let mut buff = BytesMut::with_capacity(1000);
         let input_vec = &self.rdm.vertices;
