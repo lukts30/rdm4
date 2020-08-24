@@ -1,5 +1,3 @@
-use gltf;
-
 use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
@@ -25,7 +23,7 @@ use std::path::Path;
 
 pub fn read_animation(
     f_path: &Path,
-    joints: &Vec<RDJoint>,
+    joints: &[RDJoint],
     frames: usize,
     tmax: f32,
 ) -> Option<RDAnim> {
@@ -145,7 +143,7 @@ pub fn read_animation(
         for rot in rotation_map.iter_mut() {
             match translation_map.get(rot.0) {
                 None => {
-                    let rd_joint = joints.iter().find(|&r| r.name == rot.0.as_ref()).unwrap();
+                    let rd_joint = joints.iter().find(|&r| r.name.as_str() == *rot.0).unwrap();
 
                     for f in rot.1.iter_mut() {
                         f.translation = [
@@ -179,7 +177,7 @@ pub fn read_animation(
 
         // s4
         for trans in translation_map.iter_mut() {
-            let rd_joint = joints.iter().find(|&r| r.name == trans.0.as_ref()).unwrap();
+            let rd_joint = joints.iter().find(|&r| r.name == *trans.0).unwrap();
 
             for f in trans.1.iter_mut() {
                 f.translation = [
@@ -238,7 +236,7 @@ pub fn load_gltf(f_path: &Path) -> RDModell {
 
     let joints_vec = read_skin(&gltf, &buffers);
 
-    let rd = RDModell {
+    RDModell {
         size,
         buffer: Bytes::new(),
         joints: Some(joints_vec),
@@ -254,12 +252,10 @@ pub fn load_gltf(f_path: &Path) -> RDModell {
         triangles_idx_size,
 
         anim: None,
-    };
-
-    rd
+    }
 }
 
-fn read_skin(gltf: &gltf::Document, buffers: &Vec<gltf::buffer::Data>) -> Vec<RDJoint> {
+fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoint> {
     let mut out_joints_vec = Vec::new();
 
     let mut node_names_vec = Vec::new();
@@ -275,7 +271,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &Vec<gltf::buffer::Data>) -> Vec<RD
         println!("{:?}", node_names_vec);
         let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
 
-        for (i, node) in skin.joints().into_iter().enumerate() {
+        for (i, node) in skin.joints().enumerate() {
             //let master_name = node.name().unwrap();
             //let parent = search_vec.position(|r: &str| r == master_name).unwrap();
             //println!("master_name[{}]: {} ",parent,master_name);
@@ -370,7 +366,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &Vec<gltf::buffer::Data>) -> Vec<RD
             };
             out_joints_vec.push(rdjoint);
 
-            count = count - 1;
+            count -= 1;
         }
     }
     out_joints_vec
@@ -378,11 +374,13 @@ fn read_skin(gltf: &gltf::Document, buffers: &Vec<gltf::buffer::Data>) -> Vec<RD
 
 fn read_mesh(
     gltf: &gltf::Document,
-    buffers: &Vec<gltf::buffer::Data>,
+    buffers: &[gltf::buffer::Data],
 ) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         println!("Mesh #{}", mesh.index());
+        
+        #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
             println!("- Primitive #{}", primitive.index());
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -490,7 +488,7 @@ fn read_mesh(
                 let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
                 //let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b,t2h, i4b);
                 verts_vec.push(k);
-                count = count - 1;
+                count -= 1;
             }
 
             println!("verts_vec {}", verts_vec.len());
@@ -509,7 +507,7 @@ fn read_mesh(
                         triangle_iter.next().unwrap() as u16,
                     ],
                 };
-                tcount = tcount - 1;
+                tcount -= 1;
                 triangle_vec.push(t);
             }
 
