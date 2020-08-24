@@ -312,8 +312,8 @@ impl RDGltfBuilder {
 
         debug!("{:#?}", anim_node);
 
-        let _ = fs::create_dir("triangle");
-        let mut writer = fs::File::create("triangle/buffer10.bin").expect("I/O error");
+        let _ = fs::create_dir("gltf_out");
+        let mut writer = fs::File::create("gltf_out/buffer10.bin").expect("I/O error");
 
         writer.write_all(&rot_anim_buf).expect("I/O error");
         writer.write_all(&trans_anim_buf).expect("I/O error");

@@ -48,12 +48,12 @@ mod tests {
 
         let output = if cfg!(target_os = "windows") {
             Command::new("..\\gltf_validator.exe")
-                .args(&["-a", "gltf_out/out.gltf"])
+                .args(&["-ar", "gltf_out/out.gltf"])
                 .output()
                 .expect("failed to execute process")
         } else {
             Command::new("../gltf_validator")
-                .args(&["-a", "gltf_out/out.gltf"])
+                .args(&["-ar", "gltf_out/out.gltf"])
                 .output()
                 .expect("failed to execute process")
         };
