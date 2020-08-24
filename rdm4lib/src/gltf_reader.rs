@@ -20,15 +20,205 @@ use bytes::Bytes;
 use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
-use nalgebra::*;
+use std::collections::HashMap;
 
-#[test]
+
+pub fn demo_anim(joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAnim> {
+    let mut anim = None;
+    
+
+    let mut rotation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
+    let mut translation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
+
+    // s1
+
+    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+
+    for animation in gltf.animations() {
+        let mut anim_vec: Vec<FrameCollection> = Vec::new();
+
+        println!("animations #{}", animation.name().unwrap_or("default"));
+        let mut t_max = 0.0;
+
+        for (j, channel) in animation.channels().enumerate() {
+            let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+            let time = reader.read_inputs().unwrap();
+            let output = reader.read_outputs().unwrap();
+
+            let target_node_name = channel.target().node().name().unwrap();
+            println!("{}", time.len());
+            println!(
+                "channel #{} |  {:?} ",
+                target_node_name,
+                channel.target().property()
+            );
+
+            // ugly as hell
+            t_max = t_max.max(
+                channel
+                    .sampler()
+                    .input()
+                    .max()
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .get(0)
+                    .unwrap()
+                    .as_f64()
+                    .unwrap(),
+            );
+
+            match output {
+                Rotations(rot) => {
+                    let mut frames_rot: Vec<Frame> = Vec::new();
+                    let mut rot_iter = rot.into_f32();
+                    for t in time {
+                        let r = rot_iter.next().unwrap();
+                        let f = Frame {
+                            time: t,
+                            rotation: [r[0], r[1], r[2], -r[3]],
+                            translation: [0.0, 0.0, 0.0],
+                        };
+                        frames_rot.push(f);
+                    }
+                    rotation_map.insert(target_node_name, frames_rot);
+                }
+                Translations(mut trans) => {
+                    let mut frames_trans: Vec<Frame> = Vec::new();
+                    for t in time {
+                        let f = Frame {
+                            time: t,
+                            rotation: [0.0, 0.0, 0.0, 0.0],
+                            translation: trans.next().unwrap(),
+                        };
+                        frames_trans.push(f);
+                    }
+                    translation_map.insert(target_node_name, frames_trans);
+                }
+                _ => {
+                    println!("not supported !");
+                    continue;
+                }
+            };
+        }
+        // s2
+        for joint in joints {
+            // add idle animation where neighter rot or trans 
+            if !rotation_map.contains_key(&joint.name.as_str()) && !translation_map.contains_key(&joint.name.as_str()) {
+                warn!("idle_anim adding idle for joint:{}",joint.name);
+                let mut frame_vec = Vec::with_capacity(frames);
+                let intervall = tmax / (frames as f32-1.0);
+                for i in 0..frames {
+                    let kframe = Frame {
+                        rotation: [
+                            joint.quaternion[0],
+                            joint.quaternion[1],
+                            joint.quaternion[2],
+                            joint.quaternion[3],
+                        ],
+                        translation: [
+                            joint.transition[0],
+                            joint.transition[1],
+                            joint.transition[2],
+                        ],
+                        time: i as f32 * intervall,
+                    };
+                    frame_vec.push(kframe);
+                }
+                let ent = FrameCollection {
+                    name: joint.name.clone(),
+                    len: frames as u32,
+                    frames: frame_vec,
+                };
+                anim_vec.push(ent);
+            } 
+        }
+
+        // s3
+        for mut rot in rotation_map.iter_mut() {
+            match translation_map.get(rot.0) {
+                None => {
+                    let rd_joint = joints.iter().find(|&r| r.name == rot.0.as_ref()).unwrap();
+
+                    for f in rot.1.iter_mut() {
+                        f.translation = [
+                            rd_joint.transition[0],
+                            rd_joint.transition[1],
+                            rd_joint.transition[2],
+                        ];
+                    }
+                }
+                Some(trans_vec) => {
+                    let namet = rot.0;
+                    // TODO: !!! fix trans_vec.len() == rot.1.len()
+                    if trans_vec.len() == rot.1.len() { 
+                        assert_eq!(trans_vec.len(), rot.1.len());
+                        let z = rot.1.len();
+                        
+                        for (k, f) in rot.1.iter_mut().enumerate() {
+                            assert_relative_eq!(f.time, trans_vec[k].time);
+                            if min(trans_vec.len(), z) ==  k {
+                                break;
+                            }
+                            f.translation = trans_vec[k].translation;
+                        }
+                        
+                    } else {
+                        panic!("Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again");
+                    }
+                    translation_map.remove(namet);
+                    
+                }
+            };
+        }
+
+        // s4
+        for trans in translation_map.iter_mut() {
+            let rd_joint = joints.iter().find(|&r| r.name == trans.0.as_ref()).unwrap();
+
+            for f in trans.1.iter_mut() {
+                f.translation = [
+                    rd_joint.transition[0],
+                    rd_joint.transition[1],
+                    rd_joint.transition[2],
+                ];
+            }
+        }
+
+        // s5 add both maps to anim_vec
+        for entry in rotation_map.drain() {
+            let ent = FrameCollection {
+                name: entry.0.to_string(),
+                len: entry.1.len() as u32,
+                frames: entry.1,
+            };
+            anim_vec.push(ent);
+        }
+        for entry in translation_map.drain() {
+            let ent = FrameCollection {
+                name: entry.0.to_string(),
+                len: entry.1.len() as u32,
+                frames: entry.1,
+            };
+            anim_vec.push(ent);
+        }
+
+        anim = Some(RDAnim {
+            time_max: (t_max * 1000.0) as u32,
+            anim_vec,
+            name: String::from(animation.name().unwrap_or("default")),
+        });
+    }
+    anim
+}
+
+#[deprecated]
 fn find_parent() {
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for scene in gltf.scenes() {}
 }
 
-#[test]
+#[deprecated]
 fn root() {
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for scene in gltf.scenes() {
@@ -43,6 +233,7 @@ fn root() {
     }
 }
 
+#[deprecated]
 fn trav<'a>(a: gltf::scene::iter::Children<'a>) {
     for node in a {
         if node.skin().is_some() {
@@ -60,13 +251,14 @@ fn trav<'a>(a: gltf::scene::iter::Children<'a>) {
     }
 }
 
-pub fn anim() -> Option<RDAnim> {
+#[deprecated]
+pub fn anim(joints: &Vec<RDJoint>) -> Option<RDAnim> {
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
 
     let mut anim = None;
 
     for animation in gltf.animations() {
-        println!("animations #{}", animation.name().unwrap());
+        println!("animations #{}", animation.name().unwrap_or("default"));
 
         let mut anim_vec: Vec<FrameCollection> = Vec::new();
 
@@ -105,21 +297,24 @@ pub fn anim() -> Option<RDAnim> {
             match output {
                 Rotations(rot) => {
                     let mut rot_iter = rot.into_f32();
+                    let found = joints.iter().find(|&x| x.name == channel.target().node().name().unwrap()).unwrap();
+
                     for t in time {
                         let r = rot_iter.next().unwrap();
                         let f = Frame {
                             time: t,
                             rotation: [r[0], r[1], r[2], -r[3]],
-                            translation: [0.0, 0.0, 0.0],
+                            translation: found.transition,
                         };
                         frames_rot.push(f);
                     }
                 }
                 Translations(mut trans) => {
+                    let found = joints.iter().find(|&x| x.name == channel.target().node().name().unwrap()).unwrap();
                     for t in time {
                         let f = Frame {
                             time: t,
-                            rotation: [0.0, 0.0, 0.0, 0.0],
+                            rotation: found.quaternion,
                             translation: trans.next().unwrap(),
                         };
                         frames_trans.push(f);
@@ -132,7 +327,7 @@ pub fn anim() -> Option<RDAnim> {
             };
 
             // merge rot and trans vecs. assumse one rotation and trans successive
-
+/*
             if j % 2 == 1 {
                 for (j, f) in frames_rot.iter_mut().enumerate() {
                     f.translation = frames_trans[j].translation;
@@ -147,14 +342,20 @@ pub fn anim() -> Option<RDAnim> {
                 frames_trans.clear();
             }
 
-            /*
+            */
             if frames_rot.len()>0 {
                 for (k, f) in frames_trans.iter_mut().enumerate() {
                     f.rotation = frames_rot[k].rotation;
                 }
+
+                if frames_trans.len() == 0 {
+                    frames_trans = frames_rot.clone();
+                }
+
+                assert_ne!(frames_trans.len(),0);
                 let c = FrameCollection {
                     name: String::from(channel.target().node().name().unwrap()),
-                    len: frames_rot.len() as u32,
+                    len: frames_trans.len() as u32,
                     frames: frames_trans,
                 };
                 anim_vec.push(c);
@@ -164,13 +365,12 @@ pub fn anim() -> Option<RDAnim> {
 
                 println!("pushed: {}",channel.target().node().name().unwrap());
             }
-            */
         }
 
         anim = Some(RDAnim {
             time_max: (t_max * 1000.0) as u32,
             anim_vec,
-            name: String::from(animation.name().unwrap()),
+            name: String::from(animation.name().unwrap_or("default")),
         });
 
         /*
@@ -181,6 +381,42 @@ pub fn anim() -> Option<RDAnim> {
         */
     }
     anim
+}
+
+#[deprecated]
+pub fn idle_anim(joints: &Vec<RDJoint>, anim : &mut RDAnim, frames : usize, tmax : f32) {
+    for joint in joints {
+        let found = anim.anim_vec.iter().find(|&x| x.name == joint.name);
+    
+        if found.is_none() {
+            warn!("idle_anim adding idle for joint:{}",joint.name);
+            let mut frame_vec = Vec::with_capacity(frames);
+            let intervall = tmax / (frames as f32-1.0);
+            for i in 0..frames {
+                let kframe = Frame {
+                    rotation: [
+                        joint.quaternion[0],
+                        joint.quaternion[1],
+                        joint.quaternion[2],
+                        joint.quaternion[3],
+                    ],
+                    translation: [
+                        joint.transition[0],
+                        joint.transition[1],
+                        joint.transition[2],
+                    ],
+                    time: i as f32 * intervall,
+                };
+                frame_vec.push(kframe);
+            }
+            let ent = FrameCollection {
+                name: joint.name.clone(),
+                len: frames as u32,
+                frames: frame_vec,
+            };
+            anim.anim_vec.push(ent);
+        } 
+    }
 }
 
 pub fn conv() -> RDModell {
@@ -360,7 +596,7 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
             //let mut normal_iter = reader.read_normals().unwrap();
             //let mut tangent_iter = reader.read_tangents().unwrap();
 
-            // let mut tex_iter = reader.read_tex_coords(0).unwrap().into_f32();
+            let mut tex_iter = reader.read_tex_coords(0).unwrap().into_f32();
 
             let mut joints_iter = reader.read_joints(0).unwrap().into_u16();
 
@@ -436,8 +672,8 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
 
                 // tex
 
-                //let tex = tex_iter.next().unwrap();
-                let tex = [0.0, 0.0];
+                let tex = tex_iter.next().unwrap();
+                //let tex = [0.0, 0.0];
                 let t2h = T2h {
                     tex: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
                 };
@@ -487,7 +723,7 @@ fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
     None
 }
 
-#[test]
+#[deprecated]
 fn rot_tran() {
     
     let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();

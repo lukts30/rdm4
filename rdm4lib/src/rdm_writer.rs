@@ -546,6 +546,7 @@ impl RDWriter {
         writer.write_all(&self.buf.to_vec()).expect("I/O error");
     }
 
+    #[deprecated]
     pub fn read_inv(&mut self) {
         let file = "rdm/mat_buffer2.bin";
         let mut f = File::open(file).unwrap();
@@ -644,6 +645,7 @@ impl RDWriter {
         self.input.joints = Some(input_joints);
     }
 
+    #[deprecated]
     pub fn read_pos_norm_tang_bi(&mut self) {
         println!("read_pos_norm_tang_bi");
 

@@ -71,6 +71,9 @@ impl RDAnim {
         let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(joint_targets_num);
 
         for ent in &jtable {
+            error!("ent.0: {}",ent.0);
+            error!("size: {}",size );
+            error!("buffer.remaining(): {}",buffer.remaining());
             buffer.advance(ent.0 - RDModell::META_COUNT as usize - (size - buffer.remaining()));
             let ent_str_len = buffer.get_u32_le() as usize;
             assert_eq!(ent_str_len > 1, true);
