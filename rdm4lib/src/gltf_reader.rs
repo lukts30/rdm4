@@ -21,9 +21,12 @@ use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
 use std::collections::HashMap;
+use std::path::Path;
 
 
-pub fn demo_anim(joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAnim> {
+pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAnim> {
+    let (gltf, buffers, _) = gltf::import(f_path).unwrap();
+    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     let mut anim = None;
     
 
@@ -31,12 +34,8 @@ pub fn demo_anim(joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAn
     let mut translation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
 
     // s1
-
-    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
-
     for animation in gltf.animations() {
         let mut anim_vec: Vec<FrameCollection> = Vec::new();
-
         println!("animations #{}", animation.name().unwrap_or("default"));
         let mut t_max = 0.0;
 
@@ -212,8 +211,10 @@ pub fn demo_anim(joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAn
     anim
 }
 
-pub fn conv() -> RDModell {
-    let gltf_imp = start().unwrap();
+pub fn load_gltf(f_path: &Path) -> RDModell {
+    let (gltf, buffers, _) = gltf::import(f_path).unwrap();
+
+    let gltf_imp = read_mesh(&gltf,&buffers).unwrap();
     let size = 0;
     let vertices_vec = gltf_imp.0;
     let triangles = gltf_imp.1;
@@ -229,7 +230,7 @@ pub fn conv() -> RDModell {
     let triangles_idx_count = triangles.len() as u32 * 3;
     let triangles_idx_size = 2;
 
-    let joints_vec = skin();
+    let joints_vec = read_skin(&gltf,&buffers);
 
     let rd = RDModell {
         size,
@@ -252,12 +253,12 @@ pub fn conv() -> RDModell {
     rd
 }
 
-fn skin() -> Vec<RDJoint> {
+fn read_skin(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Vec<RDJoint> {
     let mut out_joints_vec = Vec::new();
 
     let mut node_names_vec = Vec::new();
 
-    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for skin in gltf.skins() {
         println!("skin #{}", skin.index());
 
@@ -375,8 +376,8 @@ fn skin() -> Vec<RDJoint> {
     out_joints_vec
 }
 
-fn start() -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
-    let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+fn read_mesh(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
+    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         println!("Mesh #{}", mesh.index());
         for primitive in mesh.primitives() {

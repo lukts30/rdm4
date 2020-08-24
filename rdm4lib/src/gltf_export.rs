@@ -1241,9 +1241,9 @@ impl RDGltf {
     }
 
     fn write_gltf(mut self) {
-        let _ = fs::create_dir("triangle");
+        let _ = fs::create_dir("gltf_out");
 
-        let writer = fs::File::create("triangle/triangle.gltf").expect("I/O error");
+        let writer = fs::File::create("gltf_out/out.gltf").expect("I/O error");
         json::serialize::to_writer_pretty(writer, &self.root.unwrap())
             .expect("Serialization error");
 
@@ -1251,7 +1251,7 @@ impl RDGltf {
         while !self.buffers.is_empty() {
             let e = self.buffers.pop().unwrap();
             let bin = e;
-            let file_path = format!("triangle/buffer{}.bin", idx);
+            let file_path = format!("gltf_out/buffer{}.bin", idx);
             let mut writer = fs::File::create(file_path).expect("I/O error");
             writer.write_all(&bin).expect("I/O error");
 
