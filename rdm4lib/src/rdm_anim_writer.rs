@@ -55,7 +55,6 @@ impl RDAnimWriter {
         }
         self.buf.put_slice(export_name);
 
-
         let export_name_2 = br"Anno5_Building_Anim_UnCompressed.rmp";
         self.buf.put_u32_le(export_name_2.len() as u32);
         self.buf.put_u32_le(1);
@@ -69,70 +68,65 @@ impl RDAnimWriter {
         }
         self.buf.put_slice(export_name_2);
 
-        
-            // MODEL_NAME_PTR
-            let model_str = br"basalt_crusher_others_lod0";
+        // MODEL_NAME_PTR
+        let model_str = br"basalt_crusher_others_lod0";
 
-            self.buf.put_u32_le(1);
-            self.buf.put_u32_le(48);
+        self.buf.put_u32_le(1);
+        self.buf.put_u32_le(48);
 
-            {
-                let meta_ptr = (self.buf.len() as u32).to_le_bytes();
-                let buff_off = 44 as usize;
-                self.buf[buff_off] = meta_ptr[0];
-                self.buf[buff_off + 1] = meta_ptr[1];
-                self.buf[buff_off + 2] = meta_ptr[2];
-                self.buf[buff_off + 3] = meta_ptr[3];
-            }
+        {
+            let meta_ptr = (self.buf.len() as u32).to_le_bytes();
+            let buff_off = 44 as usize;
+            self.buf[buff_off] = meta_ptr[0];
+            self.buf[buff_off + 1] = meta_ptr[1];
+            self.buf[buff_off + 2] = meta_ptr[2];
+            self.buf[buff_off + 3] = meta_ptr[3];
+        }
 
-            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 48);
+        self.buf.put_u32_le(self.buf.len() as u32 + 8 + 48);
 
-            self.buf
+        self.buf
             .put_u32_le(self.buf.len() as u32 + 8 + 48 + model_str.len() as u32 + 8 - 4); // -4 advanced: 4 bytes
 
-            println!("self.input.time_max {}",self.input.time_max);
-            self.buf.put_u32_le(self.input.time_max);
+        println!("self.input.time_max {}", self.input.time_max);
+        self.buf.put_u32_le(self.input.time_max);
 
-            self.buf.put_u32_le(0xF);
+        self.buf.put_u32_le(0xF);
 
-            static MODEL_PTR_ZERO: [u8; 32] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-            ];
+        static MODEL_PTR_ZERO: [u8; 32] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
 
-            self.buf.put_slice(&MODEL_PTR_ZERO);
-        
+        self.buf.put_slice(&MODEL_PTR_ZERO);
 
-        
-            // MODEL_STR
-            
-            self.buf.put_u32_le(model_str.len() as u32);
-            self.buf.put_u32_le(1);
+        // MODEL_STR
 
-            self.buf.put_slice(model_str);
+        self.buf.put_u32_le(model_str.len() as u32);
+        self.buf.put_u32_le(1);
 
-            // joint table 
+        self.buf.put_slice(model_str);
 
-            self.buf.put_u32_le(self.input.anim_vec.len() as u32);
-            self.buf.put_u32_le(24);
+        // joint table
 
-            static EMPTY_TABLE_ENTRY: [u8; 24] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            ];
+        self.buf.put_u32_le(self.input.anim_vec.len() as u32);
+        self.buf.put_u32_le(24);
 
-            
-            self.jtable_deref = self.buf.len() as u32;
-            
+        static EMPTY_TABLE_ENTRY: [u8; 24] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
 
-            for _ in 0..self.input.anim_vec.len() {
-                self.buf.put_slice(&EMPTY_TABLE_ENTRY);
-            }
+        self.jtable_deref = self.buf.len() as u32;
+
+        for _ in 0..self.input.anim_vec.len() {
+            self.buf.put_slice(&EMPTY_TABLE_ENTRY);
+        }
     }
 
     fn put_frame_collections(&mut self) {
-        for (i,collection) in self.input.anim_vec.iter().enumerate() {
+        for (i, collection) in self.input.anim_vec.iter().enumerate() {
             self.buf.put_u32_le(collection.name.len() as u32);
             self.buf.put_u32_le(1);
 
@@ -140,20 +134,21 @@ impl RDAnimWriter {
             {
                 let joint_target_str_u32 = self.buf.len() as u32;
                 let joint_target_str = joint_target_str_u32.to_le_bytes();
-                let buff_off = self.jtable_deref as usize+i*24;
+                let buff_off = self.jtable_deref as usize + i * 24;
                 self.buf[buff_off] = joint_target_str[0];
                 self.buf[buff_off + 1] = joint_target_str[1];
                 self.buf[buff_off + 2] = joint_target_str[2];
                 self.buf[buff_off + 3] = joint_target_str[3];
 
-                let joint_target_data = (joint_target_str_u32+collection.name.len() as u32+8).to_le_bytes();
+                let joint_target_data =
+                    (joint_target_str_u32 + collection.name.len() as u32 + 8).to_le_bytes();
                 self.buf[buff_off + 4] = joint_target_data[0];
                 self.buf[buff_off + 5] = joint_target_data[1];
                 self.buf[buff_off + 6] = joint_target_data[2];
                 self.buf[buff_off + 7] = joint_target_data[3];
             }
             self.buf.put_slice(&collection.name.as_bytes());
-            
+
             self.buf.put_u32_le(collection.len);
             self.buf.put_u32_le(32);
 
@@ -166,7 +161,7 @@ impl RDAnimWriter {
                 self.buf.put_f32_le(frame.translation[0]);
                 self.buf.put_f32_le(frame.translation[1]);
                 self.buf.put_f32_le(frame.translation[2]);
-                
+
                 self.buf.put_f32_le(frame.time);
             }
         }
@@ -179,7 +174,6 @@ impl RDAnimWriter {
         writer.write_all(&self.buf.to_vec()).expect("I/O error");
     }
 }
-
 
 impl From<RDAnim> for RDAnimWriter {
     fn from(anim: RDAnim) -> Self {

@@ -23,12 +23,15 @@ use gltf::animation::util::ReadOutputs::*;
 use std::collections::HashMap;
 use std::path::Path;
 
-
-pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: f32) -> Option<RDAnim> {
+pub fn read_animation(
+    f_path: &Path,
+    joints: &Vec<RDJoint>,
+    frames: usize,
+    tmax: f32,
+) -> Option<RDAnim> {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     let mut anim = None;
-    
 
     let mut rotation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
     let mut translation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
@@ -95,18 +98,23 @@ pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: 
                     translation_map.insert(target_node_name, frames_trans);
                 }
                 _ => {
-                    println!("output sampler not supported: '{:?}'", channel.target().property());
+                    println!(
+                        "output sampler not supported: '{:?}'",
+                        channel.target().property()
+                    );
                     continue;
                 }
             };
         }
         // s2
         for joint in joints {
-            // add idle animation where neighter rot or trans 
-            if !rotation_map.contains_key(&joint.name.as_str()) && !translation_map.contains_key(&joint.name.as_str()) {
-                warn!("idle_anim adding idle for joint:{}",joint.name);
+            // add idle animation where neighter rot or trans
+            if !rotation_map.contains_key(&joint.name.as_str())
+                && !translation_map.contains_key(&joint.name.as_str())
+            {
+                warn!("idle_anim adding idle for joint:{}", joint.name);
                 let mut frame_vec = Vec::with_capacity(frames);
-                let intervall = tmax / (frames as f32-1.0);
+                let intervall = tmax / (frames as f32 - 1.0);
                 for i in 0..frames {
                     let kframe = Frame {
                         rotation: [
@@ -130,7 +138,7 @@ pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: 
                     frames: frame_vec,
                 };
                 anim_vec.push(ent);
-            } 
+            }
         }
 
         // s3
@@ -150,23 +158,21 @@ pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: 
                 Some(trans_vec) => {
                     let namet = rot.0;
                     // TODO: !!! fix trans_vec.len() == rot.1.len()
-                    if trans_vec.len() == rot.1.len() { 
+                    if trans_vec.len() == rot.1.len() {
                         assert_eq!(trans_vec.len(), rot.1.len());
                         let z = rot.1.len();
-                        
+
                         for (k, f) in rot.1.iter_mut().enumerate() {
                             assert_relative_eq!(f.time, trans_vec[k].time);
-                            if min(trans_vec.len(), z) ==  k {
+                            if min(trans_vec.len(), z) == k {
                                 break;
                             }
                             f.translation = trans_vec[k].translation;
                         }
-                        
                     } else {
                         panic!("Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again");
                     }
                     translation_map.remove(namet);
-                    
                 }
             };
         }
@@ -214,7 +220,7 @@ pub fn read_animation(f_path: &Path,joints: &Vec<RDJoint>, frames: usize, tmax: 
 pub fn load_gltf(f_path: &Path) -> RDModell {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
 
-    let gltf_imp = read_mesh(&gltf,&buffers).unwrap();
+    let gltf_imp = read_mesh(&gltf, &buffers).unwrap();
     let size = 0;
     let vertices_vec = gltf_imp.0;
     let triangles = gltf_imp.1;
@@ -230,7 +236,7 @@ pub fn load_gltf(f_path: &Path) -> RDModell {
     let triangles_idx_count = triangles.len() as u32 * 3;
     let triangles_idx_size = 2;
 
-    let joints_vec = read_skin(&gltf,&buffers);
+    let joints_vec = read_skin(&gltf, &buffers);
 
     let rd = RDModell {
         size,
@@ -253,7 +259,7 @@ pub fn load_gltf(f_path: &Path) -> RDModell {
     rd
 }
 
-fn read_skin(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Vec<RDJoint> {
+fn read_skin(gltf: &gltf::Document, buffers: &Vec<gltf::buffer::Data>) -> Vec<RDJoint> {
     let mut out_joints_vec = Vec::new();
 
     let mut node_names_vec = Vec::new();
@@ -327,19 +333,15 @@ fn read_skin(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Vec<R
             let rot = Rotation3::from_matrix(&mat3);
             let q = UnitQuaternion::from_rotation_matrix(&rot).inverse().coords;
 
-
             let qq = Quaternion::new(q.w, q.x, q.y, q.z);
             let uq = UnitQuaternion::from_quaternion(qq);
 
-            
+            println!("pq {:?}", uq);
 
-            println!("pq {:?}",uq);
-
-            
             let tx = mat4.m14;
             let ty = mat4.m24;
             let tz = mat4.m34;
-            
+
             let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
 
             let inv_bindmat = (uq.to_homogeneous()) * (joint_translatio.to_homogeneous());
@@ -350,9 +352,7 @@ fn read_skin(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Vec<R
             let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
 
             println!("trans : {:#?}", trans_point);
-            
 
-            
             let quaternion_mat4 = uq.quaternion().coords;
 
             let rdjoint = RDJoint {
@@ -376,7 +376,10 @@ fn read_skin(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Vec<R
     out_joints_vec
 }
 
-fn read_mesh(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
+fn read_mesh(
+    gltf: &gltf::Document,
+    buffers: &Vec<gltf::buffer::Data>,
+) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         println!("Mesh #{}", mesh.index());
@@ -409,7 +412,7 @@ fn read_mesh(gltf : &gltf::Document,buffers : &Vec<gltf::buffer::Data>) -> Optio
                 };
 
                 //let normals = normal_iter.next().unwrap();
-                let normals = [0.0,0.0,0.0,0.0];
+                let normals = [0.0, 0.0, 0.0, 0.0];
                 let nx = normals[0];
                 let ny = normals[1];
                 let nz = normals[2];

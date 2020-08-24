@@ -77,7 +77,7 @@ impl RDGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(&mut self, buffv_idx: u32, mut acc_idx : u32) {
+    pub fn put_rdm_anim(&mut self, buffv_idx: u32, mut acc_idx: u32) {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
@@ -115,17 +115,14 @@ impl RDGltfBuilder {
         let mut sampler_vec = Vec::new();
         let mut chanel_vec = Vec::new();
 
-
         let p = self.rdm.joints.clone().unwrap();
         let mut modell_nodes = HashMap::new();
 
-        for (i,joint) in p.iter().enumerate() {
-            modell_nodes.insert(joint.name.clone(),i);
+        for (i, joint) in p.iter().enumerate() {
+            modell_nodes.insert(joint.name.clone(), i);
         }
 
-
         for (_, janim) in anim_vec.iter().enumerate() {
-
             let target_node_idx = *modell_nodes.get(&janim.name).unwrap() as u32;
 
             let count = janim.len as usize;
@@ -353,7 +350,7 @@ impl RDGltfBuilder {
                     Must only have one joint/blend_idx since the others are zero weight
                     only problematic if gltf -> lossy rdm target while keeping all blend_idx from gltf -> gltf
                     TODO: do not write all idx in rdm_writer  */
-                    
+
                     joint_weight_buf.put_u8(i4b.blend_idx[0]);
                     joint_weight_buf.put_u8(0);
                     joint_weight_buf.put_u8(0);
@@ -1212,7 +1209,7 @@ impl From<RDModell> for RDGltfBuilder {
             b.put_joint_weight();
 
             if has_anim {
-                b.put_rdm_anim(4+1,5+1);
+                b.put_rdm_anim(4 + 1, 5 + 1);
             }
         }
 

@@ -8,8 +8,8 @@ use rdm4lib::rdm_anim_writer::RDAnimWriter;
 
 use rdm4lib::gltf_reader;
 
-use std::path::Path;
 use std::fs::File;
+use std::path::Path;
 use std::process::Command;
 use std::str;
 
@@ -162,15 +162,14 @@ mod tests {
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
         let rdm = gltf_reader::load_gltf(&f_path);
-        assert_eq!(rdm.vertices_count, 5184
-        );
+        assert_eq!(rdm.vertices_count, 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
         );
 
         let jj = &rdm.joints.unwrap();
-        let anim = gltf_reader::read_animation(&f_path,&jj, 6, 0.33333).unwrap();
+        let anim = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
 
         let exp_rdm = RDAnimWriter::from(anim);
         exp_rdm.write_anim_rdm();
