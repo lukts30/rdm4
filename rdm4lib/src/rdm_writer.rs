@@ -540,9 +540,9 @@ impl RDWriter {
     }
 
     pub fn write_rdm(self) {
-        let _ = fs::create_dir("rdm_exp");
+        let _ = fs::create_dir("rdm_out");
 
-        let mut writer = fs::File::create("rdm_exp/out.rdm").expect("I/O error");
+        let mut writer = fs::File::create("rdm_out/out.rdm").expect("I/O error");
         writer.write_all(&self.buf.to_vec()).expect("I/O error");
     }
 }

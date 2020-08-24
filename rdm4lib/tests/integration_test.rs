@@ -8,11 +8,10 @@ use rdm4lib::rdm_anim_writer::RDAnimWriter;
 
 use rdm4lib::gltf_reader;
 
+use std::path::Path;
 use std::fs::File;
 use std::process::Command;
 use std::str;
-#[macro_use]
-extern crate approx;
 
 #[cfg(test)]
 mod tests {
@@ -49,12 +48,12 @@ mod tests {
 
         let output = if cfg!(target_os = "windows") {
             Command::new("..\\gltf_validator.exe")
-                .args(&["-a", "triangle/triangle.gltf"])
+                .args(&["-a", "gltf_out/out.gltf"])
                 .output()
                 .expect("failed to execute process")
         } else {
             Command::new("../gltf_validator")
-                .args(&["-a", "triangle/triangle.gltf"])
+                .args(&["-a", "gltf_out/out.gltf"])
                 .output()
                 .expect("failed to execute process")
         };
@@ -71,7 +70,7 @@ mod tests {
         assert_eq!(r#"Errors: 0"#, info[0]);
         assert_eq!(r#"Warnings: 0"#, info[1]);
 
-        let mut f = File::open("triangle/triangle.gltf.report.json").unwrap();
+        let mut f = File::open("gltf_out/out.gltf.report.json").unwrap();
         let mut buffer = Vec::new();
         std::io::Read::read_to_end(&mut f, &mut buffer).ok();
 
@@ -148,7 +147,7 @@ mod tests {
 
     #[test]
     fn read_gltf() {
-        let rdm = gltf_reader::conv();
+        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"));
         assert_eq!(rdm.vertices_count, 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -161,7 +160,8 @@ mod tests {
 
     #[test]
     fn read_gltf_anim() {
-        let rdm = gltf_reader::conv();
+        let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
+        let rdm = gltf_reader::load_gltf(&f_path);
         assert_eq!(rdm.vertices_count, 5184
         );
         assert_eq!(
@@ -170,14 +170,9 @@ mod tests {
         );
 
         let jj = &rdm.joints.unwrap();
-        let anim = gltf_reader::demo_anim(&jj, 6, 0.33333).unwrap();
+        let anim = gltf_reader::read_animation(&f_path,&jj, 6, 0.33333).unwrap();
 
         let exp_rdm = RDAnimWriter::from(anim);
         exp_rdm.write_anim_rdm();
-    }
-
-    #[test]
-    fn float() {
-        assert_relative_eq!(1.0, 0.9999998807907104f32);
     }
 }
