@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn read_gltf() {
-        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"));
+        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), true);
         assert_eq!(rdm.vertices_count, 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
-        let rdm = gltf_reader::load_gltf(&f_path);
+        let rdm = gltf_reader::load_gltf(&f_path, true);
         assert_eq!(rdm.vertices_count, 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -173,5 +173,18 @@ mod tests {
 
         let exp_rdm = RDAnimWriter::from(anim);
         exp_rdm.write_anim_rdm();
+    }
+
+    #[test]
+    fn read_gltf_no_skin() {
+        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), false);
+        assert_eq!(rdm.vertices_count, 5184);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let exp_rdm = RDWriter::from(rdm);
+        exp_rdm.write_rdm();
     }
 }

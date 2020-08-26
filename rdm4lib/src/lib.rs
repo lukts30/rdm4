@@ -132,11 +132,34 @@ impl RDModell {
         self.anim = Some(anim);
     }
 
+    pub fn check_has_magic_byte(bytes: &[u8]) {
+        assert_eq!(
+            bytes[0], 0x52,
+            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
+        );
+        assert_eq!(
+            bytes[1], 0x44,
+            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
+        );
+        assert_eq!(
+            bytes[2], 0x4D,
+            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
+        );
+        assert_eq!(
+            bytes[3], 0x01,
+            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
+        );
+        assert_eq!(
+            bytes[4], 0x14,
+            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
+        );
+    }
+
     pub fn add_skin(&mut self) {
         let mut skin_buffer = self.buffer.clone();
         skin_buffer.advance(40);
         let skin_offset = skin_buffer.get_u32_le();
-        assert_eq!(skin_offset != 0, true);
+        assert_eq!(skin_offset != 0, true, "File does not contain a skin !");
 
         let rel_skin_offset: usize =
             (skin_offset - (self.size - skin_buffer.remaining() as u32)) as usize;
@@ -219,6 +242,8 @@ impl RDModell {
     }
 
     fn new(buf: Vec<u8>) -> Self {
+        RDModell::check_has_magic_byte(&buf);
+
         let size = buf.len() as u32;
         let buffer = Bytes::from(buf);
         let mut nbuffer = buffer.clone();
@@ -342,7 +367,7 @@ impl RDModell {
                 )
             }
             _ => {
-                error!("vertices use unrecognised size of {}", vertex_buffer_size);
+                error!("vertices use unrecognized size of {}", vertex_buffer_size);
                 None
             }
         }

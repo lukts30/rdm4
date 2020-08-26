@@ -37,7 +37,7 @@ pub fn read_animation(
     // s1
     for animation in gltf.animations() {
         let mut anim_vec: Vec<FrameCollection> = Vec::new();
-        println!("animations #{}", animation.name().unwrap_or("default"));
+        debug!("animations #{}", animation.name().unwrap_or("default"));
         let mut t_max = 0.0;
 
         for (_, channel) in animation.channels().enumerate() {
@@ -46,8 +46,8 @@ pub fn read_animation(
             let output = reader.read_outputs().unwrap();
 
             let target_node_name = channel.target().node().name().unwrap();
-            println!("{}", time.len());
-            println!(
+            debug!("{}", time.len());
+            info!(
                 "channel #{} |  {:?} ",
                 target_node_name,
                 channel.target().property()
@@ -96,7 +96,7 @@ pub fn read_animation(
                     translation_map.insert(target_node_name, frames_trans);
                 }
                 _ => {
-                    println!(
+                    warn!(
                         "output sampler not supported: '{:?}'",
                         channel.target().property()
                     );
@@ -215,7 +215,7 @@ pub fn read_animation(
     anim
 }
 
-pub fn load_gltf(f_path: &Path) -> RDModell {
+pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
 
     let gltf_imp = read_mesh(&gltf, &buffers).unwrap();
@@ -234,12 +234,16 @@ pub fn load_gltf(f_path: &Path) -> RDModell {
     let triangles_idx_count = triangles.len() as u32 * 3;
     let triangles_idx_size = 2;
 
-    let joints_vec = read_skin(&gltf, &buffers);
+    let joints_vec = if load_skin {
+        Some(read_skin(&gltf, &buffers))
+    } else {
+        None
+    };
 
     RDModell {
         size,
         buffer: Bytes::new(),
-        joints: Some(joints_vec),
+        joints: joints_vec,
         vertices: vertices_vec,
         triangle_indices: triangles,
         meta,
@@ -260,35 +264,30 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 
     let mut node_names_vec = Vec::new();
 
-    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for skin in gltf.skins() {
-        println!("skin #{}", skin.index());
+        info!("skin #{}", skin.index());
 
         for node in skin.joints().into_iter() {
             node_names_vec.push(node.name().unwrap());
         }
 
-        println!("{:?}", node_names_vec);
+        debug!("{:?}", node_names_vec);
+        // parentless nodes have 255 as "index"
         let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
 
         for (i, node) in skin.joints().enumerate() {
-            //let master_name = node.name().unwrap();
-            //let parent = search_vec.position(|r: &str| r == master_name).unwrap();
-            //println!("master_name[{}]: {} ",parent,master_name);
-
-            //println!("master_name: {}",master_name);
             for child in node.children() {
-                println!("{}: {}", child.name().unwrap(), i);
-
+                //rdm: children know their parent VS glTF parents know their children
                 let child_idx = node_names_vec
                     .iter()
                     .position(|&r| r == child.name().unwrap())
                     .unwrap();
                 node_vec[child_idx] = i as u8;
+                debug!("{}: {} -> {}", child.name().unwrap(), i, node_names_vec[i]);
             }
         }
 
-        println!("{:?}", node_vec);
+        debug!("node_vec: {:?}", node_vec);
         let mut node_vec_iter = node_vec.iter();
         let mut node_names_vec_iter = node_names_vec.iter();
 
@@ -332,7 +331,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
             let qq = Quaternion::new(q.w, q.x, q.y, q.z);
             let uq = UnitQuaternion::from_quaternion(qq);
 
-            println!("pq {:?}", uq);
+            trace!("pq {:?}", uq);
 
             let tx = mat4.m14;
             let ty = mat4.m24;
@@ -347,7 +346,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 
             let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
 
-            println!("trans : {:#?}", trans_point);
+            trace!("trans : {:#?}", trans_point);
 
             let quaternion_mat4 = uq.quaternion().coords;
 
@@ -378,11 +377,11 @@ fn read_mesh(
 ) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
-        println!("Mesh #{}", mesh.index());
+        info!("Mesh #{}", mesh.index());
 
         #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
-            println!("- Primitive #{}", primitive.index());
+            info!("- Primitive #{}", primitive.index());
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
             let mut position_iter = reader.read_positions().unwrap();
@@ -392,7 +391,12 @@ fn read_mesh(
 
             let mut tex_iter = reader.read_tex_coords(0).unwrap().into_f32();
 
-            let mut joints_iter = reader.read_joints(0).unwrap().into_u16();
+            let mut joints_iter = if reader.read_joints(0).is_some() {
+                reader.read_joints(0).unwrap().into_u16()
+            } else {
+                error!("No joints in glTF file !");
+                panic!("No joints in glTF file !");
+            };
 
             let mut count = position_iter.len();
 
@@ -453,8 +457,6 @@ fn read_mesh(
 
                 let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
-                //println!("bbbbb: {:?}",b);
-
                 let b4b = B4b {
                     binormal: [
                         ((b.x * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
@@ -491,7 +493,7 @@ fn read_mesh(
                 count -= 1;
             }
 
-            println!("verts_vec {}", verts_vec.len());
+            info!("verts_vec.len {}", verts_vec.len());
 
             let mut triangle_iter = reader.read_indices().unwrap().into_u32();
             let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);

@@ -57,7 +57,7 @@ impl RDAnim {
         let joint_targets_num = buffer.get_u32_le() as usize;
         let joint_targets_tables_size = buffer.get_u32_le();
         assert_eq!(joint_targets_tables_size, 24);
-        info!("joint_targets: {}", joint_targets_num);
+        info!("joint_targets_count: {}", joint_targets_num);
 
         let mut jtable: Vec<(usize, usize)> = Vec::with_capacity(joint_targets_num);
         for _ in 0..joint_targets_num {
@@ -71,9 +71,8 @@ impl RDAnim {
         let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(joint_targets_num);
 
         for ent in &jtable {
-            error!("ent.0: {}", ent.0);
-            error!("size: {}", size);
-            error!("buffer.remaining(): {}", buffer.remaining());
+            trace!("ent.0: {}", ent.0);
+            trace!("buffer.remaining(): {}", buffer.remaining());
             buffer.advance(ent.0 - RDModell::META_COUNT as usize - (size - buffer.remaining()));
             let ent_str_len = buffer.get_u32_le() as usize;
             assert_eq!(ent_str_len > 1, true);
@@ -82,7 +81,7 @@ impl RDAnim {
             let ent_model_str = str::from_utf8(&buffer[..ent_str_len]).unwrap();
             let ent_model = String::from(ent_model_str);
 
-            info!("joint: {}", ent_model_str);
+            debug!("joint: {}", ent_model_str);
             buffer.advance(ent_str_len);
 
             let ent_child_count = buffer.get_u32_le();
@@ -117,7 +116,7 @@ impl RDAnim {
             anim_vec.push(ent);
         }
 
-        debug!("anim: {:?}", anim_vec);
+        trace!("anim: {:?}", anim_vec);
 
         RDAnim {
             anim_vec,
@@ -135,8 +134,8 @@ impl From<&Path> for RDAnim {
 
         let buffer_len = buffer.len();
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
-
         info!("buffer size: {}", buffer_len);
+        RDModell::check_has_magic_byte(&buffer);
 
         RDAnim::new(
             buffer,

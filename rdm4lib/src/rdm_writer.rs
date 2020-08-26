@@ -39,7 +39,9 @@ impl RDWriter {
 
         rdw.put_blob();
 
-        rdw.put_skin();
+        if rdw.input.has_skin() {
+            rdw.put_skin();
+        }
 
         rdw
     }
@@ -479,13 +481,13 @@ impl RDWriter {
                 let tz = trans[2];
                 let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-                println!("ct : {:#?}", ct);
+                trace!("ct : {:#?}", ct);
 
                 let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
 
                 let inv_bindmat = bindmat.try_inverse().unwrap();
 
-                println!("{}", uq.quaternion().coords);
+                trace!("{}", uq.quaternion().coords);
 
                 // write Translation
                 self.buf.put_f32_le(inv_bindmat.m14);

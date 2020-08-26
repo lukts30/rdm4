@@ -144,8 +144,8 @@ impl RDGltfBuilder {
                 t_anim_buf.put_f32_le(f.time);
             }
             let rot_end = rot_anim_buf.len();
-            warn!("{}", rot_start);
-            warn!("{}", rot_end);
+            trace!("{}", rot_start);
+            trace!("{}", rot_end);
 
             let trans_end = trans_anim_buf.len();
             let t_end = t_anim_buf.len();
@@ -1063,8 +1063,7 @@ impl RDGltfBuilder {
     fn put_idx(&mut self) {
         // Indexed triangle list
         let triangle_idx: Vec<Triangle> = self.rdm.triangle_indices.clone();
-        warn!("{}", self.rdm.triangle_indices.len());
-        warn!("{}", triangle_idx.len());
+        trace!("triangle_idx.len: {}", triangle_idx.len());
 
         let triangle_idx_p = self.obj.push_buffer(triangle_idx);
         let triangle_idx_len_b = triangle_idx_p.len as u32;

@@ -88,7 +88,7 @@ impl RDAnimWriter {
         self.buf
             .put_u32_le(self.buf.len() as u32 + 8 + 48 + model_str.len() as u32 + 8 - 4); // -4 advanced: 4 bytes
 
-        println!("self.input.time_max {}", self.input.time_max);
+        debug!("self.input.time_max {}", self.input.time_max);
         self.buf.put_u32_le(self.input.time_max);
 
         self.buf.put_u32_le(0xF);
