@@ -187,4 +187,17 @@ mod tests {
         let exp_rdm = RDWriter::from(rdm);
         exp_rdm.write_rdm();
     }
+
+    #[test]
+    fn read_gltf_no_skin2() {
+        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/triangle.gltf"), false);
+        assert_eq!(rdm.vertices_count, 3);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let exp_rdm = RDWriter::from(rdm);
+        exp_rdm.write_rdm();
+    }
 }

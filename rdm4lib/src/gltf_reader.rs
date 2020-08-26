@@ -2,6 +2,7 @@ use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormat;
+use crate::VertexFormatSize;
 
 use crate::B4b;
 use crate::G4b;
@@ -218,7 +219,7 @@ pub fn read_animation(
 pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
 
-    let gltf_imp = read_mesh(&gltf, &buffers).unwrap();
+    let gltf_imp = read_mesh(&gltf, &buffers,load_skin).unwrap();
     let size = 0;
     let vertices_vec = gltf_imp.0;
     let triangles = gltf_imp.1;
@@ -227,7 +228,8 @@ pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     let vertex_offset = 0;
 
     let vertices_count = vertices_vec.len() as u32;
-    let vertex_buffer_size = 28;
+    // TODO: improve
+    let vertex_buffer_size = gltf_imp.2;
 
     let triangles_offset = 0;
 
@@ -374,7 +376,8 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 fn read_mesh(
     gltf: &gltf::Document,
     buffers: &[gltf::buffer::Data],
-) -> Option<(Vec<VertexFormat>, Vec<Triangle>)> {
+    read_joints: bool
+) -> Option<(Vec<VertexFormat>, Vec<Triangle>, u32)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
@@ -385,23 +388,39 @@ fn read_mesh(
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
             let mut position_iter = reader.read_positions().unwrap();
-
+            let mut count = position_iter.len();
             //let mut normal_iter = reader.read_normals().unwrap();
             //let mut tangent_iter = reader.read_tangents().unwrap();
 
-            let mut tex_iter = reader.read_tex_coords(0).unwrap().into_f32();
+            let tex_iter1 = reader.read_tex_coords(0);
+            let p: Vec<[f32; 2]> =  if tex_iter1.is_some() {
+                let r: Vec<[f32; 2]> = tex_iter1.unwrap().into_f32().collect();
+                assert_eq!(count,r.len());
+                r
+            } else {
+                error!("No tex_coords ! Non existing 'texcoord_0' will cause garbage values!");
+                vec![[0.0f32 , 0.0f32]]
+            };
+            let mut tex_iter = p.into_iter().cycle();
 
-            let mut joints_iter = if reader.read_joints(0).is_some() {
-                reader.read_joints(0).unwrap().into_u16()
+            let joints = reader.read_joints(0);
+            let jvecarr: Vec<[u16; 4]> =  if joints.is_some() && read_joints {
+                let j: Vec<[u16; 4]> = joints.unwrap().into_u16().collect();
+                assert_eq!(count,j.len());
+                j
             } else {
                 error!("No joints in glTF file !");
-                panic!("No joints in glTF file !");
+                if read_joints {
+                    panic!("No joints in glTF file but --skeleton flag was set!")
+                }
+                vec![[0,0,0,0]]
             };
+            let mut joints_iter = jvecarr.into_iter().cycle();
+            
 
-            let mut count = position_iter.len();
-
+            
             let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(count);
-
+            let mut vertsize = 0;
             while count > 0 {
                 let vertex_position = position_iter.next().unwrap();
                 let p4h = P4h {
@@ -487,7 +506,18 @@ fn read_mesh(
                     ],
                 };
 
-                let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
+                let k = if read_joints {
+                    VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b)
+                } else {
+                    VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h)
+                };
+
+                vertsize = if read_joints {
+                    VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b
+                } else {
+                    VertexFormatSize::P4h_N4b_G4b_B4b_T2h
+                };
+                
                 //let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b,t2h, i4b);
                 verts_vec.push(k);
                 count -= 1;
@@ -513,7 +543,7 @@ fn read_mesh(
                 triangle_vec.push(t);
             }
 
-            return Some((verts_vec, triangle_vec));
+            return Some((verts_vec, triangle_vec,vertsize));
         }
     }
     None

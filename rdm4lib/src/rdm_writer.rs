@@ -47,11 +47,12 @@ impl RDWriter {
     }
 
     fn put_header(&mut self) {
+        // 0x72, 0x58,0x01, 0x00
         static RAW_DATA: [u8; 156] = [
             0x52, 0x44, 0x4D, 0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
             0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00,
-            0x54, 0x00, 0x00, 0x00, 0x4B, 0x01, 0x00, 0x00, 0x7F, 0x57, 0x01, 0x00, 0x72, 0x58,
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x54, 0x00, 0x00, 0x00, 0x4B, 0x01, 0x00, 0x00, 0x7F, 0x57, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00,
             0xA4, 0x00, 0x00, 0x00, 0x25, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -232,19 +233,26 @@ impl RDWriter {
                 0x00, 0x00,
             ];
 
-            //P4h_N4b_G4b_B4b_T2h_I4b
-            self.buf.put_u32_le(6);
-            self.buf.put_u32_le(16);
-
-            //self.buf.put_u32_le(4);
-            //self.buf.put_u32_le(16);
-
-            self.buf.put_slice(&P4H_IDENTIFIER);
-            self.buf.put_slice(&N4B_IDENTIFIER);
-            self.buf.put_slice(&G4B_IDENTIFIER);
-            self.buf.put_slice(&B4B_IDENTIFIER);
-            self.buf.put_slice(&T2H_IDENTIFIER);
-            self.buf.put_slice(&I4B_IDENTIFIER);
+            if self.input.has_skin() {
+                //P4h_N4b_G4b_B4b_T2h_I4b
+                self.buf.put_u32_le(6);
+                self.buf.put_u32_le(16);
+                self.buf.put_slice(&P4H_IDENTIFIER);
+                self.buf.put_slice(&N4B_IDENTIFIER);
+                self.buf.put_slice(&G4B_IDENTIFIER);
+                self.buf.put_slice(&B4B_IDENTIFIER);
+                self.buf.put_slice(&T2H_IDENTIFIER);
+                self.buf.put_slice(&I4B_IDENTIFIER);
+            } else {
+                // P4h_N4b_G4b_B4b_T2h
+                self.buf.put_u32_le(5);
+                self.buf.put_u32_le(16);
+                self.buf.put_slice(&P4H_IDENTIFIER);
+                self.buf.put_slice(&N4B_IDENTIFIER);
+                self.buf.put_slice(&G4B_IDENTIFIER);
+                self.buf.put_slice(&B4B_IDENTIFIER);
+                self.buf.put_slice(&T2H_IDENTIFIER);
+            }
         }
 
         {
@@ -291,7 +299,7 @@ impl RDWriter {
             self.buf.put_slice(&ZERO_20_OF_28);
         }
 
-        assert_eq!(self.buf.len(), 704);
+        assert_eq!(true, 704 == self.buf.len() || 704 - 16 == self.buf.len());
 
         //to be patched:
         // anim off 40
@@ -341,6 +349,13 @@ impl RDWriter {
                     self.buf.put_n4b(n4b);
                     self.buf.put_t2h(t2h);
                     self.buf.put_i4b(i4b);
+                }
+                VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h) => {
+                    self.buf.put_p4h(p4h);
+                    self.buf.put_n4b(n4b);
+                    self.buf.put_g4b(g4b);
+                    self.buf.put_b4b(b4b);
+                    self.buf.put_t2h(t2h);
                 }
                 _ => todo!(),
             }
