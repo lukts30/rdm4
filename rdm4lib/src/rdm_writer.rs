@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Write;
 
 use crate::*;
+use byteorder::ByteOrder;
 
 pub struct RDWriter {
     meta_deref: u32,
@@ -72,12 +73,9 @@ impl RDWriter {
         self.buf.put_u32_le(export_name.len() as u32);
         self.buf.put_u32_le(1);
         {
-            let path_str_ptr = (self.buf.len() as u32).to_le_bytes();
-            let buff_off = 84 as usize;
-            self.buf[buff_off] = path_str_ptr[0];
-            self.buf[buff_off + 1] = path_str_ptr[1];
-            self.buf[buff_off + 2] = path_str_ptr[2];
-            self.buf[buff_off + 3] = path_str_ptr[3];
+            let path_str_ptr = self.buf.len() as u32;
+            let buff_off = 84;
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
         }
         self.buf.put_slice(export_name);
 
@@ -85,12 +83,9 @@ impl RDWriter {
         self.buf.put_u32_le(export_name_2.len() as u32);
         self.buf.put_u32_le(1);
         {
-            let file_str_ptr = (self.buf.len() as u32).to_le_bytes();
-            let buff_off = 88 as usize;
-            self.buf[buff_off] = file_str_ptr[0];
-            self.buf[buff_off + 1] = file_str_ptr[1];
-            self.buf[buff_off + 2] = file_str_ptr[2];
-            self.buf[buff_off + 3] = file_str_ptr[3];
+            let file_str_ptr = self.buf.len() as u32;
+            let buff_off = 88;
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
         }
         self.buf.put_slice(export_name_2);
 
@@ -102,12 +97,8 @@ impl RDWriter {
             {
                 let meta_ptr = self.buf.len() as u32;
                 self.meta_deref = meta_ptr;
-                let meta_ptr_arr = meta_ptr.to_le_bytes();
-                let buff_off = (32) as usize;
-                self.buf[buff_off] = meta_ptr_arr[0];
-                self.buf[buff_off + 1] = meta_ptr_arr[1];
-                self.buf[buff_off + 2] = meta_ptr_arr[2];
-                self.buf[buff_off + 3] = meta_ptr_arr[3];
+                let buff_off = 32;
+                byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
             }
 
             // 52 bytes data + 50 Bytes 0x0  = 92 bytes
@@ -176,12 +167,12 @@ impl RDWriter {
             self.buf.put_u32_le(24);
 
             {
-                let meta_id_ptr = (self.buf.len() as u32).to_le_bytes();
+                let meta_id_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 4) as usize;
-                self.buf[buff_off] = meta_id_ptr[0];
-                self.buf[buff_off + 1] = meta_id_ptr[1];
-                self.buf[buff_off + 2] = meta_id_ptr[2];
-                self.buf[buff_off + 3] = meta_id_ptr[3];
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[buff_off..buff_off + 4],
+                    meta_id_ptr,
+                );
             }
 
             self.buf.put_u32_le(self.buf.len() as u32 + 8 + 24);
@@ -261,12 +252,12 @@ impl RDWriter {
             self.buf.put_u32_le(20);
 
             {
-                let meta_unknown_ptr = (self.buf.len() as u32).to_le_bytes();
+                let meta_unknown_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 8) as usize;
-                self.buf[buff_off] = meta_unknown_ptr[0];
-                self.buf[buff_off + 1] = meta_unknown_ptr[1];
-                self.buf[buff_off + 2] = meta_unknown_ptr[2];
-                self.buf[buff_off + 3] = meta_unknown_ptr[3];
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[buff_off..buff_off + 4],
+                    meta_unknown_ptr,
+                );
             }
 
             static UNKNOWN: [u8; 20] = [
@@ -281,12 +272,12 @@ impl RDWriter {
             self.buf.put_u32_le(28);
 
             {
-                let triangle_count_ptr = (self.buf.len() as u32).to_le_bytes();
+                let triangle_count_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 20) as usize;
-                self.buf[buff_off] = triangle_count_ptr[0];
-                self.buf[buff_off + 1] = triangle_count_ptr[1];
-                self.buf[buff_off + 2] = triangle_count_ptr[2];
-                self.buf[buff_off + 3] = triangle_count_ptr[3];
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[buff_off..buff_off + 4],
+                    triangle_count_ptr,
+                );
             }
 
             self.buf.put_u32_le(0);
@@ -318,12 +309,9 @@ impl RDWriter {
         self.buf.put_u32_le(self.input.vertex_buffer_size);
 
         {
-            let vertex_ptr = (self.buf.len() as u32).to_le_bytes();
+            let vertex_ptr = self.buf.len() as u32;
             let buff_off = (self.meta_deref + RDModell::VERTEX_META) as usize;
-            self.buf[buff_off] = vertex_ptr[0];
-            self.buf[buff_off + 1] = vertex_ptr[1];
-            self.buf[buff_off + 2] = vertex_ptr[2];
-            self.buf[buff_off + 3] = vertex_ptr[3];
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], vertex_ptr);
         }
 
         for vert in self.input.vertices.iter() {
@@ -367,12 +355,12 @@ impl RDWriter {
         self.buf.put_u32_le(2);
 
         {
-            let vertex_ptr = (self.buf.len() as u32).to_le_bytes();
+            let triangle_list_ptr = self.buf.len() as u32;
             let buff_off = (self.meta_deref + RDModell::TRIANGLES_META) as usize;
-            self.buf[buff_off] = vertex_ptr[0];
-            self.buf[buff_off + 1] = vertex_ptr[1];
-            self.buf[buff_off + 2] = vertex_ptr[2];
-            self.buf[buff_off + 3] = vertex_ptr[3];
+            byteorder::NativeEndian::write_u32(
+                &mut self.buf[buff_off..buff_off + 4],
+                triangle_list_ptr,
+            );
         }
 
         for triangle in self.input.triangle_indices.iter() {
@@ -384,12 +372,9 @@ impl RDWriter {
 
     fn put_blob(&mut self) {
         {
-            let vertex_ptr = (self.buf.len() as u32 + 8).to_le_bytes();
-            let buff_off = (36) as usize;
-            self.buf[buff_off] = vertex_ptr[0];
-            self.buf[buff_off + 1] = vertex_ptr[1];
-            self.buf[buff_off + 2] = vertex_ptr[2];
-            self.buf[buff_off + 3] = vertex_ptr[3];
+            let blob_ptr = self.buf.len() as u32 + 8;
+            let buff_off = 36;
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], blob_ptr);
         }
 
         let start = self.buf.len();
@@ -400,7 +385,7 @@ impl RDWriter {
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(28);
 
-            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 28);
+            self.buf.put_u32_le(self.buf.len() as u32 + 4 + 24 + 8);
 
             static UNKNOWN: [u8; 24] = [
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -453,12 +438,9 @@ impl RDWriter {
         self.buf.put_u32_le(1);
         self.buf.put_u32_le(32);
         {
-            let skin_ptr_ptr = (self.buf.len() as u32).to_le_bytes();
-            let buff_off = (40) as usize;
-            self.buf[buff_off] = skin_ptr_ptr[0];
-            self.buf[buff_off + 1] = skin_ptr_ptr[1];
-            self.buf[buff_off + 2] = skin_ptr_ptr[2];
-            self.buf[buff_off + 3] = skin_ptr_ptr[3];
+            let skin_ptr_ptr = self.buf.len() as u32;
+            let buff_off = 40;
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], skin_ptr_ptr);
         }
         self.buf.put_u32_le((self.buf.len() + 32 + 8) as u32); //first joint ptr
 
@@ -544,12 +526,12 @@ impl RDWriter {
             self.buf.put_u32_le(1);
 
             {
-                let jname_ptr = (self.buf.len() as u32).to_le_bytes();
+                let jname_ptr = self.buf.len() as u32;
                 let buff_off = *name_ptr_itr.next().unwrap();
-                self.buf[buff_off] = jname_ptr[0];
-                self.buf[buff_off + 1] = jname_ptr[1];
-                self.buf[buff_off + 2] = jname_ptr[2];
-                self.buf[buff_off + 3] = jname_ptr[3];
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[buff_off..buff_off + 4],
+                    jname_ptr,
+                );
             }
 
             self.buf.put_slice(joint.name.as_ref());
@@ -560,7 +542,7 @@ impl RDWriter {
         let _ = fs::create_dir("rdm_out");
 
         let mut writer = fs::File::create("rdm_out/out.rdm").expect("I/O error");
-        writer.write_all(&self.buf.to_vec()).expect("I/O error");
+        writer.write_all(&self.buf).expect("I/O error");
     }
 }
 

@@ -1,5 +1,6 @@
 use bytes::{BufMut, BytesMut};
 
+use byteorder::ByteOrder;
 use std::fs;
 use std::io::Write;
 
@@ -46,12 +47,9 @@ impl RDAnimWriter {
         self.buf.put_u32_le(export_name.len() as u32);
         self.buf.put_u32_le(1);
         {
-            let path_str_ptr = (self.buf.len() as u32).to_le_bytes();
+            let path_str_ptr = self.buf.len() as u32;
             let buff_off = 84 as usize;
-            self.buf[buff_off] = path_str_ptr[0];
-            self.buf[buff_off + 1] = path_str_ptr[1];
-            self.buf[buff_off + 2] = path_str_ptr[2];
-            self.buf[buff_off + 3] = path_str_ptr[3];
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
         }
         self.buf.put_slice(export_name);
 
@@ -59,12 +57,9 @@ impl RDAnimWriter {
         self.buf.put_u32_le(export_name_2.len() as u32);
         self.buf.put_u32_le(1);
         {
-            let file_str_ptr = (self.buf.len() as u32).to_le_bytes();
+            let file_str_ptr = self.buf.len() as u32;
             let buff_off = 88 as usize;
-            self.buf[buff_off] = file_str_ptr[0];
-            self.buf[buff_off + 1] = file_str_ptr[1];
-            self.buf[buff_off + 2] = file_str_ptr[2];
-            self.buf[buff_off + 3] = file_str_ptr[3];
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
         }
         self.buf.put_slice(export_name_2);
 
@@ -75,12 +70,9 @@ impl RDAnimWriter {
         self.buf.put_u32_le(48);
 
         {
-            let meta_ptr = (self.buf.len() as u32).to_le_bytes();
+            let meta_ptr = self.buf.len() as u32;
             let buff_off = 44 as usize;
-            self.buf[buff_off] = meta_ptr[0];
-            self.buf[buff_off + 1] = meta_ptr[1];
-            self.buf[buff_off + 2] = meta_ptr[2];
-            self.buf[buff_off + 3] = meta_ptr[3];
+            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
         }
 
         self.buf.put_u32_le(self.buf.len() as u32 + 8 + 48);
@@ -133,19 +125,17 @@ impl RDAnimWriter {
             //TODO only ascii
             {
                 let joint_target_str_u32 = self.buf.len() as u32;
-                let joint_target_str = joint_target_str_u32.to_le_bytes();
+                let joint_target_str = joint_target_str_u32;
                 let buff_off = self.jtable_deref as usize + i * 24;
-                self.buf[buff_off] = joint_target_str[0];
-                self.buf[buff_off + 1] = joint_target_str[1];
-                self.buf[buff_off + 2] = joint_target_str[2];
-                self.buf[buff_off + 3] = joint_target_str[3];
-
-                let joint_target_data =
-                    (joint_target_str_u32 + collection.name.len() as u32 + 8).to_le_bytes();
-                self.buf[buff_off + 4] = joint_target_data[0];
-                self.buf[buff_off + 5] = joint_target_data[1];
-                self.buf[buff_off + 6] = joint_target_data[2];
-                self.buf[buff_off + 7] = joint_target_data[3];
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[buff_off..buff_off + 4],
+                    joint_target_str,
+                );
+                let joint_target_data = joint_target_str_u32 + collection.name.len() as u32 + 8;
+                byteorder::NativeEndian::write_u32(
+                    &mut self.buf[(buff_off + 4)..(buff_off + 8)],
+                    joint_target_data,
+                );
             }
             self.buf.put_slice(&collection.name.as_bytes());
 
@@ -171,7 +161,7 @@ impl RDAnimWriter {
         let _ = fs::create_dir("rdm_out");
 
         let mut writer = fs::File::create("rdm_out/anim.rdm").expect("I/O error");
-        writer.write_all(&self.buf.to_vec()).expect("I/O error");
+        writer.write_all(&self.buf).expect("I/O error");
     }
 }
 

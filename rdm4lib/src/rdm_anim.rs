@@ -4,6 +4,7 @@ use std::path::Path;
 use std::fs::File;
 
 use crate::RDModell;
+use crate::Seek;
 use std::str;
 
 #[derive(Debug, Copy, Clone)]
@@ -30,19 +31,19 @@ pub struct RDAnim {
 impl RDAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut buffer = Bytes::from(buffer);
-        let size = buffer.len();
+        let size = buffer.len() as u32;
 
         buffer.advance(44);
 
-        let base_offset = buffer.get_u32_le() as usize;
+        let base_offset = buffer.get_u32_le();
 
-        buffer.advance(base_offset - (size - buffer.remaining()));
+        buffer.seek(base_offset, size);
 
-        let model_str_ptr = buffer.get_u32_le() as usize;
+        let model_str_ptr = buffer.get_u32_le();
         buffer.advance(4);
         let time_max = buffer.get_u32_le();
 
-        buffer.advance(model_str_ptr - RDModell::META_COUNT as usize - (size - buffer.remaining()));
+        buffer.seek(model_str_ptr - RDModell::META_COUNT, size);
 
         let model_str_len = buffer.get_u32_le() as usize;
         assert_eq!(model_str_len > 1, true);
@@ -59,9 +60,9 @@ impl RDAnim {
         assert_eq!(joint_targets_tables_size, 24);
         info!("joint_targets_count: {}", joint_targets_num);
 
-        let mut jtable: Vec<(usize, usize)> = Vec::with_capacity(joint_targets_num);
+        let mut jtable: Vec<(u32, u32)> = Vec::with_capacity(joint_targets_num);
         for _ in 0..joint_targets_num {
-            jtable.push((buffer.get_u32_le() as usize, buffer.get_u32_le() as usize));
+            jtable.push((buffer.get_u32_le(), buffer.get_u32_le()));
 
             buffer.advance(16);
         }
@@ -73,7 +74,7 @@ impl RDAnim {
         for ent in &jtable {
             trace!("ent.0: {}", ent.0);
             trace!("buffer.remaining(): {}", buffer.remaining());
-            buffer.advance(ent.0 - RDModell::META_COUNT as usize - (size - buffer.remaining()));
+            buffer.seek(ent.0 - RDModell::META_COUNT, size);
             let ent_str_len = buffer.get_u32_le() as usize;
             assert_eq!(ent_str_len > 1, true);
             assert_eq!(buffer.get_u32_le(), 1);

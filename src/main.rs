@@ -47,7 +47,12 @@ struct Opts {
     skeleton: bool,
 
     /// Export (available) animation. RDM to glTF needs external animation file (rdanimation)
-    #[clap(short = "a", long = "animation", display_order(3), requires("skeleton"))]
+    #[clap(
+        short = "a",
+        long = "animation",
+        display_order(3),
+        requires("skeleton")
+    )]
     animation: bool,
 
     /// External animation file for rdm

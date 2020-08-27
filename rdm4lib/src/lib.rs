@@ -106,6 +106,18 @@ impl GetVertex for Bytes {
     }
 }
 
+trait Seek {
+    fn seek(&mut self, from_start: u32, file_size: u32);
+}
+
+impl Seek for Bytes {
+    fn seek(&mut self, offset_from_start: u32, file_size: u32) {
+        let already_read = file_size - self.remaining() as u32;
+        let cnt: usize = (offset_from_start.checked_sub(already_read).unwrap()) as usize;
+        self.advance(cnt);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RDJoint {
     name: String,
@@ -161,15 +173,12 @@ impl RDModell {
         let skin_offset = skin_buffer.get_u32_le();
         assert_eq!(skin_offset != 0, true, "File does not contain a skin !");
 
-        let rel_skin_offset: usize =
-            (skin_offset - (self.size - skin_buffer.remaining() as u32)) as usize;
-        skin_buffer.advance(rel_skin_offset);
-        let first_skin_offset = skin_buffer.get_u32_le();
+        skin_buffer.seek(skin_offset, self.size);
 
+        let first_skin_offset = skin_buffer.get_u32_le();
         let joint_count_ptr = first_skin_offset - RDModell::META_COUNT;
-        let rel_joint_count: usize =
-            (joint_count_ptr - (self.size - skin_buffer.remaining() as u32)) as usize;
-        skin_buffer.advance(rel_joint_count);
+
+        skin_buffer.seek(joint_count_ptr, self.size);
 
         let joint_count = skin_buffer.get_u32_le();
         let joint_size = skin_buffer.get_u32_le();
@@ -179,10 +188,7 @@ impl RDModell {
         let mut joint_name_buffer = skin_buffer.clone();
 
         let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RDModell::META_COUNT;
-        let rel_len_first_joint_name_ptr: usize = (len_first_joint_name_ptr
-            - (self.size - joint_name_buffer.remaining() as u32))
-            as usize;
-        joint_name_buffer.advance(rel_len_first_joint_name_ptr);
+        joint_name_buffer.seek(len_first_joint_name_ptr, self.size);
 
         assert_eq!(joint_size, 84);
         for _ in 0..joint_count {
@@ -254,7 +260,7 @@ impl RDModell {
         nbuffer.get_u32_le();
         let skin_there = nbuffer.get_u32_le() > 0;
 
-        nbuffer.advance((meta - (size - nbuffer.remaining() as u32)) as usize);
+        nbuffer.seek(meta, size);
         nbuffer.advance(RDModell::VERTEX_META as usize);
         let vertex_offset = nbuffer.get_u32_le();
 
@@ -262,7 +268,7 @@ impl RDModell {
 
         let vertex_count_off = vertex_offset - RDModell::META_COUNT;
         info!("off : {}", vertex_count_off);
-        nbuffer.advance((vertex_count_off - (size - nbuffer.remaining() as u32)) as usize);
+        nbuffer.seek(vertex_count_off, size);
         let vertices_count = nbuffer.get_u32_le();
         let vertex_buffer_size = nbuffer.get_u32_le();
 
@@ -276,7 +282,7 @@ impl RDModell {
         );
 
         let triangles_count_off = triangles_offset - RDModell::META_COUNT;
-        nbuffer.advance((triangles_count_off - (size - nbuffer.remaining() as u32)) as usize);
+        nbuffer.seek(triangles_count_off, size);
         let triangles_idx_count = nbuffer.get_u32_le();
         let triangles_idx_size = nbuffer.get_u32_le();
 

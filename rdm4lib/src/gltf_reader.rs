@@ -219,7 +219,7 @@ pub fn read_animation(
 pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
 
-    let gltf_imp = read_mesh(&gltf, &buffers,load_skin).unwrap();
+    let gltf_imp = read_mesh(&gltf, &buffers, load_skin).unwrap();
     let size = 0;
     let vertices_vec = gltf_imp.0;
     let triangles = gltf_imp.1;
@@ -376,7 +376,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 fn read_mesh(
     gltf: &gltf::Document,
     buffers: &[gltf::buffer::Data],
-    read_joints: bool
+    read_joints: bool,
 ) -> Option<(Vec<VertexFormat>, Vec<Triangle>, u32)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
@@ -393,32 +393,30 @@ fn read_mesh(
             //let mut tangent_iter = reader.read_tangents().unwrap();
 
             let tex_iter1 = reader.read_tex_coords(0);
-            let p: Vec<[f32; 2]> =  if tex_iter1.is_some() {
+            let p: Vec<[f32; 2]> = if tex_iter1.is_some() {
                 let r: Vec<[f32; 2]> = tex_iter1.unwrap().into_f32().collect();
-                assert_eq!(count,r.len());
+                assert_eq!(count, r.len());
                 r
             } else {
                 error!("No tex_coords ! Non existing 'texcoord_0' will cause garbage values!");
-                vec![[0.0f32 , 0.0f32]]
+                vec![[0.0f32, 0.0f32]]
             };
             let mut tex_iter = p.into_iter().cycle();
 
             let joints = reader.read_joints(0);
-            let jvecarr: Vec<[u16; 4]> =  if joints.is_some() && read_joints {
+            let jvecarr: Vec<[u16; 4]> = if joints.is_some() && read_joints {
                 let j: Vec<[u16; 4]> = joints.unwrap().into_u16().collect();
-                assert_eq!(count,j.len());
+                assert_eq!(count, j.len());
                 j
             } else {
                 error!("No joints in glTF file !");
                 if read_joints {
                     panic!("No joints in glTF file but --skeleton flag was set!")
                 }
-                vec![[0,0,0,0]]
+                vec![[0, 0, 0, 0]]
             };
             let mut joints_iter = jvecarr.into_iter().cycle();
-            
 
-            
             let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(count);
             let mut vertsize = 0;
             while count > 0 {
@@ -517,7 +515,7 @@ fn read_mesh(
                 } else {
                     VertexFormatSize::P4h_N4b_G4b_B4b_T2h
                 };
-                
+
                 //let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b,t2h, i4b);
                 verts_vec.push(k);
                 count -= 1;
@@ -543,7 +541,7 @@ fn read_mesh(
                 triangle_vec.push(t);
             }
 
-            return Some((verts_vec, triangle_vec,vertsize));
+            return Some((verts_vec, triangle_vec, vertsize));
         }
     }
     None

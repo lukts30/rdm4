@@ -580,6 +580,7 @@ name = "rdm4lib"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "byteorder",
  "bytes",
  "env_logger",
  "gltf",
