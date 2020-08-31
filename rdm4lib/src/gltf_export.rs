@@ -339,54 +339,58 @@ impl RDGltfBuilder {
     fn put_joint_weight(&mut self) {
         let input_vec = &self.rdm.vertices;
 
-        let mut joint_weight_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
+        let mut weight_ap_joint_buf = BytesMut::with_capacity((4 + 4 * 4) * input_vec.len());
+        let mut joint_buf = BytesMut::with_capacity(4 * input_vec.len());
         let mut weight: [f32; 4] = [1.0, 0.0, 0.0, 0.0];
 
-        for vert in input_vec {
-            match vert {
-                VertexFormat::P4h_N4b_T2h_I4b(_, _, _, i4b)
-                | VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, i4b) => {
-                    /* 'ACCESSOR_JOINTS_USED_ZERO_WEIGHT'
-                    Must only have one joint/blend_idx since the others are zero weight
-                    only problematic if gltf -> lossy rdm target while keeping all blend_idx from gltf -> gltf
-                    TODO: do not write all idx in rdm_writer  */
+        match input_vec {
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => {
+                /* 'ACCESSOR_JOINTS_USED_ZERO_WEIGHT'
+                Must only have one joint/blend_idx since the others are zero weight
+                only problematic if gltf -> lossy rdm target while keeping all blend_idx from gltf -> gltf
+                TODO: do not write all idx in rdm_writer  */
+                for e in v {
+                    joint_buf.put_u8(e.get_i4b().blend_idx[0]);
+                    joint_buf.put_u8(0);
+                    joint_buf.put_u8(0);
+                    joint_buf.put_u8(0);
 
-                    joint_weight_buf.put_u8(i4b.blend_idx[0]);
-                    joint_weight_buf.put_u8(0);
-                    joint_weight_buf.put_u8(0);
-                    joint_weight_buf.put_u8(0);
-
-                    joint_weight_buf.put_f32_le(weight[0]); // > 0.0
-                    joint_weight_buf.put_f32_le(weight[1]); // 0.0
-                    joint_weight_buf.put_f32_le(weight[2]); // 0.0
-                    joint_weight_buf.put_f32_le(weight[3]); // 0.0
+                    weight_ap_joint_buf.put_f32_le(weight[0]); // > 0.0
+                    weight_ap_joint_buf.put_f32_le(weight[1]); // 0.0
+                    weight_ap_joint_buf.put_f32_le(weight[2]); // 0.0
+                    weight_ap_joint_buf.put_f32_le(weight[3]); // 0.0
                 }
-                VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, i4b, w4b) => {
+            }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => {
+                for e in v {
                     weight = [
-                        w4b.blend_weight[0] as f32 / 255.0,
-                        w4b.blend_weight[1] as f32 / 255.0,
-                        w4b.blend_weight[2] as f32 / 255.0,
-                        w4b.blend_weight[3] as f32 / 255.0,
+                        e.get_w4b().blend_weight[0] as f32 / 255.0,
+                        e.get_w4b().blend_weight[1] as f32 / 255.0,
+                        e.get_w4b().blend_weight[2] as f32 / 255.0,
+                        e.get_w4b().blend_weight[3] as f32 / 255.0,
                     ];
 
-                    joint_weight_buf.put_slice(&i4b.blend_idx);
-                    joint_weight_buf.put_f32_le(weight[0]);
-                    joint_weight_buf.put_f32_le(weight[1]);
-                    joint_weight_buf.put_f32_le(weight[2]);
-                    joint_weight_buf.put_f32_le(weight[3]);
+                    joint_buf.put_slice(&e.get_i4b().blend_idx);
+
+                    weight_ap_joint_buf.put_f32_le(weight[0]);
+                    weight_ap_joint_buf.put_f32_le(weight[1]);
+                    weight_ap_joint_buf.put_f32_le(weight[2]);
+                    weight_ap_joint_buf.put_f32_le(weight[3]);
                 }
+            }
 
-                _ => panic!("not supported !"),
-            };
-        }
+            _ => panic!("not supported !"),
+        };
 
-        let real_len = joint_weight_buf.len() as u32;
-        joint_weight_buf.put_u32_le(0);
+        let weight_len = weight_ap_joint_buf.len() as u32;
+        let joint_len = joint_buf.len() as u32;
+        weight_ap_joint_buf.put_slice(&joint_buf);
+        weight_ap_joint_buf.put_u32_le(0);
 
-        let jw_buffer_p = self.obj.push_buffer(joint_weight_buf.to_vec());
+        let jw_buffer_p = self.obj.push_buffer(weight_ap_joint_buf.to_vec());
 
         let jw_buffer = json::Buffer {
-            byte_length: joint_weight_buf.len() as u32,
+            byte_length: weight_ap_joint_buf.len() as u32,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -397,9 +401,9 @@ impl RDGltfBuilder {
 
         let joint_buffer_view = json::buffer::View {
             buffer: json::Index::new(jw_buffer_p.idx),
-            byte_length: real_len,
-            byte_offset: None,
-            byte_stride: Some(20),
+            byte_length: joint_len,
+            byte_offset: Some(weight_len),
+            byte_stride: None,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -429,9 +433,9 @@ impl RDGltfBuilder {
 
         let weight_buffer_view = json::buffer::View {
             buffer: json::Index::new(jw_buffer_p.idx),
-            byte_length: real_len,
-            byte_offset: Some(4),
-            byte_stride: Some(20),
+            byte_length: weight_len,
+            byte_offset: None,
+            byte_stride: None,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -748,8 +752,7 @@ impl RDGltfBuilder {
         let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
         let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
 
-        for vert in input_vec {
-            let p4h = vert.get_p4h();
+        for p4h in input_vec.iter_p4h() {
             let x = p4h.pos[0].to_f32();
             let y = p4h.pos[1].to_f32();
             let z = p4h.pos[2].to_f32();
@@ -836,8 +839,7 @@ impl RDGltfBuilder {
         let mut buff = BytesMut::with_capacity(1000);
         let input_vec = &self.rdm.vertices;
 
-        for vert in input_vec {
-            let t2h = vert.get_t2h();
+        for t2h in input_vec.iter_t2h() {
             buff.put_f32_le(t2h.tex[0].to_f32());
             buff.put_f32_le(t2h.tex[1].to_f32());
         }
@@ -902,9 +904,7 @@ impl RDGltfBuilder {
         let mut buff = BytesMut::with_capacity(1000);
         let input_vec = &self.rdm.vertices;
 
-        for vert in input_vec {
-            let n4b = vert.get_n4b();
-
+        for n4b in self.rdm.vertices.iter_n4b() {
             let nx = ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32;
             let ny = ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32;
             let nz = ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32;
@@ -977,6 +977,8 @@ impl RDGltfBuilder {
 
     #[allow(dead_code)]
     fn put_tangent(&mut self) {
+        unimplemented!("put_tangent");
+        /*
         let mut buff = BytesMut::with_capacity(1000);
         let input_vec = &self.rdm.vertices;
 
@@ -1058,6 +1060,7 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::Tangents),
             json::Index::new(accessors_idx),
         );
+        */
     }
 
     fn put_idx(&mut self) {

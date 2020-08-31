@@ -6,7 +6,7 @@ use std::fs::File;
 use std::str;
 
 use half::f16;
-use std::fmt;
+use std::slice;
 
 use nalgebra::*;
 
@@ -16,6 +16,10 @@ extern crate log;
 #[macro_use]
 extern crate approx;
 
+#[allow(unused_imports)]
+#[macro_use]
+extern crate memoffset;
+
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod rdm_anim;
@@ -23,11 +27,12 @@ pub mod rdm_anim_writer;
 pub mod rdm_writer;
 use crate::rdm_anim::RDAnim;
 
+#[derive(Debug)]
 pub struct RDModell {
     size: u32,
     buffer: Bytes,
     pub joints: Option<Vec<RDJoint>>,
-    vertices: Vec<VertexFormat>,
+    vertices: VertexFormat,
     pub triangle_indices: Vec<Triangle>,
 
     meta: u32,
@@ -269,6 +274,7 @@ impl RDModell {
         let vertex_count_off = vertex_offset - RDModell::META_COUNT;
         info!("off : {}", vertex_count_off);
         nbuffer.seek(vertex_count_off, size);
+
         let vertices_count = nbuffer.get_u32_le();
         let vertex_buffer_size = nbuffer.get_u32_le();
 
@@ -325,309 +331,165 @@ impl RDModell {
         }
     }
 
+    #[cfg(target_endian = "little")]
     fn read_vertices_vec(
         vertex_buffer_size: u32,
         vertices_count: u32,
         skin_there: bool,
-        vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        match vertex_buffer_size {
+        mut vert_read_buf: Bytes,
+    ) -> Option<VertexFormat> {
+        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
+        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
+
+        let out = match vertex_buffer_size {
             VertexFormatSize::P4h => {
-                RDModell::read_p4h(vertex_buffer_size, vertices_count, vert_read_buf)
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h(x))
             }
             VertexFormatSize::P4h_N4b_T2h if !skin_there => {
-                RDModell::read_p4h_n4b_t2h(vertex_buffer_size, vertices_count, vert_read_buf)
-            }
-            VertexFormatSize::P4h_N4b_T2h_C4c if !skin_there => {
-                RDModell::read_p4h_n4b_t2h_c4c(vertex_buffer_size, vertices_count, vert_read_buf)
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_T2h_I4b",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_T2h(x))
             }
             VertexFormatSize::P4h_N4b_T2h_I4b if skin_there => {
-                RDModell::read_p4h_n4b_t2h_i4b(vertex_buffer_size, vertices_count, vert_read_buf)
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_T2h_I4b",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_T2h_I4b(x))
             }
             VertexFormatSize::P4h_N4b_G4b_B4b_T2h if !skin_there => {
-                RDModell::read_p4h_n4b_g4b_b4b_t2h(
-                    vertex_buffer_size,
-                    vertices_count,
-                    vert_read_buf,
-                )
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_G4b_B4b_T2h",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_G4b_B4b_T2h(x))
             }
             VertexFormatSize::P4h_N4b_T2h_I4b_W4b if skin_there => {
-                RDModell::read_p4h_n4b_t2h_i4b_w4b(
-                    vertex_buffer_size,
-                    vertices_count,
-                    vert_read_buf,
-                )
-            }
-            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_C4c if !skin_there => {
-                RDModell::read_p4h_n4b_g4b_b4b_t2h_c4c(
-                    vertex_buffer_size,
-                    vertices_count,
-                    vert_read_buf,
-                )
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_T2h_I4b_W4b",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_T2h_I4b_W4b(x))
             }
             VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b if skin_there => {
-                RDModell::read_p4h_n4b_g4b_b4b_t2h_i4b(
-                    vertex_buffer_size,
-                    vertices_count,
-                    vert_read_buf,
-                )
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_G4b_B4b_T2h_I4b",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(x))
             }
-            _ => {
-                error!("vertices use unrecognized size of {}", vertex_buffer_size);
-                None
+            VertexFormatSize::P4h_N4b_T2h_C4c if !skin_there => {
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_T2h_C4c",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_T2h_C4c(x))
             }
-        }
-    }
-
-    fn read_p4h(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let k = VertexFormat::P4h(p4h);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_t2h(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let t2h = vert_read_buf.get_t2h();
-
-            let k = VertexFormat::P4h_N4b_T2h(p4h, n4b, t2h);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_T2h ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_t2h_c4c(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let t2h = vert_read_buf.get_t2h();
-            let c4c = vert_read_buf.get_c4c();
-
-            let k = VertexFormat::P4h_N4b_T2h_C4c(p4h, n4b, t2h, c4c);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_T2h_C4c ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_t2h_i4b(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let t2h = vert_read_buf.get_t2h();
-            let i4b = vert_read_buf.get_i4b();
-
-            let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b, t2h, i4b);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_T2h_I4b ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_g4b_b4b_t2h(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let g4b = vert_read_buf.get_g4b();
-            let b4b = vert_read_buf.get_b4b();
-            let t2h = vert_read_buf.get_t2h();
-            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_t2h_i4b_w4b(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let t2h = vert_read_buf.get_t2h();
-
-            let i4b = vert_read_buf.get_i4b();
-            let w4b = vert_read_buf.get_w4b();
-
-            let k = VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, n4b, t2h, i4b, w4b);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_T2h_I4b_W4b ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_g4b_b4b_t2h_c4c(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let g4b = vert_read_buf.get_g4b();
-            let b4b = vert_read_buf.get_b4b();
-            let t2h = vert_read_buf.get_t2h();
-            let c4c = vert_read_buf.get_c4c();
-            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, n4b, g4b, b4b, t2h, c4c);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_C4c ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-
-        Some(verts_vec)
-    }
-
-    fn read_p4h_n4b_g4b_b4b_t2h_i4b(
-        vertex_buffer_size: u32,
-        vertices_count: u32,
-        mut vert_read_buf: Bytes,
-    ) -> Option<Vec<VertexFormat>> {
-        vert_read_buf.truncate((vertices_count * vertex_buffer_size) as usize);
-        assert_eq!(vert_read_buf.remaining() % vertex_buffer_size as usize, 0);
-        let mut verts_vec: Vec<VertexFormat> = Vec::with_capacity(vertices_count as usize);
-
-        for _ in 0..vertices_count {
-            let p4h = vert_read_buf.get_p4h();
-            let n4b = vert_read_buf.get_n4b();
-            let g4b = vert_read_buf.get_g4b();
-            let b4b = vert_read_buf.get_b4b();
-            let t2h = vert_read_buf.get_t2h();
-            let i4b = vert_read_buf.get_i4b();
-            let k = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b);
-            verts_vec.push(k);
-        }
-        assert_eq!(verts_vec.len(), vertices_count as usize);
-        assert_eq!(vert_read_buf.is_empty(), true);
-        info!(
-            "Read {} vertices of type P4h_N4b_G4b_B4b_T2h_I4b ({} bytes)",
-            verts_vec.len(),
-            vertex_buffer_size
-        );
-
-        Some(verts_vec)
-    }
-}
-
-impl fmt::Debug for RDModell {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let felm = self.vertices.first().unwrap();
-        let vformat = match felm {
-            VertexFormat::P4h(_) => "P4h",
-            VertexFormat::P4h_N4b_T2h(_, _, _) => "P4h_N4b_T2h",
-            VertexFormat::P4h_N4b_T2h_C4c(_, _, _, _) => "P4h_N4b_T2h_C4c",
-            VertexFormat::P4h_N4b_T2h_I4b(_, _, _, _) => "P4h_N4b_T2h_I4b",
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h",
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h",
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, _, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h_C4c",
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, _, _) => "P4h_N4b_G4b_B4b_T2h_I4b",
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_C4c if !skin_there => {
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_G4b_B4b_T2h_C4c",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(x))
+            }
+            _ => unimplemented!("vertices use unrecognized size of {}", vertex_buffer_size),
         };
-        f.debug_struct("RDModell")
-            .field("meta", &self.meta)
-            .field("vertex_format", &vformat)
-            .field("vertex_offset", &self.vertex_offset)
-            .field("vertices_count", &self.vertices_count)
-            .field("vertex_buffer_size", &self.vertex_buffer_size)
-            .field("triangles_offset", &self.triangles_offset)
-            .field("triangles_idx_count", &self.triangles_idx_count)
-            .field("triangles_idx_size", &self.triangles_idx_size)
-            .finish()
+        assert_eq!(vert_read_buf.remaining(), 0);
+        out
     }
 }
 
@@ -637,113 +499,261 @@ pub struct Triangle {
     indices: [u16; 3],
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct P4h {
     pos: [f16; 4],
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct N4b {
     normals: [u8; 4],
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct G4b {
     tangent: [u8; 4],
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct B4b {
     binormal: [u8; 4],
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct T2h {
     tex: [f16; 2],
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct I4b {
     blend_idx: [u8; 4],
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct W4b {
     blend_weight: [u8; 4],
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct C4c {
     unknown: [u8; 4],
 }
 
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct VertexGeneric<N, G, B, T, C, I, W> {
+    p4h: P4h,
+    n4b: N,
+    g4b: G,
+    b4b: B,
+    t2h: T,
+    c4c: C,
+    i4b: I,
+    w4b: W,
+}
+
+impl<N, G, B, T, C, I, W> VertexGeneric<N, G, B, T, C, I, W> {
+    fn get_p4h(&self) -> &P4h {
+        &self.p4h
+    }
+}
+
+impl<G, B, T, C, I, W> VertexGeneric<N4b, G, B, T, C, I, W> {
+    fn get_n4b(&self) -> &N4b {
+        &self.n4b
+    }
+}
+
+impl<N, G, B, T, C, I> VertexGeneric<N, G, B, T, C, I, W4b> {
+    fn get_w4b(&self) -> &W4b {
+        &self.w4b
+    }
+}
+
+impl<N, G, B, T, C, W> VertexGeneric<N, G, B, T, C, I4b, W> {
+    fn get_i4b(&self) -> &I4b {
+        &self.i4b
+    }
+}
+
+impl<N, G, B, C, I, W> VertexGeneric<N, G, B, T2h, C, I, W> {
+    fn get_t2h(&self) -> &T2h {
+        &self.t2h
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_ = VertexGeneric<(), (), (), (), (), (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_T2h = VertexGeneric<N4b, (), (), T2h, (), (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_T2h_C4c = VertexGeneric<N4b, (), (), T2h, C4c, (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_T2h_I4b = VertexGeneric<N4b, (), (), T2h, (), I4b, ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_G4b_B4b_T2h = VertexGeneric<N4b, G4b, B4b, T2h, (), (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_G4b_B4b_T2h_C4c = VertexGeneric<N4b, G4b, B4b, T2h, C4c, (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_T2h_I4b_W4b = VertexGeneric<N4b, (), (), T2h, (), I4b, W4b>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_G4b_B4b_T2h_I4b = VertexGeneric<N4b, G4b, B4b, T2h, (), I4b, ()>;
+
 #[derive(Debug)]
+#[repr(C)]
 #[allow(non_camel_case_types)]
 pub enum VertexFormat {
-    P4h(P4h),
-    P4h_N4b_T2h(P4h, N4b, T2h),
-    P4h_N4b_T2h_C4c(P4h, N4b, T2h, C4c),
-    P4h_N4b_T2h_I4b(P4h, N4b, T2h, I4b),
-    P4h_N4b_G4b_B4b_T2h(P4h, N4b, G4b, B4b, T2h),
-    P4h_N4b_T2h_I4b_W4b(P4h, N4b, T2h, I4b, W4b),
-    P4h_N4b_G4b_B4b_T2h_C4c(P4h, N4b, G4b, B4b, T2h, C4c),
-    P4h_N4b_G4b_B4b_T2h_I4b(P4h, N4b, G4b, B4b, T2h, I4b),
+    P4h(Vec<P4h_>),
+    P4h_N4b_T2h(Vec<P4h_N4b_T2h>),
+    P4h_N4b_T2h_C4c(Vec<P4h_N4b_T2h_C4c>),
+    P4h_N4b_T2h_I4b(Vec<P4h_N4b_T2h_I4b>),
+    P4h_N4b_G4b_B4b_T2h(Vec<P4h_N4b_G4b_B4b_T2h>),
+    P4h_N4b_T2h_I4b_W4b(Vec<P4h_N4b_T2h_I4b_W4b>),
+    P4h_N4b_G4b_B4b_T2h_C4c(Vec<P4h_N4b_G4b_B4b_T2h_C4c>),
+    P4h_N4b_G4b_B4b_T2h_I4b(Vec<P4h_N4b_G4b_B4b_T2h_I4b>),
 }
 
 impl VertexFormat {
-    fn get_p4h(&self) -> &P4h {
+    pub fn len(&self) -> usize {
         match self {
-            VertexFormat::P4h(p4h) => p4h,
-            VertexFormat::P4h_N4b_T2h(p4h, _, _) => p4h,
-            VertexFormat::P4h_N4b_T2h_C4c(p4h, _, _, _) => p4h,
-            VertexFormat::P4h_N4b_T2h_I4b(p4h, _, _, _) => p4h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, _, _, _, _) => p4h,
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(p4h, _, _, _, _) => p4h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, _, _, _, _, _) => p4h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, _, _, _, _, _) => p4h,
+            VertexFormat::P4h(v) => v.len(),
+            VertexFormat::P4h_N4b_T2h(v) => v.len(),
+            VertexFormat::P4h_N4b_T2h_I4b(v) => v.len(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(v) => v.len(),
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => v.len(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => v.len(),
+            VertexFormat::P4h_N4b_T2h_C4c(v) => v.len(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => v.len(),
         }
     }
 
-    fn get_t2h(&self) -> &T2h {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    // https://stackoverflow.com/questions/25445761/returning-a-closure-from-a-function
+    // https://stackoverflow.com/questions/27535289/what-is-the-correct-way-to-return-an-iterator-or-any-other-trait
+    fn iter_p4h(&self) -> Box<dyn Iterator<Item = &'_ P4h> + '_> {
         match self {
-            VertexFormat::P4h(_) => unimplemented!(),
-            VertexFormat::P4h_N4b_T2h(_, _, t2h) => t2h,
-            VertexFormat::P4h_N4b_T2h_C4c(_, _, t2h, _) => t2h,
-            VertexFormat::P4h_N4b_T2h_I4b(_, _, t2h, _) => t2h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, _, _, t2h) => t2h,
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, t2h, _, _) => t2h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, _, _, _, t2h, _) => t2h,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, _, _, t2h, _) => t2h,
+            VertexFormat::P4h(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
         }
     }
 
-    fn get_n4b(&self) -> &N4b {
+    fn iter_t2h(&self) -> Box<dyn Iterator<Item = &'_ T2h> + '_> {
         match self {
-            VertexFormat::P4h(_) => unimplemented!(),
-            VertexFormat::P4h_N4b_T2h(_, n4b, _) => n4b,
-            VertexFormat::P4h_N4b_T2h_C4c(_, n4b, _, _) => n4b,
-            VertexFormat::P4h_N4b_T2h_I4b(_, n4b, _, _) => n4b,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, n4b, _, _, _) => n4b,
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, n4b, _, _, _) => n4b,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, n4b, _, _, _, _) => n4b,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, n4b, _, _, _, _) => n4b,
+            VertexFormat::P4h_N4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            _ => unimplemented!("tex / uv"),
         }
     }
 
-    fn get_g4b(&self) -> &G4b {
+    fn iter_n4b(&self) -> Box<dyn Iterator<Item = &'_ N4b> + '_> {
         match self {
-            VertexFormat::P4h(_) => unimplemented!(),
-            VertexFormat::P4h_N4b_T2h(_, _, _) => unimplemented!(),
-            VertexFormat::P4h_N4b_T2h_C4c(_, _, _, _) => unimplemented!(),
-            VertexFormat::P4h_N4b_T2h_I4b(_, _, _, _) => unimplemented!(),
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(_, _, g4b, _, _) => g4b,
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(_, _, _, _, _) => unimplemented!(),
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(_, _, g4b, _, _, _) => g4b,
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(_, _, g4b, _, _, _) => g4b,
+            VertexFormat::P4h_N4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
+            _ => unimplemented!("normal"),
         }
     }
 }
@@ -785,5 +795,173 @@ impl From<&str> for RDModell {
 impl From<&String> for RDModell {
     fn from(string_path: &String) -> Self {
         RDModell::from(Path::new(string_path))
+    }
+}
+
+#[cfg(test)]
+mod tests_intern {
+
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn fishery_others_lod2() {
+        // for Miri test
+        // fishery_others_lod2.rdm
+        let v = vec![
+            0x52, 0x44, 0x4D, 0x01, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+            0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00,
+            0x54, 0x00, 0x00, 0x00, 0x29, 0x01, 0x00, 0x00, 0xE3, 0x03, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x48, 0x00, 0x00, 0x00,
+            0xA4, 0x00, 0x00, 0x00, 0x17, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x6B, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x47, 0x3A, 0x5C, 0x67,
+            0x72, 0x61, 0x70, 0x68, 0x69, 0x63, 0x5F, 0x62, 0x61, 0x63, 0x6B, 0x75, 0x70, 0x5C,
+            0x74, 0x6F, 0x62, 0x69, 0x61, 0x73, 0x5C, 0x61, 0x6E, 0x6E, 0x6F, 0x35, 0x5C, 0x61,
+            0x73, 0x73, 0x65, 0x74, 0x73, 0x5C, 0x62, 0x75, 0x69, 0x6C, 0x64, 0x69, 0x6E, 0x67,
+            0x73, 0x5C, 0x6F, 0x74, 0x68, 0x65, 0x72, 0x73, 0x5C, 0x66, 0x69, 0x73, 0x68, 0x65,
+            0x72, 0x79, 0x5F, 0x6F, 0x74, 0x68, 0x65, 0x72, 0x73, 0x5C, 0x70, 0x6F, 0x6C, 0x69,
+            0x73, 0x68, 0x5C, 0x75, 0x6D, 0x62, 0x61, 0x75, 0x5C, 0x66, 0x69, 0x73, 0x68, 0x65,
+            0x72, 0x79, 0x5F, 0x75, 0x6D, 0x62, 0x61, 0x75, 0x5F, 0x62, 0x61, 0x6B, 0x69, 0x6E,
+            0x67, 0x2E, 0x6D, 0x61, 0x78, 0x0A, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x43,
+            0x75, 0x74, 0x6F, 0x75, 0x74, 0x2E, 0x72, 0x6D, 0x70, 0x01, 0x00, 0x00, 0x00, 0x5C,
+            0x00, 0x00, 0x00, 0x8D, 0x01, 0x00, 0x00, 0xBF, 0x01, 0x00, 0x00, 0xF7, 0x01, 0x00,
+            0x00, 0x37, 0x02, 0x00, 0x00, 0x3F, 0x03, 0x00, 0x00, 0x13, 0x02, 0x00, 0x00, 0xFF,
+            0xFF, 0xFF, 0xFF, 0x00, 0x20, 0xBE, 0xBF, 0x00, 0x80, 0xE3, 0xBE, 0x00, 0xE0, 0x59,
+            0xC0, 0x00, 0x00, 0xBA, 0x3F, 0x00, 0x80, 0xCF, 0xBE, 0x00, 0xC0, 0x03, 0xBF, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x1C, 0x00, 0x00, 0x00, 0xB1, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x63,
+            0x75, 0x74, 0x6F, 0x75, 0x74, 0x01, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0xDF,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x10,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x4E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20,
+            0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0xD0, 0x3D, 0x12, 0xB7, 0xDC, 0xBA, 0x00,
+            0x00, 0xCC, 0x3D, 0x12, 0xB7, 0x3A, 0xBC, 0x00, 0x00, 0x25, 0x3D, 0x12, 0xB7, 0xF2,
+            0xBC, 0x00, 0x00, 0x8D, 0x35, 0x12, 0xB7, 0xDC, 0xBA, 0x00, 0x00, 0x8D, 0x35, 0x12,
+            0xB7, 0xEE, 0xBC, 0x00, 0x00, 0x9E, 0x32, 0x7C, 0xB6, 0x89, 0xBD, 0x00, 0x00, 0x9E,
+            0x32, 0x7C, 0xB6, 0x24, 0xC0, 0x00, 0x00, 0x9E, 0x32, 0x7C, 0xB6, 0x07, 0xC1, 0x00,
+            0x00, 0x9E, 0x32, 0x7C, 0xB6, 0xEA, 0xC1, 0x00, 0x00, 0x8D, 0x30, 0x7C, 0xB6, 0x89,
+            0xBD, 0x00, 0x00, 0x8D, 0x30, 0x7C, 0xB6, 0x24, 0xC0, 0x00, 0x00, 0x8D, 0x30, 0x7C,
+            0xB6, 0x07, 0xC1, 0x00, 0x00, 0x8D, 0x30, 0x7C, 0xB6, 0xEA, 0xC1, 0x00, 0x00, 0x14,
+            0xAE, 0x7C, 0xB6, 0xCF, 0xC2, 0x00, 0x00, 0xB5, 0xAF, 0x7C, 0xB6, 0xAE, 0xC2, 0x00,
+            0x00, 0x8B, 0xB4, 0x12, 0xB7, 0xDC, 0xBA, 0x00, 0x00, 0x90, 0xB4, 0x12, 0xB7, 0xB6,
+            0xBF, 0x00, 0x00, 0x93, 0xB4, 0x16, 0xB7, 0xCD, 0xC1, 0x00, 0x00, 0x57, 0xB7, 0x1C,
+            0xB7, 0x24, 0xC2, 0x00, 0x00, 0x45, 0xBC, 0x1C, 0xB7, 0x24, 0xC2, 0x00, 0x00, 0x9E,
+            0xBC, 0x7C, 0xB6, 0xAE, 0xC2, 0x00, 0x00, 0xB8, 0xBC, 0x7C, 0xB6, 0xCF, 0xC2, 0x00,
+            0x00, 0xF6, 0xBC, 0x16, 0xB7, 0xCD, 0xC1, 0x00, 0x00, 0xF7, 0xBC, 0x12, 0xB7, 0x62,
+            0xBD, 0x00, 0x00, 0xAF, 0xBD, 0x7C, 0xB6, 0xDB, 0xC1, 0x00, 0x00, 0xAF, 0xBD, 0x7C,
+            0xB6, 0x5D, 0xBE, 0x00, 0x00, 0xAF, 0xBD, 0x7C, 0xB6, 0xD9, 0xC0, 0x00, 0x00, 0xAF,
+            0xBD, 0x7C, 0xB6, 0x55, 0xB8, 0x00, 0x00, 0xF1, 0xBD, 0x7C, 0xB6, 0xEA, 0xC1, 0x00,
+            0x00, 0xF1, 0xBD, 0x7C, 0xB6, 0xD9, 0xC0, 0x00, 0x00, 0xF1, 0xBD, 0x7C, 0xB6, 0x5D,
+            0xBE, 0x00, 0x00, 0xF1, 0xBD, 0x7C, 0xB6, 0x1E, 0xB8, 0x00, 0x00, 0x4E, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x16, 0x00, 0x10, 0x00, 0x11, 0x00, 0x17, 0x00, 0x10,
+            0x00, 0x16, 0x00, 0x17, 0x00, 0x0F, 0x00, 0x10, 0x00, 0x04, 0x00, 0x01, 0x00, 0x02,
+            0x00, 0x03, 0x00, 0x01, 0x00, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x1D,
+            0x00, 0x19, 0x00, 0x1A, 0x00, 0x19, 0x00, 0x1D, 0x00, 0x1E, 0x00, 0x18, 0x00, 0x15,
+            0x00, 0x1C, 0x00, 0x15, 0x00, 0x18, 0x00, 0x14, 0x00, 0x14, 0x00, 0x0D, 0x00, 0x15,
+            0x00, 0x0D, 0x00, 0x14, 0x00, 0x0E, 0x00, 0x09, 0x00, 0x06, 0x00, 0x0A, 0x00, 0x06,
+            0x00, 0x09, 0x00, 0x05, 0x00, 0x0C, 0x00, 0x0D, 0x00, 0x0E, 0x00, 0x0D, 0x00, 0x0C,
+            0x00, 0x08, 0x00, 0x10, 0x00, 0x03, 0x00, 0x04, 0x00, 0x03, 0x00, 0x10, 0x00, 0x0F,
+            0x00, 0x16, 0x00, 0x12, 0x00, 0x13, 0x00, 0x12, 0x00, 0x16, 0x00, 0x11, 0x00, 0x0C,
+            0x00, 0x07, 0x00, 0x08, 0x00, 0x07, 0x00, 0x0C, 0x00, 0x0B, 0x00, 0x1D, 0x00, 0x18,
+            0x00, 0x1C, 0x00, 0x18, 0x00, 0x1D, 0x00, 0x1A, 0x00, 0x1B, 0x00, 0x1E, 0x00, 0x1F,
+            0x00, 0x1E, 0x00, 0x1B, 0x00, 0x19, 0x00, 0x01, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00,
+            0x00, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x3F, 0x04, 0x00, 0x00, 0x4E,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x66, 0x69, 0x73, 0x68, 0x65,
+            0x72, 0x79, 0x5E, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x67, 0x3A, 0x2F, 0x67,
+            0x72, 0x61, 0x70, 0x68, 0x69, 0x63, 0x5F, 0x62, 0x61, 0x63, 0x6B, 0x75, 0x70, 0x2F,
+            0x74, 0x6F, 0x62, 0x69, 0x61, 0x73, 0x2F, 0x61, 0x6E, 0x6E, 0x6F, 0x35, 0x2F, 0x61,
+            0x73, 0x73, 0x65, 0x74, 0x73, 0x2F, 0x62, 0x75, 0x69, 0x6C, 0x64, 0x69, 0x6E, 0x67,
+            0x73, 0x2F, 0x6F, 0x74, 0x68, 0x65, 0x72, 0x73, 0x2F, 0x66, 0x69, 0x73, 0x68, 0x65,
+            0x72, 0x79, 0x5F, 0x6F, 0x74, 0x68, 0x65, 0x72, 0x73, 0x2F, 0x70, 0x6F, 0x6C, 0x69,
+            0x73, 0x68, 0x2F, 0x75, 0x6D, 0x62, 0x61, 0x75, 0x2F, 0x64, 0x69, 0x66, 0x66, 0x75,
+            0x73, 0x65, 0x2E, 0x70, 0x73, 0x64,
+        ];
+
+        let rdm = RDModell::new(v);
+        assert_eq!(rdm.vertices_count, 32);
+        assert_eq!(rdm.triangles_idx_count, 78);
+
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+    }
+
+    #[test]
+    fn vertex_generic_size_of() {
+        assert_eq!(mem::size_of::<P4h_>(), VertexFormatSize::P4h as usize);
+        assert_eq!(
+            mem::size_of::<P4h_N4b_T2h>(),
+            VertexFormatSize::P4h_N4b_T2h as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_T2h_C4c>(),
+            VertexFormatSize::P4h_N4b_T2h_C4c as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_T2h_I4b>(),
+            VertexFormatSize::P4h_N4b_T2h_I4b as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_G4b_B4b_T2h>(),
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_T2h_I4b_W4b>(),
+            VertexFormatSize::P4h_N4b_T2h_I4b_W4b as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_G4b_B4b_T2h_C4c>(),
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_C4c as usize
+        );
+        assert_eq!(
+            mem::size_of::<P4h_N4b_G4b_B4b_T2h_I4b>(),
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b as usize
+        );
+    }
+
+    #[test]
+    fn vertex_generic_offset() {
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, n4b), 8);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, g4b), 12);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, b4b), 16);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, t2h), 20);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, i4b), 24);
+    }
+
+    #[test]
+    fn vertex_generic_offset2() {
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, n4b), 8);
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, t2h), 12);
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, i4b), 16);
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, w4b), 20);
+    }
+
+    #[test]
+    fn vertex_generic_offset3() {
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, n4b), 8);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, g4b), 12);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, b4b), 16);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, t2h), 20);
     }
 }

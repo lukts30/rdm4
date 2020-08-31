@@ -75,7 +75,7 @@ impl RDWriter {
         {
             let path_str_ptr = self.buf.len() as u32;
             let buff_off = 84;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
         }
         self.buf.put_slice(export_name);
 
@@ -85,7 +85,7 @@ impl RDWriter {
         {
             let file_str_ptr = self.buf.len() as u32;
             let buff_off = 88;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
         }
         self.buf.put_slice(export_name_2);
 
@@ -98,7 +98,7 @@ impl RDWriter {
                 let meta_ptr = self.buf.len() as u32;
                 self.meta_deref = meta_ptr;
                 let buff_off = 32;
-                byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
+                byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
             }
 
             // 52 bytes data + 50 Bytes 0x0  = 92 bytes
@@ -169,7 +169,7 @@ impl RDWriter {
             {
                 let meta_id_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 4) as usize;
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[buff_off..buff_off + 4],
                     meta_id_ptr,
                 );
@@ -193,7 +193,13 @@ impl RDWriter {
         }
 
         {
-            // VERTEX_FORMAT_IDENTIFIER
+            // VERTEX_FORMAT_BYTE_IDENTIFIERS
+            // 4 bytes: unique value
+            //      e.g XML `VertexFormat` P4h_N4b_T2h_I4b_W4b
+            // 4 bytes: unit size   0x06 u16
+            //                      0x05 u8
+            // 4 bytes: unit interpretation ?
+            // 4 bytes: unit count
             static P4H_IDENTIFIER: [u8; 16] = [
                 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
                 0x00, 0x00,
@@ -219,8 +225,20 @@ impl RDWriter {
                 0x00, 0x00,
             ];
 
+            #[allow(dead_code)]
+            static C4C_IDENTIFIER: [u8; 16] = [
+                0x05, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
+            ];
+
             static I4B_IDENTIFIER: [u8; 16] = [
                 0x07, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00,
+            ];
+
+            #[allow(dead_code)]
+            static W4B_IDENTIFIER: [u8; 16] = [
+                0x06, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00,
                 0x00, 0x00,
             ];
 
@@ -254,7 +272,7 @@ impl RDWriter {
             {
                 let meta_unknown_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 8) as usize;
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[buff_off..buff_off + 4],
                     meta_unknown_ptr,
                 );
@@ -274,7 +292,7 @@ impl RDWriter {
             {
                 let triangle_count_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 20) as usize;
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[buff_off..buff_off + 4],
                     triangle_count_ptr,
                 );
@@ -304,6 +322,7 @@ impl RDWriter {
         // raw data cont. start till (vertex data start -8)
     }
 
+    #[cfg(target_endian = "little")]
     fn put_vertex_buffer(&mut self) {
         self.buf.put_u32_le(self.input.vertices_count);
         self.buf.put_u32_le(self.input.vertex_buffer_size);
@@ -311,43 +330,50 @@ impl RDWriter {
         {
             let vertex_ptr = self.buf.len() as u32;
             let buff_off = (self.meta_deref + RDModell::VERTEX_META) as usize;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], vertex_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], vertex_ptr);
         }
-
-        for vert in self.input.vertices.iter() {
-            match vert {
-                VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(p4h, n4b, g4b, b4b, t2h, c4c) => {
-                    self.buf.put_p4h(p4h);
-                    self.buf.put_n4b(n4b);
-                    self.buf.put_g4b(g4b);
-                    self.buf.put_b4b(b4b);
-                    self.buf.put_t2h(t2h);
-                    self.buf.put_c4c(c4c);
-                }
-                VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(p4h, n4b, g4b, b4b, t2h, i4b) => {
-                    self.buf.put_p4h(p4h);
-                    self.buf.put_n4b(n4b);
-                    self.buf.put_g4b(g4b);
-                    self.buf.put_b4b(b4b);
-                    self.buf.put_t2h(t2h);
-                    self.buf.put_i4b(i4b);
-                }
-                VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b, t2h, i4b) => {
-                    self.buf.put_p4h(p4h);
-                    self.buf.put_n4b(n4b);
-                    self.buf.put_t2h(t2h);
-                    self.buf.put_i4b(i4b);
-                }
-                VertexFormat::P4h_N4b_G4b_B4b_T2h(p4h, n4b, g4b, b4b, t2h) => {
-                    self.buf.put_p4h(p4h);
-                    self.buf.put_n4b(n4b);
-                    self.buf.put_g4b(g4b);
-                    self.buf.put_b4b(b4b);
-                    self.buf.put_t2h(t2h);
-                }
-                _ => todo!(),
+        let start = self.buf.len();
+        match &self.input.vertices {
+            VertexFormat::P4h(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_T2h(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_T2h_I4b(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_T2h_I4b_W4b(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_T2h_C4c(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
             }
         }
+        let end = self.buf.len();
+        let written = end - start;
+        //assert_eq!(written as u32,(self.input.vertices_count/3)*self.input.vertex_buffer_size);
+        assert_eq!(
+            written,
+            self.input.vertices.len() * self.input.vertex_buffer_size as usize
+        );
     }
 
     fn put_indexed_triangle_list(&mut self) {
@@ -357,7 +383,7 @@ impl RDWriter {
         {
             let triangle_list_ptr = self.buf.len() as u32;
             let buff_off = (self.meta_deref + RDModell::TRIANGLES_META) as usize;
-            byteorder::NativeEndian::write_u32(
+            byteorder::LittleEndian::write_u32(
                 &mut self.buf[buff_off..buff_off + 4],
                 triangle_list_ptr,
             );
@@ -374,7 +400,7 @@ impl RDWriter {
         {
             let blob_ptr = self.buf.len() as u32 + 8;
             let buff_off = 36;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], blob_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], blob_ptr);
         }
 
         let start = self.buf.len();
@@ -440,7 +466,7 @@ impl RDWriter {
         {
             let skin_ptr_ptr = self.buf.len() as u32;
             let buff_off = 40;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], skin_ptr_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], skin_ptr_ptr);
         }
         self.buf.put_u32_le((self.buf.len() + 32 + 8) as u32); //first joint ptr
 
@@ -528,7 +554,7 @@ impl RDWriter {
             {
                 let jname_ptr = self.buf.len() as u32;
                 let buff_off = *name_ptr_itr.next().unwrap();
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[buff_off..buff_off + 4],
                     jname_ptr,
                 );

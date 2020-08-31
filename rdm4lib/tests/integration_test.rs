@@ -18,6 +18,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
         let rdm = RDModell::from("rdm/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertices_count, 3291);
@@ -30,6 +31,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn basalt_crusher_others_lod2() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertices_count, 2615);
@@ -108,6 +110,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fishery_others_cutout_lod0() {
         let rdm = RDModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertices_count, 32);
@@ -120,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn ark_waterfall2() {
         let rdm = RDModell::from("rdm/ark_waterfall2.rdm");
         assert_eq!(rdm.vertices_count, 105);
@@ -131,6 +135,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn exp_rdm_inv_basalt_crusher_others_lod0() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
@@ -146,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn read_gltf() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), true);
         assert_eq!(rdm.vertices_count, 5184);
@@ -159,6 +165,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
         let rdm = gltf_reader::load_gltf(&f_path, true);
@@ -176,6 +183,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), false);
         assert_eq!(rdm.vertices_count, 5184);
@@ -189,6 +197,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin2() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/triangle.gltf"), false);
         assert_eq!(rdm.vertices_count, 3);

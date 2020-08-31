@@ -49,7 +49,7 @@ impl RDAnimWriter {
         {
             let path_str_ptr = self.buf.len() as u32;
             let buff_off = 84 as usize;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
         }
         self.buf.put_slice(export_name);
 
@@ -59,7 +59,7 @@ impl RDAnimWriter {
         {
             let file_str_ptr = self.buf.len() as u32;
             let buff_off = 88 as usize;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
         }
         self.buf.put_slice(export_name_2);
 
@@ -72,7 +72,7 @@ impl RDAnimWriter {
         {
             let meta_ptr = self.buf.len() as u32;
             let buff_off = 44 as usize;
-            byteorder::NativeEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
+            byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
         }
 
         self.buf.put_u32_le(self.buf.len() as u32 + 8 + 48);
@@ -127,12 +127,12 @@ impl RDAnimWriter {
                 let joint_target_str_u32 = self.buf.len() as u32;
                 let joint_target_str = joint_target_str_u32;
                 let buff_off = self.jtable_deref as usize + i * 24;
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[buff_off..buff_off + 4],
                     joint_target_str,
                 );
                 let joint_target_data = joint_target_str_u32 + collection.name.len() as u32 + 8;
-                byteorder::NativeEndian::write_u32(
+                byteorder::LittleEndian::write_u32(
                     &mut self.buf[(buff_off + 4)..(buff_off + 8)],
                     joint_target_data,
                 );
