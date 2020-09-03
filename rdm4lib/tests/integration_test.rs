@@ -16,6 +16,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdm4lib::rdm_material::RDMaterial;
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -113,6 +114,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn excavator_tycoons_lod1() {
         let mut rdm = RDModell::from("rdm/excavator_tycoons_lod1.rdm");
+        rdm.mat = Some(RDMaterial::new(Path::new(r"rdm/excavator_tycoons_diff_0.dds")));
         assert_eq!(rdm.vertices_count, 5225);
 
         rdm.add_skin();

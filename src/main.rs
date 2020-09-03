@@ -8,7 +8,7 @@ use rdm4lib::rdm_writer::RDWriter;
 
 use rdm4lib::rdm_anim_writer::RDAnimWriter;
 
-use rdm4lib::gltf_reader;
+use rdm4lib::{rdm_material::RDMaterial, gltf_reader};
 
 #[macro_use]
 extern crate log;
@@ -78,6 +78,16 @@ struct Opts {
     )]
     input: PathBuf,
 
+    /// DiffuseTexture
+    #[clap(
+        short = "t",
+        long = "diffusetexture",
+        display_order(4),
+        validator_os(cli_in_is_file),
+        parse(from_str),
+    )]
+    diffusetexture: Option<PathBuf>,
+
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
     verbose: i32,
@@ -111,6 +121,9 @@ fn main() {
             warn!("No skin. No anim !");
         }
 
+        if let Some(diffusetexture) = opts.diffusetexture {
+            rdm.mat = Some(RDMaterial::new(&diffusetexture));
+        }
         info!("running gltf_export ...");
         gltf_export::build(rdm,None);
     } else {

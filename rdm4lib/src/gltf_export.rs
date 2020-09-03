@@ -2,7 +2,7 @@ use gltf::json;
 
 use gltf::json as gltf_json;
 
-use std::{fs, mem, path::PathBuf};
+use std::{fs, mem, path::{Path, PathBuf}};
 
 use bytes::{BufMut, BytesMut};
 use json::validation::Checked::Valid;
@@ -58,6 +58,11 @@ struct RDGltfBuilder {
     obj: RDGltf, // private
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
+    material_idx: Option<u32>,
+    material_vec: Vec<json::Material>,
+    texture_vec: Vec<json::Texture>,
+    image_vec: Vec<json::Image>,
+    sampler_vec: Vec<json::texture::Sampler>,
 }
 
 impl RDGltfBuilder {
@@ -74,6 +79,11 @@ impl RDGltfBuilder {
             skin: None,
             idx: None,
             anim_node: None,
+            material_idx: None,
+            material_vec: vec![],
+            texture_vec: vec![],
+            image_vec: vec![],
+            sampler_vec: vec![],
         }
     }
 
@@ -930,6 +940,62 @@ impl RDGltfBuilder {
         );
     }
 
+    fn put_material(&mut self) {
+        let t = if let Some(mat) = self.rdm.mat.as_ref() {
+            let sampler = json::texture::Sampler {
+                ..Default::default()
+            };
+            self.sampler_vec.push(sampler);
+
+            let fname = mat.c_model_diff_tex[0].file_stem().unwrap().to_str().unwrap();
+            let image = json::Image {
+                uri: Some(format!("{}{}",fname,".png")),
+                buffer_view: None,
+                mime_type: None,
+                extensions: None,
+                extras: None,
+                name: None,
+            };
+            self.image_vec.push(image);
+
+            let texture = json::Texture {
+                sampler: Some(json::Index::new(0)),
+                source : json::Index::new(0),
+                extensions: None,
+                extras: None,
+                name: None,
+            }; 
+            self.texture_vec.push(texture);
+
+            Some(gltf_json::texture::Info {
+                index: json::Index::new(0),
+                tex_coord: 0,
+                extensions: None,
+                extras: None,
+            })
+        } else {
+            None
+        };
+
+        let pbr = json::material::PbrMetallicRoughness {
+            base_color_texture: t,
+            ..Default::default()
+        };
+
+        let map = json::Material {
+            // FALSE WARNING
+            // MATERIAL_ALPHA_CUTOFF_INVALID_MODE
+            // This value is ignored for other modes.
+            alpha_cutoff: json::material::AlphaCutoff(0.0f32),
+            alpha_mode: Valid(json::material::AlphaMode::Opaque),
+            pbr_metallic_roughness: pbr,
+            ..Default::default()
+        };
+        
+        self.material_idx = Some(self.material_vec.len() as u32);
+        self.material_vec.push(map);
+    }
+
     #[allow(dead_code)]
     fn put_normal(&mut self) {
         let mut buff = BytesMut::with_capacity(1000);
@@ -1163,7 +1229,7 @@ impl RDGltfBuilder {
             extensions: Default::default(),
             extras: Default::default(),
             indices: Some(json::Index::new(self.idx.unwrap())),
-            material: None,
+            material: Some(json::Index::new(self.material_idx.unwrap())),
             mode: Valid(json::mesh::Mode::Triangles),
             targets: None,
         };
@@ -1213,6 +1279,10 @@ impl RDGltfBuilder {
             }],
             skins,
             animations: animation,
+            materials: self.material_vec,
+            textures: self.texture_vec,
+            images: self.image_vec,
+            samplers: self.sampler_vec,
             ..Default::default()
         };
 
@@ -1233,6 +1303,7 @@ impl From<RDModell> for RDGltfBuilder {
         b.put_idx();
 
         b.put_tex();
+        b.put_material();
         //b.put_normal();
 
         //b.put_tangent();
@@ -1251,10 +1322,17 @@ impl From<RDModell> for RDGltfBuilder {
 }
 
 pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
+    let mat_opt = rdm.mat.clone();
     let b = RDGltfBuilder::from(rdm);
     let p = b.build();
+    
 
-    p.write_gltf(dir);
+    p.write_gltf(dir.clone());
+
+    // TODO: move path handling to write_gltf 
+    if let Some(mat) = mat_opt.as_ref() {
+        mat.run_texconv(dir.as_ref().unwrap_or(&PathBuf::from("gltf_out")).as_path());
+    }
 }
 
 struct RDGltf {

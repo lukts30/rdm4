@@ -23,9 +23,11 @@ extern crate memoffset;
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod rdm_anim;
+pub mod rdm_material;
 pub mod rdm_anim_writer;
 pub mod rdm_writer;
 use crate::rdm_anim::RDAnim;
+use rdm_material::RDMaterial;
 
 #[derive(Debug)]
 pub struct RDModell {
@@ -45,6 +47,7 @@ pub struct RDModell {
     triangles_idx_size: u32,
 
     anim: Option<RDAnim>,
+    pub mat: Option<RDMaterial>
 }
 
 trait GetVertex {
@@ -356,6 +359,7 @@ impl RDModell {
             triangles_idx_size,
 
             anim: None,
+            mat: None,
         }
     }
 

@@ -259,6 +259,7 @@ pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
         triangles_idx_size,
 
         anim: None,
+        mat: None,
     }
 }
 
