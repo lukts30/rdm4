@@ -518,8 +518,14 @@ fn read_mesh(
                     b4b,
                     t2h,
                     c4c: (),
-                    i4b,
-                    w4b: (),
+                    i4b0: i4b,
+                    i4b1: (),
+                    i4b2: (),
+                    i4b3: (),
+                    w4b0: (),
+                    w4b1: (),
+                    w4b2: (),
+                    w4b3: (),
                 };
 
                 vertsize = VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b;

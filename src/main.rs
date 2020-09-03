@@ -112,7 +112,7 @@ fn main() {
         }
 
         info!("running gltf_export ...");
-        gltf_export::build(rdm);
+        gltf_export::build(rdm,None);
     } else {
         let f_path = opts.input.as_path();
         let rdm = gltf_reader::load_gltf(f_path, opts.skeleton);

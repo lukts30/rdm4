@@ -133,6 +133,13 @@ pub struct RDJoint {
     locked: bool,
 }
 
+#[derive(Debug)]
+pub struct MeshInstance {
+    start_index_location : u32,
+    index_count : u32,
+    mesh : u32,
+}
+
 #[allow(dead_code)]
 impl RDModell {
     const META_OFFSET: u32 = 32;
@@ -170,6 +177,27 @@ impl RDModell {
             bytes[4], 0x14,
             "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
         );
+    }
+
+    pub fn check_multi_mesh(&self) {
+        let mut multi_buffer = self.buffer.clone();
+        multi_buffer.seek(self.meta+20, self.size);
+        let first_instance = multi_buffer.get_u32_le();
+
+        multi_buffer.seek(first_instance-RDModell::META_COUNT, self.size);
+        let mesh_count = multi_buffer.get_u32_le();
+        assert_eq!(multi_buffer.get_u32_le(),28);
+        warn!("mesh_count: {}",mesh_count);
+        let mut v = Vec::with_capacity(mesh_count as usize);
+        for _ in 0..mesh_count {
+            v.push(MeshInstance {
+                start_index_location: multi_buffer.get_u32_le(),
+                index_count: multi_buffer.get_u32_le(),
+                mesh: multi_buffer.get_u32_le(),
+            });
+            multi_buffer.advance(28-12);
+        }
+        warn!("meshes: {:?}",v);
     }
 
     pub fn add_skin(&mut self) {
@@ -486,6 +514,24 @@ impl RDModell {
                 );
                 Some(VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(x))
             }
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b if skin_there => {
+                let mut x = Vec::with_capacity(vertices_count as usize);
+                unsafe {
+                    let dst = slice::from_raw_parts_mut(
+                        x.as_mut_ptr() as *mut u8,
+                        vert_read_buf.remaining(),
+                    );
+                    vert_read_buf.copy_to_slice(dst);
+                    x.set_len(vertices_count as usize);
+                }
+                info!(
+                    "Read {} vertices of type {} ({} bytes)",
+                    x.len(),
+                    "P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b",
+                    vertex_buffer_size
+                );
+                Some(VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(x))
+            }
             _ => unimplemented!("vertices use unrecognized size of {}", vertex_buffer_size),
         };
         assert_eq!(vert_read_buf.remaining(), 0);
@@ -545,42 +591,58 @@ pub struct C4c {
 
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct VertexGeneric<N, G, B, T, C, I, W> {
+pub struct VertexGeneric<N, G, B, T, C, I0, I1, I2, I3, W0, W1, W2, W3> {
     p4h: P4h,
     n4b: N,
     g4b: G,
     b4b: B,
     t2h: T,
     c4c: C,
-    i4b: I,
-    w4b: W,
+    i4b0: I0,
+    i4b1: I1,
+    i4b2: I2,
+    i4b3: I3,
+    w4b0: W0,
+    w4b1: W1,
+    w4b2: W2,
+    w4b3: W3,
 }
 
-impl<N, G, B, T, C, I, W> VertexGeneric<N, G, B, T, C, I, W> {
+impl<N, G, B, T, C, I0, I1, I2, I3, W0, W1, W2, W3>
+    VertexGeneric<N, G, B, T, C, I0, I1, I2, I3, W0, W1, W2, W3>
+{
     fn get_p4h(&self) -> &P4h {
         &self.p4h
     }
 }
 
-impl<G, B, T, C, I, W> VertexGeneric<N4b, G, B, T, C, I, W> {
+impl<G, B, T, C, I0, I1, I2, I3, W0, W1, W2, W3>
+    VertexGeneric<N4b, G, B, T, C, I0, I1, I2, I3, W0, W1, W2, W3>
+{
     fn get_n4b(&self) -> &N4b {
         &self.n4b
     }
 }
 
-impl<N, G, B, T, C, I> VertexGeneric<N, G, B, T, C, I, W4b> {
+impl<N, G, B, T, C, I0, I1, I2, I3, W1, W2, W3>
+    VertexGeneric<N, G, B, T, C, I0, I1, I2, I3, W4b, W1, W2, W3>
+{
     fn get_w4b(&self) -> &W4b {
-        &self.w4b
+        &self.w4b0
     }
 }
 
-impl<N, G, B, T, C, W> VertexGeneric<N, G, B, T, C, I4b, W> {
+impl<N, G, B, T, C, I1, I2, I3, W0, W1, W2, W3>
+    VertexGeneric<N, G, B, T, C, I4b, I1, I2, I3, W0, W1, W2, W3>
+{
     fn get_i4b(&self) -> &I4b {
-        &self.i4b
+        &self.i4b0
     }
 }
 
-impl<N, G, B, C, I, W> VertexGeneric<N, G, B, T2h, C, I, W> {
+impl<N, G, B, C, I0, I1, I2, I3, W0, W1, W2, W3>
+    VertexGeneric<N, G, B, T2h, C, I0, I1, I2, I3, W0, W1, W2, W3>
+{
     fn get_t2h(&self) -> &T2h {
         &self.t2h
     }
@@ -588,35 +650,42 @@ impl<N, G, B, C, I, W> VertexGeneric<N, G, B, T2h, C, I, W> {
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_ = VertexGeneric<(), (), (), (), (), (), ()>;
+type P4h_ = VertexGeneric<(), (), (), (), (), (), (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_T2h = VertexGeneric<N4b, (), (), T2h, (), (), ()>;
+type P4h_N4b_T2h = VertexGeneric<N4b, (), (), T2h, (), (), (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_T2h_C4c = VertexGeneric<N4b, (), (), T2h, C4c, (), ()>;
+type P4h_N4b_T2h_C4c = VertexGeneric<N4b, (), (), T2h, C4c, (), (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_T2h_I4b = VertexGeneric<N4b, (), (), T2h, (), I4b, ()>;
+type P4h_N4b_T2h_I4b = VertexGeneric<N4b, (), (), T2h, (), I4b, (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_G4b_B4b_T2h = VertexGeneric<N4b, G4b, B4b, T2h, (), (), ()>;
+type P4h_N4b_G4b_B4b_T2h = VertexGeneric<N4b, G4b, B4b, T2h, (), (), (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_G4b_B4b_T2h_C4c = VertexGeneric<N4b, G4b, B4b, T2h, C4c, (), ()>;
+type P4h_N4b_G4b_B4b_T2h_C4c =
+    VertexGeneric<N4b, G4b, B4b, T2h, C4c, (), (), (), (), (), (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_T2h_I4b_W4b = VertexGeneric<N4b, (), (), T2h, (), I4b, W4b>;
+type P4h_N4b_T2h_I4b_W4b = VertexGeneric<N4b, (), (), T2h, (), I4b, (), (), (), W4b, (), (), ()>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-type P4h_N4b_G4b_B4b_T2h_I4b = VertexGeneric<N4b, G4b, B4b, T2h, (), I4b, ()>;
+type P4h_N4b_G4b_B4b_T2h_I4b =
+    VertexGeneric<N4b, G4b, B4b, T2h, (), I4b, (), (), (), (), (), (), ()>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+type P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b =
+    VertexGeneric<N4b, G4b, B4b, T2h, (), I4b, I4b, I4b, I4b, W4b, W4b, W4b, W4b>;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -630,6 +699,9 @@ pub enum VertexFormat {
     P4h_N4b_T2h_I4b_W4b(Vec<P4h_N4b_T2h_I4b_W4b>),
     P4h_N4b_G4b_B4b_T2h_C4c(Vec<P4h_N4b_G4b_B4b_T2h_C4c>),
     P4h_N4b_G4b_B4b_T2h_I4b(Vec<P4h_N4b_G4b_B4b_T2h_I4b>),
+    P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(
+        Vec<P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b>,
+    ),
 }
 
 impl VertexFormat {
@@ -643,6 +715,7 @@ impl VertexFormat {
             VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(v) => v.len(),
             VertexFormat::P4h_N4b_T2h_C4c(v) => v.len(),
             VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => v.len(),
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(v) => v.len(),
         }
     }
 
@@ -686,6 +759,10 @@ impl VertexFormat {
                 let n = v.iter().map(|x| x.get_p4h());
                 Box::new(n)
             }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(v) => {
+                let n = v.iter().map(|x| x.get_p4h());
+                Box::new(n)
+            }
         }
     }
 
@@ -716,6 +793,10 @@ impl VertexFormat {
                 Box::new(n)
             }
             VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(v) => {
+                let n = v.iter().map(|x| x.get_t2h());
+                Box::new(n)
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(v) => {
                 let n = v.iter().map(|x| x.get_t2h());
                 Box::new(n)
             }
@@ -753,6 +834,10 @@ impl VertexFormat {
                 let n = v.iter().map(|x| x.get_n4b());
                 Box::new(n)
             }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(v) => {
+                let n = v.iter().map(|x| x.get_n4b());
+                Box::new(n)
+            }
             _ => unimplemented!("normal"),
         }
     }
@@ -770,6 +855,7 @@ impl VertexFormatSize {
     const P4h_N4b_T2h_I4b_W4b: u32 = 24;
     const P4h_N4b_G4b_B4b_T2h_C4c: u32 = 28;
     const P4h_N4b_G4b_B4b_T2h_I4b: u32 = 28;
+    const P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b: u32 = 56;
 }
 
 impl From<&Path> for RDModell {
@@ -782,7 +868,9 @@ impl From<&Path> for RDModell {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        RDModell::new(buffer)
+        let rd = RDModell::new(buffer);
+        rd.check_multi_mesh();
+        rd
     }
 }
 
@@ -938,6 +1026,11 @@ mod tests_intern {
             mem::size_of::<P4h_N4b_G4b_B4b_T2h_I4b>(),
             VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b as usize
         );
+
+        assert_eq!(
+            mem::size_of::<P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b>(),
+            VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b as usize
+        );
     }
 
     #[test]
@@ -946,15 +1039,15 @@ mod tests_intern {
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, g4b), 12);
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, b4b), 16);
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, t2h), 20);
-        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, i4b), 24);
+        assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h_I4b, i4b0), 24);
     }
 
     #[test]
     fn vertex_generic_offset2() {
         assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, n4b), 8);
         assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, t2h), 12);
-        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, i4b), 16);
-        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, w4b), 20);
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, i4b0), 16);
+        assert_eq!(offset_of!(P4h_N4b_T2h_I4b_W4b, w4b0), 20);
     }
 
     #[test]
@@ -963,5 +1056,58 @@ mod tests_intern {
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, g4b), 12);
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, b4b), 16);
         assert_eq!(offset_of!(P4h_N4b_G4b_B4b_T2h, t2h), 20);
+    }
+
+    #[test]
+    fn joint_16_anno_7() {
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, n4b),
+            8
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, g4b),
+            12
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, b4b),
+            16
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, t2h),
+            20
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, i4b0),
+            24
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, i4b1),
+            28
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, i4b2),
+            32
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, i4b3),
+            36
+        );
+
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, w4b0),
+            40
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, w4b1),
+            44
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, w4b2),
+            48
+        );
+        assert_eq!(
+            offset_of!(P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b, w4b3),
+            52
+        );
     }
 }

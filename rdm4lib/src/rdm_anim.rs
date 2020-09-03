@@ -39,6 +39,7 @@ impl RDAnim {
 
         buffer.seek(base_offset, size);
 
+        // maybe NULL !
         let model_str_ptr = buffer.get_u32_le();
         buffer.advance(4);
         let time_max = buffer.get_u32_le();

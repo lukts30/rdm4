@@ -46,7 +46,7 @@ mod tests {
         let anim = RDAnim::from("rdm/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
-        gltf_export::build(rdm);
+        gltf_export::build(rdm,None);
 
         let output = if cfg!(target_os = "windows") {
             Command::new("..\\gltf_validator.exe")
@@ -107,6 +107,21 @@ mod tests {
                 .parse::<u32>()
                 .unwrap()
         );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn excavator_tycoons_lod1() {
+        let mut rdm = RDModell::from("rdm/excavator_tycoons_lod1.rdm");
+        assert_eq!(rdm.vertices_count, 5225);
+
+        rdm.add_skin();
+
+        let anim = RDAnim::from("rdm/excavator_tycoons_work02.rdm");
+        rdm.add_anim(anim);
+
+        //gltf_export::build(rdm,Some(Path::new("gltf_out").into()));
+
     }
 
     #[test]

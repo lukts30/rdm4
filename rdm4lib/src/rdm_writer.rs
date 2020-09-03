@@ -366,6 +366,10 @@ impl RDWriter {
                 let v = unsafe { iv.align_to::<u8>().1 };
                 self.buf.put_slice(v);
             }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(iv) => {
+                let v = unsafe { iv.align_to::<u8>().1 };
+                self.buf.put_slice(v);
+            }
         }
         let end = self.buf.len();
         let written = end - start;

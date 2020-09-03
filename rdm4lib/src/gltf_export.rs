@@ -2,7 +2,7 @@ use gltf::json;
 
 use gltf::json as gltf_json;
 
-use std::{fs, mem};
+use std::{fs, mem, path::PathBuf};
 
 use bytes::{BufMut, BytesMut};
 use json::validation::Checked::Valid;
@@ -77,7 +77,11 @@ impl RDGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(&mut self, buffv_idx: u32, mut acc_idx: u32) {
+    pub fn put_rdm_anim(&mut self) {
+        // TODO: must not circumvent PushBufferResult
+        let buffv_idx = self.buffers.len() as u32;
+        let mut acc_idx = self.accessors.len() as u32;
+
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
@@ -311,20 +315,30 @@ impl RDGltfBuilder {
         };
 
         debug!("{:#?}", anim_node);
-
+        /*
         let _ = fs::create_dir("gltf_out");
         let mut writer = fs::File::create("gltf_out/buffer10.bin").expect("I/O error");
 
         writer.write_all(&rot_anim_buf).expect("I/O error");
         writer.write_all(&trans_anim_buf).expect("I/O error");
         writer.write_all(&t_anim_buf).expect("I/O error");
+        */
+        //
+        let mut b1 = rot_anim_buf.to_vec();
+        let mut b2 = trans_anim_buf.to_vec();
+        let mut b3 = t_anim_buf.to_vec();
+
+        b1.append(&mut b2);
+        b1.append(&mut b3);
+        let buffer_result = self.obj.push_buffer(b1);
+        assert_eq!(buffv_idx, buffer_result.idx);
 
         let anim_buffer = json::Buffer {
             byte_length: (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u32,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            uri: Some("buffer10.bin".into()),
+            uri: Some(buffer_result.file_name),
         };
 
         self.buffers.push(anim_buffer);
@@ -362,6 +376,23 @@ impl RDGltfBuilder {
                 }
             }
             VertexFormat::P4h_N4b_T2h_I4b_W4b(v) => {
+                for e in v {
+                    weight = [
+                        e.get_w4b().blend_weight[0] as f32 / 255.0,
+                        e.get_w4b().blend_weight[1] as f32 / 255.0,
+                        e.get_w4b().blend_weight[2] as f32 / 255.0,
+                        e.get_w4b().blend_weight[3] as f32 / 255.0,
+                    ];
+
+                    joint_buf.put_slice(&e.get_i4b().blend_idx);
+
+                    weight_ap_joint_buf.put_f32_le(weight[0]);
+                    weight_ap_joint_buf.put_f32_le(weight[1]);
+                    weight_ap_joint_buf.put_f32_le(weight[2]);
+                    weight_ap_joint_buf.put_f32_le(weight[3]);
+                }
+            }
+            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(v) => {
                 for e in v {
                     weight = [
                         e.get_w4b().blend_weight[0] as f32 / 255.0,
@@ -1211,7 +1242,7 @@ impl From<RDModell> for RDGltfBuilder {
             b.put_joint_weight();
 
             if has_anim {
-                b.put_rdm_anim(4 + 1, 5 + 1);
+                b.put_rdm_anim();
             }
         }
 
@@ -1219,11 +1250,11 @@ impl From<RDModell> for RDGltfBuilder {
     }
 }
 
-pub fn build(rdm: RDModell) {
+pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
     let b = RDGltfBuilder::from(rdm);
     let p = b.build();
 
-    p.write_gltf();
+    p.write_gltf(dir);
 }
 
 struct RDGltf {
@@ -1239,10 +1270,17 @@ impl RDGltf {
         }
     }
 
-    fn write_gltf(mut self) {
-        let _ = fs::create_dir("gltf_out");
+    fn write_gltf(mut self, dir: Option<PathBuf>) {
+        let mut file = dir.unwrap_or_else(|| {
+            let f = PathBuf::from("gltf_out");
+            let _ = fs::create_dir(&f);
+            f
+        });
+        let udir = file.clone();
 
-        let writer = fs::File::create("gltf_out/out.gltf").expect("I/O error");
+        file.push("out.gltf");
+
+        let writer = fs::File::create(file).expect("I/O error");
         json::serialize::to_writer_pretty(writer, &self.root.unwrap())
             .expect("Serialization error");
 
@@ -1250,7 +1288,8 @@ impl RDGltf {
         while !self.buffers.is_empty() {
             let e = self.buffers.pop().unwrap();
             let bin = e;
-            let file_path = format!("gltf_out/buffer{}.bin", idx);
+            let mut file_path = udir.clone();
+            file_path.push(format!("buffer{}.bin", idx));
             let mut writer = fs::File::create(file_path).expect("I/O error");
             writer.write_all(&bin).expect("I/O error");
 
