@@ -23,8 +23,8 @@ extern crate memoffset;
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod rdm_anim;
-pub mod rdm_material;
 pub mod rdm_anim_writer;
+pub mod rdm_material;
 pub mod rdm_writer;
 use crate::rdm_anim::RDAnim;
 use rdm_material::RDMaterial;
@@ -47,7 +47,7 @@ pub struct RDModell {
     triangles_idx_size: u32,
 
     anim: Option<RDAnim>,
-    pub mat: Option<RDMaterial>
+    pub mat: Option<RDMaterial>,
 }
 
 trait GetVertex {
@@ -138,9 +138,9 @@ pub struct RDJoint {
 
 #[derive(Debug)]
 pub struct MeshInstance {
-    start_index_location : u32,
-    index_count : u32,
-    mesh : u32,
+    start_index_location: u32,
+    index_count: u32,
+    mesh: u32,
 }
 
 #[allow(dead_code)]
@@ -184,13 +184,13 @@ impl RDModell {
 
     pub fn check_multi_mesh(&self) {
         let mut multi_buffer = self.buffer.clone();
-        multi_buffer.seek(self.meta+20, self.size);
+        multi_buffer.seek(self.meta + 20, self.size);
         let first_instance = multi_buffer.get_u32_le();
 
-        multi_buffer.seek(first_instance-RDModell::META_COUNT, self.size);
+        multi_buffer.seek(first_instance - RDModell::META_COUNT, self.size);
         let mesh_count = multi_buffer.get_u32_le();
-        assert_eq!(multi_buffer.get_u32_le(),28);
-        warn!("mesh_count: {}",mesh_count);
+        assert_eq!(multi_buffer.get_u32_le(), 28);
+        warn!("mesh_count: {}", mesh_count);
         let mut v = Vec::with_capacity(mesh_count as usize);
         for _ in 0..mesh_count {
             v.push(MeshInstance {
@@ -198,9 +198,9 @@ impl RDModell {
                 index_count: multi_buffer.get_u32_le(),
                 mesh: multi_buffer.get_u32_le(),
             });
-            multi_buffer.advance(28-12);
+            multi_buffer.advance(28 - 12);
         }
-        warn!("meshes: {:?}",v);
+        warn!("meshes: {:?}", v);
     }
 
     pub fn add_skin(&mut self) {

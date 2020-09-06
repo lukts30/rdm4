@@ -8,7 +8,7 @@ use rdm4lib::rdm_writer::RDWriter;
 
 use rdm4lib::rdm_anim_writer::RDAnimWriter;
 
-use rdm4lib::{rdm_material::RDMaterial, gltf_reader};
+use rdm4lib::{gltf_reader, rdm_material::RDMaterial};
 
 #[macro_use]
 extern crate log;
@@ -84,7 +84,7 @@ struct Opts {
         long = "diffusetexture",
         display_order(4),
         validator_os(cli_in_is_file),
-        parse(from_str),
+        parse(from_str)
     )]
     diffusetexture: Option<PathBuf>,
 
@@ -125,7 +125,7 @@ fn main() {
             rdm.mat = Some(RDMaterial::new(&diffusetexture));
         }
         info!("running gltf_export ...");
-        gltf_export::build(rdm,None);
+        gltf_export::build(rdm, None);
     } else {
         let f_path = opts.input.as_path();
         let rdm = gltf_reader::load_gltf(f_path, opts.skeleton);

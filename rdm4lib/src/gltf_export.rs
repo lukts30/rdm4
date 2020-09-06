@@ -2,7 +2,7 @@ use gltf::json;
 
 use gltf::json as gltf_json;
 
-use std::{fs, mem, path::{Path, PathBuf}};
+use std::{fs, mem, path::PathBuf};
 
 use bytes::{BufMut, BytesMut};
 use json::validation::Checked::Valid;
@@ -947,9 +947,13 @@ impl RDGltfBuilder {
             };
             self.sampler_vec.push(sampler);
 
-            let fname = mat.c_model_diff_tex[0].file_stem().unwrap().to_str().unwrap();
+            let fname = mat.c_model_diff_tex[0]
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap();
             let image = json::Image {
-                uri: Some(format!("{}{}",fname,".png")),
+                uri: Some(format!("{}{}", fname, ".png")),
                 buffer_view: None,
                 mime_type: None,
                 extensions: None,
@@ -960,11 +964,11 @@ impl RDGltfBuilder {
 
             let texture = json::Texture {
                 sampler: Some(json::Index::new(0)),
-                source : json::Index::new(0),
+                source: json::Index::new(0),
                 extensions: None,
                 extras: None,
                 name: None,
-            }; 
+            };
             self.texture_vec.push(texture);
 
             Some(gltf_json::texture::Info {
@@ -991,7 +995,7 @@ impl RDGltfBuilder {
             pbr_metallic_roughness: pbr,
             ..Default::default()
         };
-        
+
         self.material_idx = Some(self.material_vec.len() as u32);
         self.material_vec.push(map);
     }
@@ -1325,13 +1329,14 @@ pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
     let mat_opt = rdm.mat.clone();
     let b = RDGltfBuilder::from(rdm);
     let p = b.build();
-    
 
     p.write_gltf(dir.clone());
 
-    // TODO: move path handling to write_gltf 
-    if let Some(mat) = mat_opt.as_ref() {
-        mat.run_texconv(dir.as_ref().unwrap_or(&PathBuf::from("gltf_out")).as_path());
+    // TODO: move path handling to write_gltf
+    if cfg!(target_os = "windows") {
+        if let Some(mat) = mat_opt.as_ref() {
+            mat.run_texconv(dir.as_ref().unwrap_or(&PathBuf::from("gltf_out")).as_path());
+        }
     }
 }
 
