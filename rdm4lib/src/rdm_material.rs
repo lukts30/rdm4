@@ -13,7 +13,6 @@ impl RDMaterial {
         }
     }
 
-    #[cfg(target_os = "windows")]
     pub fn run_texconv(&self, dst: &Path) {
         for p in self.c_model_diff_tex.iter() {
             let ab_path = p.canonicalize().unwrap();
