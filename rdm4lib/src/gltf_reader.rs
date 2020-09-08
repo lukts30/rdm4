@@ -1,25 +1,24 @@
-use crate::RDJoint;
 use crate::RDModell;
 use crate::Triangle;
-use crate::VertexFormat;
 use crate::VertexFormatSize;
+use crate::{rdm_writer::PutVertex, RDJoint};
 
 use crate::B4b;
 use crate::G4b;
 use crate::I4b;
 use crate::N4b;
 use crate::P4h;
-use crate::P4h_N4b_G4b_B4b_T2h_I4b;
 use crate::T2h;
 use nalgebra::*;
 
 use half::f16;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 
 use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
+use crate::VertexFormat2;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -199,6 +198,9 @@ pub fn read_animation(
             };
             anim_vec.push(ent);
         }
+
+        //SHOULD NEVER ACTUALLY RUN SINCE translation_map.remove
+        assert_eq!(translation_map.len(), 0);
         for entry in translation_map.drain() {
             let ent = FrameCollection {
                 name: entry.0.to_string(),
@@ -226,11 +228,6 @@ pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     let triangles = gltf_imp.2;
 
     let meta = 0;
-    let vertex_offset = 0;
-
-    let vertices_count = gltf_imp.3 as u32;
-    // TODO: improve
-    let vertex_buffer_size = gltf_imp.0;
 
     let triangles_offset = 0;
 
@@ -243,16 +240,14 @@ pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
         None
     };
 
+    // todo!("TODO : FIX ME !!!");
     RDModell {
         size,
         buffer: Bytes::new(),
         joints: joints_vec,
-        vertices,
         triangle_indices: triangles,
         meta,
-        vertex_offset,
-        vertices_count,
-        vertex_buffer_size,
+        vertex: vertices,
 
         triangles_offset,
         triangles_idx_count,
@@ -379,7 +374,7 @@ fn read_mesh(
     gltf: &gltf::Document,
     buffers: &[gltf::buffer::Data],
     read_joints: bool,
-) -> Option<(u32, VertexFormat, Vec<Triangle>, u32)> {
+) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
@@ -425,8 +420,9 @@ fn read_mesh(
 
             let mut joints_iter = jvecarr.into_iter().cycle();
 
-            let mut verts_vec: Vec<P4h_N4b_G4b_B4b_T2h_I4b> = Vec::with_capacity(count);
-            let mut vertsize = 0;
+            let vertsize = VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b;
+            let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
+
             while count > 0 {
                 let vertex_position = position_iter.next().unwrap();
                 let p4h = P4h {
@@ -512,33 +508,27 @@ fn read_mesh(
                     ],
                 };
 
-                let k = P4h_N4b_G4b_B4b_T2h_I4b {
-                    p4h,
-                    n4b,
-                    g4b,
-                    b4b,
-                    t2h,
-                    c4c: (),
-                    i4b0: i4b,
-                    i4b1: (),
-                    i4b2: (),
-                    i4b3: (),
-                    w4b0: (),
-                    w4b1: (),
-                    w4b2: (),
-                    w4b3: (),
-                };
+                // P4h_N4b_G4b_B4b_T2h_I4b
+                verts_vec.put_p4h(&p4h);
+                verts_vec.put_n4b(&n4b);
+                verts_vec.put_g4b(&g4b);
+                verts_vec.put_b4b(&b4b);
+                verts_vec.put_t2h(&t2h);
+                verts_vec.put_i4b(&i4b);
 
-                vertsize = VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b;
-
-                //let k = VertexFormat::P4h_N4b_T2h_I4b(p4h, n4b,t2h, i4b);
-                verts_vec.push(k);
                 count -= 1;
             }
 
-            let vertices_count = verts_vec.len();
+            let vertices_count = verts_vec.len() as u32 / vertsize;
             info!("vertices_count {}", vertices_count);
-            let verts = VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(verts_vec);
+
+            let verts = VertexFormat2::new(
+                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec(),
+                vertices_count,
+                vertsize,
+                0,
+                verts_vec.freeze(),
+            );
 
             let mut triangle_iter = reader.read_indices().unwrap().into_u32();
             let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
@@ -558,7 +548,7 @@ fn read_mesh(
                 triangle_vec.push(t);
             }
 
-            return Some((vertsize, verts, triangle_vec, vertices_count as u32));
+            return Some((vertsize, verts, triangle_vec, vertices_count));
         }
     }
     None

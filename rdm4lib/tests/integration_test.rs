@@ -22,7 +22,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
         let rdm = RDModell::from("rdm/fishery_others_lod2.rdm");
-        assert_eq!(rdm.vertices_count, 3291);
+        assert_eq!(rdm.vertex.len(), 3291);
         assert_eq!(rdm.triangles_idx_count, 7473);
 
         assert_eq!(
@@ -35,7 +35,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn basalt_crusher_others_lod2() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
-        assert_eq!(rdm.vertices_count, 2615);
+        assert_eq!(rdm.vertex.len(), 2615);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -128,7 +128,7 @@ mod tests {
         rdm.mat = Some(RDMaterial::new(Path::new(
             r"rdm/excavator_tycoons_diff_0.dds",
         )));
-        assert_eq!(rdm.vertices_count, 5225);
+        assert_eq!(rdm.vertex.len(), 5225);
 
         rdm.add_skin();
 
@@ -142,7 +142,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn fishery_others_cutout_lod0() {
         let rdm = RDModell::from("rdm/fishery_others_cutout_lod0.rdm");
-        assert_eq!(rdm.vertices_count, 32);
+        assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.triangles_idx_count, 78);
 
         assert_eq!(
@@ -155,7 +155,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn ark_waterfall2() {
         let rdm = RDModell::from("rdm/ark_waterfall2.rdm");
-        assert_eq!(rdm.vertices_count, 105);
+        assert_eq!(rdm.vertex.len(), 105);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -168,7 +168,7 @@ mod tests {
     fn exp_rdm_inv_basalt_crusher_others_lod0() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
-        assert_eq!(rdm.vertices_count, 2615);
+        assert_eq!(rdm.vertex.len(), 2615);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -183,7 +183,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), true);
-        assert_eq!(rdm.vertices_count, 5184);
+        assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
@@ -198,7 +198,7 @@ mod tests {
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
         let rdm = gltf_reader::load_gltf(&f_path, true);
-        assert_eq!(rdm.vertices_count, 5184);
+        assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
@@ -215,7 +215,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), false);
-        assert_eq!(rdm.vertices_count, 5184);
+        assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3
@@ -229,7 +229,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin2() {
         let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/triangle.gltf"), false);
-        assert_eq!(rdm.vertices_count, 3);
+        assert_eq!(rdm.vertex.len(), 3);
         assert_eq!(
             rdm.triangles_idx_count as usize,
             rdm.triangle_indices.len() * 3

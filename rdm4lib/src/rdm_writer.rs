@@ -155,6 +155,7 @@ impl RDWriter {
             self.buf.put_slice(model_str);
         }
 
+        let id_ptr;
         {
             // VERTEX_FORMAT_IDENTIFIER_PTR
 
@@ -174,8 +175,8 @@ impl RDWriter {
                     meta_id_ptr,
                 );
             }
-
-            self.buf.put_u32_le(self.buf.len() as u32 + 8 + 24);
+            id_ptr = self.buf.len() as u32 + 8 + 24;
+            self.buf.put_u32_le(id_ptr);
 
             // unknown maybe shader id
             // 0: no anim
@@ -200,68 +201,11 @@ impl RDWriter {
             //                      0x05 u8
             // 4 bytes: unit interpretation ?
             // 4 bytes: unit count
-            static P4H_IDENTIFIER: [u8; 16] = [
-                0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
-                0x00, 0x00,
-            ];
 
-            static N4B_IDENTIFIER: [u8; 16] = [
-                0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            static G4B_IDENTIFIER: [u8; 16] = [
-                0x02, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            static B4B_IDENTIFIER: [u8; 16] = [
-                0x03, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            static T2H_IDENTIFIER: [u8; 16] = [
-                0x04, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
-                0x00, 0x00,
-            ];
-
-            #[allow(dead_code)]
-            static C4C_IDENTIFIER: [u8; 16] = [
-                0x05, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            static I4B_IDENTIFIER: [u8; 16] = [
-                0x07, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            #[allow(dead_code)]
-            static W4B_IDENTIFIER: [u8; 16] = [
-                0x06, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00,
-                0x00, 0x00,
-            ];
-
-            if self.input.has_skin() {
-                //P4h_N4b_G4b_B4b_T2h_I4b
-                self.buf.put_u32_le(6);
-                self.buf.put_u32_le(16);
-                self.buf.put_slice(&P4H_IDENTIFIER);
-                self.buf.put_slice(&N4B_IDENTIFIER);
-                self.buf.put_slice(&G4B_IDENTIFIER);
-                self.buf.put_slice(&B4B_IDENTIFIER);
-                self.buf.put_slice(&T2H_IDENTIFIER);
-                self.buf.put_slice(&I4B_IDENTIFIER);
-            } else {
-                // P4h_N4b_G4b_B4b_T2h
-                self.buf.put_u32_le(5);
-                self.buf.put_u32_le(16);
-                self.buf.put_slice(&P4H_IDENTIFIER);
-                self.buf.put_slice(&N4B_IDENTIFIER);
-                self.buf.put_slice(&G4B_IDENTIFIER);
-                self.buf.put_slice(&B4B_IDENTIFIER);
-                self.buf.put_slice(&T2H_IDENTIFIER);
-            }
+            self.buf.put_u32_le(self.input.vertex.identifiers_len());
+            self.buf.put_u32_le(16);
+            assert_eq!(self.buf.len() as u32, id_ptr);
+            self.buf.put_slice(self.input.vertex.identifiers_as_bytes());
         }
 
         {
@@ -285,10 +229,12 @@ impl RDWriter {
             self.buf.put_slice(&UNKNOWN);
         }
 
+        // for each MeshInstance.
         {
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(28);
 
+            // pointer to the first MeshInstance
             {
                 let triangle_count_ptr = self.buf.len() as u32;
                 let buff_off = (self.meta_deref + 20) as usize;
@@ -308,24 +254,16 @@ impl RDWriter {
             self.buf.put_slice(&ZERO_20_OF_28);
         }
 
-        assert_eq!(true, 704 == self.buf.len() || 704 - 16 == self.buf.len());
-
-        //to be patched:
-        // anim off 40
-        // off 36 -> end ?!
-        // off 24 -> file end header
-        //
-        // off 32 -> 331 dez
-        // 331 + 12 = vertex data start
-        // 311 + 16 = indexed_triangle_list data start
-
-        // raw data cont. start till (vertex data start -8)
+        assert_eq!(
+            self.buf.len(),
+            608 + self.input.vertex.identifiers_as_bytes().len()
+        );
     }
 
     #[cfg(target_endian = "little")]
     fn put_vertex_buffer(&mut self) {
-        self.buf.put_u32_le(self.input.vertices_count);
-        self.buf.put_u32_le(self.input.vertex_buffer_size);
+        self.buf.put_u32_le(self.input.vertex.len());
+        self.buf.put_u32_le(self.input.vertex.get_size());
 
         {
             let vertex_ptr = self.buf.len() as u32;
@@ -333,50 +271,13 @@ impl RDWriter {
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], vertex_ptr);
         }
         let start = self.buf.len();
-        match &self.input.vertices {
-            VertexFormat::P4h(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_T2h(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_T2h_I4b(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_G4b_B4b_T2h(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_T2h_I4b_W4b(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_T2h_C4c(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_C4c(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-            VertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b(iv) => {
-                let v = unsafe { iv.align_to::<u8>().1 };
-                self.buf.put_slice(v);
-            }
-        }
+        self.buf.put_slice(self.input.vertex.as_bytes());
         let end = self.buf.len();
         let written = end - start;
         //assert_eq!(written as u32,(self.input.vertices_count/3)*self.input.vertex_buffer_size);
         assert_eq!(
-            written,
-            self.input.vertices.len() * self.input.vertex_buffer_size as usize
+            written as u32,
+            self.input.vertex.len() * self.input.vertex.get_size()
         );
     }
 
@@ -582,7 +483,7 @@ impl From<RDModell> for RDWriter {
     }
 }
 
-trait PutVertex {
+pub trait PutVertex {
     fn put_p4h(&mut self, p4h: &P4h);
     fn put_n4b(&mut self, n4b: &N4b);
     fn put_g4b(&mut self, g4b: &G4b);
