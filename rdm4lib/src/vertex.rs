@@ -91,6 +91,7 @@ pub struct VertexFormat2 {
     vertex_count: u32,
     size: u32,
     vertex_buffer: Bytes,
+    pub weight_sum: Option<Vec<u32>>,
 }
 
 impl fmt::Display for VertexFormat2 {
@@ -110,6 +111,29 @@ impl VertexFormat2 {
 
     pub fn identifiers_len(&self) -> u32 {
         self.identifiers.len() as u32
+    }
+
+    // TODO FIX THIS IS **totally inefficient**
+    pub fn set_weight_sum(&mut self) {
+        let n = self.find(UniqueIdentifier::W4b).len();
+        if n == 0 {
+            self.weight_sum = Some(vec![255; self.len() as usize]);
+        } else {
+            let mut vec: Vec<u32> = vec![0; self.len() as usize];
+            for i in 0..n {
+                if let Some(iter) = self.iter::<W4b>(i) {
+                    for (e, dst) in iter.zip(vec.iter_mut()) {
+                        let n = e.blend_weight[0] as u32
+                            + e.blend_weight[1] as u32
+                            + e.blend_weight[2] as u32
+                            + e.blend_weight[3] as u32;
+
+                        *dst += n;
+                    }
+                }
+            }
+            self.weight_sum = Some(vec);
+        }
     }
 
     pub fn identifiers_as_bytes(&self) -> &[u8] {
@@ -149,6 +173,7 @@ impl VertexFormat2 {
             size: off as u32,
             vertex_offset,
             vertex_buffer,
+            weight_sum: None,
         }
     }
 

@@ -3,7 +3,7 @@
 ## command-line interface rdm4-bin
 
 ```
-rdm4-bin v0.1-alpha
+rdm4-bin v0.2-alpha
 lukts30 <https://github.com/lukts30/rdm4>
 
 USAGE:
@@ -18,9 +18,9 @@ FLAGS:
     -V, --version      Prints version information
 
 OPTIONS:
-    -m, --rdanimation <anim/*.rdm>    External animation file for rdm
-    -f, --file <glTF or rdm FILE>     Input file
-
+    -t, --diffusetexture <*.dds>...    DiffuseTextures
+    -m, --rdanimation <anim/*.rdm>     External animation file for rdm
+    -f, --file <glTF or rdm FILE>      Input file
 ```
 
 ## Example usage rdm 🠚 glTF 2.0
@@ -51,6 +51,10 @@ $ ./rdm4-bin.exe -f rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship
 [2020-08-25T21:48:17Z INFO  rdm4_bin] running gltf_export ...
 ```
 
+## Usage with animation & diffuse texture (must match \*.cfg `cModelDiffTex` order) [**requires texconv**]
+```console
+$ ./rdm4-bin.exe -f rdm/resident_tier03_work.rdm -sam anim/resident_tier03_work_friendly_talk.rdm -t maps/resident_tier03_diff_0.dds ../resident_tier03/maps/resident_tier03_diff_0.dds
+```
 
 ## Example usage glTF 2.0 🠚 rdm
 **Flag --gltf or the alias -g must be used !**
@@ -336,12 +340,8 @@ $ ./rdm4-bin.exe -f untitled.gltf -gsa
 
 ---
 ## Current limitations
-- currently primarily tested and developed against Anno 2070.
-- lots of vertices types from Anno 2205/Anno 1800 currently unsupported !
 - normals & tangent & bitangent contain placeholder garbage values.
 - material or texture or shader id bytes were not yet "investigated"
-- rdm load is based on vertices size heuristics even though "real" magic bytes are already used in rdm_writer
-    - TODO: rewrite `VertexFormat` using generics
 - while glTF files can contain multiple animation this is not handled at all.
     - e.g cannot export "idle" and "work" into one glTF file
     - glTF animations json nodes could be cut out to generate all rdanimation files (workaround)

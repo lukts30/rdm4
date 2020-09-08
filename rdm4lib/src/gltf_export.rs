@@ -138,7 +138,12 @@ impl RDGltfBuilder {
         }
 
         for (_, janim) in anim_vec.iter().enumerate() {
-            let target_node_idx = *modell_nodes.get(&janim.name).unwrap() as u32;
+            let target_node_idx = match modell_nodes.get(&janim.name) {
+                Some(idx) => { *idx as u32}
+                None => {
+                    panic!("Could not find animation target {:?} in base model {:?}",&janim.name,p);
+                }
+            };
 
             let count = janim.len as usize;
 
@@ -356,7 +361,10 @@ impl RDGltfBuilder {
         self.anim_node = Some(anim_node);
     }
 
-    fn put_joint_weight(&mut self) {
+    fn put_joint_weight(&mut self, normalise: bool) {
+        if normalise {
+            self.rdm.vertex.set_weight_sum();
+        }
         let n = self.rdm.vertex.find(UniqueIdentifier::I4b).len();
         for i in 0..n {
             if let Some(iter) = self.rdm.vertex.iter::<I4b>(i) {
@@ -370,22 +378,56 @@ impl RDGltfBuilder {
                         None => Box::new(self.rdm.vertex.w4b_default_iter()),
                     };
 
-                /* TODO:'ACCESSOR_JOINTS_USED_ZERO_WEIGHT' +
-                       ACCESSOR_WEIGHTS_NON_NORMALIZED
-                */
+                for ((e, w), sum) in iter
+                    .zip(w4b_iter)
+                    .zip(self.rdm.vertex.weight_sum.as_ref().unwrap())
+                {
+                    if normalise {
+                        // ACCESSOR_JOINTS_USED_ZERO_WEIGHT
+                        if w.blend_weight[0] != 0 {
+                            joint_buf.put_u8(e.blend_idx[0]);
+                        } else {
+                            joint_buf.put_u8(0);
+                        }
+                        if w.blend_weight[1] != 0 {
+                            joint_buf.put_u8(e.blend_idx[1]);
+                        } else {
+                            joint_buf.put_u8(0);
+                        }
+                        if w.blend_weight[2] != 0 {
+                            joint_buf.put_u8(e.blend_idx[2]);
+                        } else {
+                            joint_buf.put_u8(0);
+                        }
+                        if w.blend_weight[3] != 0 {
+                            joint_buf.put_u8(e.blend_idx[3]);
+                        } else {
+                            joint_buf.put_u8(0);
+                        }
 
-                for (e, w) in iter.zip(w4b_iter) {
-                    joint_buf.put_u8(e.blend_idx[0]);
-                    joint_buf.put_u8(e.blend_idx[1]);
-                    joint_buf.put_u8(e.blend_idx[2]);
-                    joint_buf.put_u8(e.blend_idx[3]);
+                        // ACCESSOR_WEIGHTS_NON_NORMALIZED
+                        let sum_float: f32 = 255.0f32 / *sum as f32;
 
-                    weight_ap_joint_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0); // > 0.0
-                    weight_ap_joint_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0); // 0.0
-                    weight_ap_joint_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0); // 0.0
-                    weight_ap_joint_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0);
+                        weight_ap_joint_buf
+                            .put_f32_le(w.blend_weight[0] as f32 / 255.0 * sum_float); // > 0.0
+                        weight_ap_joint_buf
+                            .put_f32_le(w.blend_weight[1] as f32 / 255.0 * sum_float); // 0.0
+                        weight_ap_joint_buf
+                            .put_f32_le(w.blend_weight[2] as f32 / 255.0 * sum_float); // 0.0
+                        weight_ap_joint_buf
+                            .put_f32_le(w.blend_weight[3] as f32 / 255.0 * sum_float);
+                    } else {
+                        joint_buf.put_u8(e.blend_idx[0]);
+                        joint_buf.put_u8(e.blend_idx[1]);
+                        joint_buf.put_u8(e.blend_idx[2]);
+                        joint_buf.put_u8(e.blend_idx[3]);
+
+                        weight_ap_joint_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0); // > 0.0
+                        weight_ap_joint_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0); // 0.0
+                        weight_ap_joint_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0); // 0.0
+                        weight_ap_joint_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0);
+                    }
                 }
-
                 let weight_len = weight_ap_joint_buf.len() as u32;
                 let joint_len = joint_buf.len() as u32;
                 weight_ap_joint_buf.put_slice(&joint_buf);
@@ -1304,7 +1346,7 @@ impl From<RDModell> for RDGltfBuilder {
 
         if has_skin {
             b.put_joint_nodes(JointOption::ResolveParentNode);
-            b.put_joint_weight();
+            b.put_joint_weight(true);
 
             if has_anim {
                 b.put_rdm_anim();

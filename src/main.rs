@@ -29,7 +29,7 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
 
 #[derive(Clap)]
 #[clap(
-    version = "v0.1-alpha",
+    version = "v0.2-alpha",
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
@@ -78,10 +78,11 @@ struct Opts {
     )]
     input: PathBuf,
 
-    /// DiffuseTexture
+    /// DiffuseTextures
     #[clap(
         short = "t",
         long = "diffusetexture",
+        value_name("*.dds"),
         display_order(4),
         validator_os(cli_in_is_file),
         parse(from_str)
