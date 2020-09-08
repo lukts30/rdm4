@@ -52,13 +52,13 @@ struct RDGltfBuilder {
     accessors: Vec<json::Accessor>,
     nodes: Vec<json::Node>,
     attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
-    idx: Option<u32>,
+    idx: Option<Vec<u32>>,
 
     rdm: RDModell,
     obj: RDGltf, // private
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
-    material_idx: Option<u32>,
+    material_idx: Option<Vec<u32>>,
     material_vec: Vec<json::Material>,
     texture_vec: Vec<json::Texture>,
     image_vec: Vec<json::Image>,
@@ -90,6 +90,7 @@ impl RDGltfBuilder {
     pub fn put_rdm_anim(&mut self) {
         // TODO: must not circumvent PushBufferResult
         let buffv_idx = self.buffers.len() as u32;
+        let mut bv_idx = self.buffer_views.len() as u32;
         let mut acc_idx = self.accessors.len() as u32;
 
         let anim = self.rdm.anim.clone().unwrap();
@@ -181,7 +182,7 @@ impl RDGltfBuilder {
             };
 
             let rot_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(acc_idx)),
+                buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: 0,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
@@ -199,6 +200,7 @@ impl RDGltfBuilder {
             let rot_sampler_idx = acc_idx;
             acc_vec.push(rot_accessor);
             acc_idx += 1;
+            bv_idx += 1;
 
             let trans_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
@@ -212,7 +214,7 @@ impl RDGltfBuilder {
             };
 
             let trans_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(acc_idx)),
+                buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: 0,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
@@ -230,6 +232,7 @@ impl RDGltfBuilder {
             let trans_sampler_idx = acc_idx;
             acc_vec.push(trans_accessor);
             acc_idx += 1;
+            bv_idx += 1;
 
             let time_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
@@ -243,7 +246,7 @@ impl RDGltfBuilder {
             };
 
             let time_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(acc_idx)),
+                buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: 0,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
@@ -261,6 +264,7 @@ impl RDGltfBuilder {
             let time_sampler_idx = acc_idx;
             acc_vec.push(time_accessor);
             acc_idx += 1;
+            bv_idx += 1;
 
             buffer_v_vec.push(rot_buffer_view);
             buffer_v_vec.push(trans_buffer_view);
@@ -901,63 +905,70 @@ impl RDGltfBuilder {
     }
 
     fn put_material(&mut self) {
-        let t = if let Some(mat) = self.rdm.mat.as_ref() {
-            let sampler = json::texture::Sampler {
+        let mut info_vec = Vec::new();
+        if let Some(mats) = self.rdm.mat.as_ref() {
+            for (i, mat) in mats.c_model_diff_tex.iter().enumerate() {
+                let sampler = json::texture::Sampler {
+                    ..Default::default()
+                };
+                self.sampler_vec.push(sampler);
+
+                let fname = mat.file_stem().unwrap().to_str().unwrap();
+                let image = json::Image {
+                    uri: Some(format!("{}{}", fname, ".png")),
+                    buffer_view: None,
+                    mime_type: None,
+                    extensions: None,
+                    extras: None,
+                    name: None,
+                };
+                self.image_vec.push(image);
+
+                // TODO DO NOT USE i
+                let texture = json::Texture {
+                    sampler: Some(json::Index::new(i as u32)),
+                    source: json::Index::new(i as u32),
+                    extensions: None,
+                    extras: None,
+                    name: None,
+                };
+                self.texture_vec.push(texture);
+
+                info_vec.push(Some(gltf_json::texture::Info {
+                    index: json::Index::new(i as u32),
+                    tex_coord: 0,
+                    extensions: None,
+                    extras: None,
+                }))
+            }
+        }
+        while self.rdm.mesh_info.len() > info_vec.len() {
+            info_vec.push(None);
+        }
+        assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
+
+        let mut material_idx_vec = Vec::new();
+        for itex in info_vec {
+            let pbr = json::material::PbrMetallicRoughness {
+                base_color_texture: itex,
                 ..Default::default()
             };
-            self.sampler_vec.push(sampler);
 
-            let fname = mat.c_model_diff_tex[0]
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap();
-            let image = json::Image {
-                uri: Some(format!("{}{}", fname, ".png")),
-                buffer_view: None,
-                mime_type: None,
-                extensions: None,
-                extras: None,
-                name: None,
+            let map = json::Material {
+                // FALSE WARNING
+                // MATERIAL_ALPHA_CUTOFF_INVALID_MODE
+                // This value is ignored for other modes.
+                alpha_cutoff: json::material::AlphaCutoff(0.0f32),
+                alpha_mode: Valid(json::material::AlphaMode::Opaque),
+                pbr_metallic_roughness: pbr,
+                ..Default::default()
             };
-            self.image_vec.push(image);
 
-            let texture = json::Texture {
-                sampler: Some(json::Index::new(0)),
-                source: json::Index::new(0),
-                extensions: None,
-                extras: None,
-                name: None,
-            };
-            self.texture_vec.push(texture);
+            material_idx_vec.push(self.material_vec.len() as u32);
 
-            Some(gltf_json::texture::Info {
-                index: json::Index::new(0),
-                tex_coord: 0,
-                extensions: None,
-                extras: None,
-            })
-        } else {
-            None
-        };
-
-        let pbr = json::material::PbrMetallicRoughness {
-            base_color_texture: t,
-            ..Default::default()
-        };
-
-        let map = json::Material {
-            // FALSE WARNING
-            // MATERIAL_ALPHA_CUTOFF_INVALID_MODE
-            // This value is ignored for other modes.
-            alpha_cutoff: json::material::AlphaCutoff(0.0f32),
-            alpha_mode: Valid(json::material::AlphaMode::Opaque),
-            pbr_metallic_roughness: pbr,
-            ..Default::default()
-        };
-
-        self.material_idx = Some(self.material_vec.len() as u32);
-        self.material_vec.push(map);
+            self.material_vec.push(map);
+        }
+        self.material_idx = Some(material_idx_vec);
     }
 
     #[allow(dead_code)]
@@ -1156,27 +1167,34 @@ impl RDGltfBuilder {
 
         let buffer_idx_view_idx = (self.buffer_views.len() - 1) as u32;
 
-        let idx = json::Accessor {
-            buffer_view: Some(json::Index::new(buffer_idx_view_idx)),
-            byte_offset: 0,
-            count: (triangle_idx_p.num * 3),
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::U16,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Scalar),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
+        let mut accessor_idx_meshes = Vec::new();
+        let mut sum = 0;
+        for submesh in self.rdm.mesh_info.iter() {
+            let idx = json::Accessor {
+                buffer_view: Some(json::Index::new(buffer_idx_view_idx)),
+                byte_offset: submesh.start_index_location * 2,
+                count: submesh.index_count,
+                component_type: Valid(json::accessor::GenericComponentType(
+                    json::accessor::ComponentType::U16,
+                )),
+                extensions: Default::default(),
+                extras: Default::default(),
+                type_: Valid(json::accessor::Type::Scalar),
+                min: None,
+                max: None,
+                name: None,
+                normalized: false,
+                sparse: None,
+            };
 
-        self.accessors.push(idx);
+            self.accessors.push(idx);
 
-        let accessors_idx = (self.accessors.len() - 1) as u32;
-        self.idx = Some(accessors_idx);
+            let accessors_idx = (self.accessors.len() - 1) as u32;
+            accessor_idx_meshes.push(accessors_idx);
+            sum += submesh.index_count;
+        }
+        assert_eq!((triangle_idx_p.num * 3), sum);
+        self.idx = Some(accessor_idx_meshes);
         // end Indexed triangle list
     }
 
@@ -1188,21 +1206,33 @@ impl RDGltfBuilder {
             Default::default()
         };
 
-        let primitive = json::mesh::Primitive {
-            attributes: self.attr_map,
-            extensions: Default::default(),
-            extras: Default::default(),
-            indices: Some(json::Index::new(self.idx.unwrap())),
-            material: Some(json::Index::new(self.material_idx.unwrap())),
-            mode: Valid(json::mesh::Mode::Triangles),
-            targets: None,
-        };
+        let mut triangle_vec = Vec::new();
+        for (i, ((submesh, idx), mesh_idx)) in self
+            .rdm
+            .mesh_info
+            .iter()
+            .zip(self.idx.unwrap())
+            .zip(self.material_idx.unwrap())
+            .enumerate()
+        {
+            assert_eq!(i as u32, submesh.mesh);
+            let primitive = json::mesh::Primitive {
+                attributes: self.attr_map.clone(),
+                extensions: Default::default(),
+                extras: Default::default(),
+                indices: Some(json::Index::new(idx)),
+                material: Some(json::Index::new(mesh_idx)),
+                mode: Valid(json::mesh::Mode::Triangles),
+                targets: None,
+            };
+            triangle_vec.push(primitive);
+        }
 
         let mesh = json::Mesh {
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            primitives: vec![primitive],
+            primitives: triangle_vec,
             weights: None,
         };
 

@@ -2,7 +2,7 @@
 /triangle
 /rdm4lib/triangle
 /rdm4lib/rdm_out
-/rdm4lib/gltf_out
+/rdm4lib/gltf_out*
 /rdm4lib/rdm/*.bin
 *.rdm
 *.glb

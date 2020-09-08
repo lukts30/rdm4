@@ -14,6 +14,7 @@ impl RDMaterial {
     }
 
     pub fn run_texconv(&self, dst: &Path) {
+        info!("running texconv ...");
         for p in self.c_model_diff_tex.iter() {
             let ab_path = p.canonicalize().unwrap();
             let ab_dst = dst.canonicalize().unwrap();
@@ -25,9 +26,9 @@ impl RDMaterial {
                 .arg(r"png")
                 .output()
                 .expect("failed to execute process");
-            println!("{:?}", &ab_path.to_str().unwrap()[4..]);
-            println!("{:?}", &ab_dst.to_str().unwrap()[4..]);
-            println!("{:?}", output);
+            trace!("{:?}", &ab_path.to_str().unwrap()[4..]);
+            trace!("{:?}", &ab_dst.to_str().unwrap()[4..]);
+            trace!("{:?}", output);
         }
     }
 }

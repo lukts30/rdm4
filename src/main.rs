@@ -86,7 +86,7 @@ struct Opts {
         validator_os(cli_in_is_file),
         parse(from_str)
     )]
-    diffusetexture: Option<PathBuf>,
+    diffusetexture: Option<Vec<PathBuf>>,
 
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
@@ -122,7 +122,9 @@ fn main() {
         }
 
         if let Some(diffusetexture) = opts.diffusetexture {
-            rdm.mat = Some(RDMaterial::new(&diffusetexture));
+            rdm.mat = Some(RDMaterial {
+                c_model_diff_tex: diffusetexture,
+            });
         }
         info!("running gltf_export ...");
         gltf_export::build(rdm, None);

@@ -17,6 +17,7 @@ use std::str;
 mod tests {
     use super::*;
     use rdm4lib::rdm_material::RDMaterial;
+    use std::{fs, path::PathBuf};
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -135,7 +136,26 @@ mod tests {
         let anim = RDAnim::from("rdm/excavator_tycoons_work02.rdm");
         rdm.add_anim(anim);
 
-        //gltf_export::build(rdm, Some(Path::new("gltf_out").into()));
+        fs::create_dir("gltf_out1").unwrap();
+        gltf_export::build(rdm, Some(Path::new("gltf_out1").into()));
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    #[cfg(target_os = "windows")]
+    fn residence_tier02_estate02() {
+        let mut rdm = RDModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
+        rdm.mat = Some(RDMaterial {
+            c_model_diff_tex: vec![
+                PathBuf::from("rdm/residence_tier02_04_diff_0.dds"),
+                PathBuf::from("rdm/residence_02_05_diff_0.dds"),
+                PathBuf::from("rdm/brick_wall_white_estate_01_diff_0.dds"),
+            ],
+        });
+        assert_eq!(rdm.vertex.len(), 1965);
+
+        fs::create_dir("gltf_out2").unwrap();
+        gltf_export::build(rdm, Some(Path::new("gltf_out2").into()));
     }
 
     #[test]

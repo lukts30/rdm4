@@ -1,7 +1,7 @@
-use crate::RDModell;
 use crate::Triangle;
 use crate::VertexFormatSize;
 use crate::{rdm_writer::PutVertex, RDJoint};
+use crate::{MeshInstance, RDModell};
 
 use crate::B4b;
 use crate::G4b;
@@ -244,6 +244,11 @@ pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
     RDModell {
         size,
         buffer: Bytes::new(),
+        mesh_info: vec![MeshInstance {
+            start_index_location: 0,
+            index_count: triangles.len() as u32,
+            mesh: 0,
+        }],
         joints: joints_vec,
         triangle_indices: triangles,
         meta,

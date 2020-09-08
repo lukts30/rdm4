@@ -1,5 +1,5 @@
 use bytes::{Buf, Bytes};
-use std::path::Path;
+use std::{cmp::Ordering, path::Path};
 
 use std::fs::File;
 
@@ -14,10 +14,6 @@ extern crate log;
 
 #[macro_use]
 extern crate approx;
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate memoffset;
 
 pub mod gltf_export;
 pub mod gltf_reader;
@@ -35,6 +31,7 @@ use vertex::VertexFormat2;
 pub struct RDModell {
     size: u32,
     buffer: Bytes,
+    mesh_info: Vec<MeshInstance>,
     pub joints: Option<Vec<RDJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
@@ -71,11 +68,29 @@ pub struct RDJoint {
     locked: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq)]
 pub struct MeshInstance {
     start_index_location: u32,
     index_count: u32,
     mesh: u32,
+}
+
+impl Ord for MeshInstance {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.mesh.cmp(&other.mesh)
+    }
+}
+
+impl PartialOrd for MeshInstance {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for MeshInstance {
+    fn eq(&self, other: &Self) -> bool {
+        self.mesh == other.mesh
+    }
 }
 
 #[allow(dead_code)]
@@ -117,12 +132,15 @@ impl RDModell {
         );
     }
 
-    pub fn check_multi_mesh(&self) {
-        let mut multi_buffer = self.buffer.clone();
-        multi_buffer.seek(self.meta + 20, self.size);
+    pub fn check_multi_mesh(
+        mut multi_buffer: Bytes,
+        meta_deref: u32,
+        size: u32,
+    ) -> Vec<MeshInstance> {
+        multi_buffer.seek(meta_deref + 20, size);
         let first_instance = multi_buffer.get_u32_le();
 
-        multi_buffer.seek(first_instance - RDModell::META_COUNT, self.size);
+        multi_buffer.seek(first_instance - RDModell::META_COUNT, size);
         let mesh_count = multi_buffer.get_u32_le();
         assert_eq!(multi_buffer.get_u32_le(), 28);
         warn!("mesh_count: {}", mesh_count);
@@ -136,6 +154,9 @@ impl RDModell {
             multi_buffer.advance(28 - 12);
         }
         warn!("meshes: {:?}", v);
+        assert_eq!(v.is_empty(), false);
+        v.sort();
+        v
     }
 
     pub fn add_skin(&mut self) {
@@ -239,6 +260,7 @@ impl RDModell {
         nbuffer.get_u32_le();
 
         let _skin_there = nbuffer.get_u32_le() > 0;
+        let mesh_info = RDModell::check_multi_mesh(buffer.clone(), meta, size);
 
         nbuffer.seek(meta, size);
         nbuffer.advance(RDModell::VERTEX_META as usize);
@@ -278,6 +300,7 @@ impl RDModell {
         RDModell {
             size,
             buffer,
+            mesh_info,
             joints: None,
             triangle_indices: triangles,
             meta,
@@ -367,9 +390,7 @@ impl From<&Path> for RDModell {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        let rd = RDModell::new(buffer);
-        rd.check_multi_mesh();
-        rd
+        RDModell::new(buffer)
     }
 }
 
