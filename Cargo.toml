@@ -7,6 +7,9 @@ license = "MIT"
 repository = "https://github.com/lukts30/rdm4"
 
 [workspace]
+members = [
+    "cfghelper",
+]
 
 [dependencies]
 rdm4lib = { path = "rdm4lib" }

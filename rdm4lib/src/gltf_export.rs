@@ -139,9 +139,12 @@ impl RDGltfBuilder {
 
         for (_, janim) in anim_vec.iter().enumerate() {
             let target_node_idx = match modell_nodes.get(&janim.name) {
-                Some(idx) => { *idx as u32}
+                Some(idx) => *idx as u32,
                 None => {
-                    panic!("Could not find animation target {:?} in base model {:?}",&janim.name,p);
+                    panic!(
+                        "Could not find animation target {:?} in base model {:?}",
+                        &janim.name, p
+                    );
                 }
             };
 
