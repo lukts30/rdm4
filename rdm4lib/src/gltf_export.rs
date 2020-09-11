@@ -9,7 +9,7 @@ use json::validation::Checked::Valid;
 
 use std::io::Write;
 
-use crate::Triangle;
+use crate::{rdm_material::RDMaterial, Triangle};
 use crate::{vertex::UniqueIdentifier, RDModell};
 use crate::{I4b, N4b, P4h, T2h};
 use crate::{RDJoint, W4b};
@@ -1365,14 +1365,7 @@ pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
     let b = RDGltfBuilder::from(rdm);
     let p = b.build();
 
-    p.write_gltf(dir.clone());
-
-    // TODO: move path handling to write_gltf
-    if cfg!(target_os = "windows") {
-        if let Some(mat) = mat_opt.as_ref() {
-            mat.run_texconv(dir.as_ref().unwrap_or(&PathBuf::from("gltf_out")).as_path());
-        }
-    }
+    p.write_gltf(dir, mat_opt);
 }
 
 struct RDGltf {
@@ -1388,7 +1381,7 @@ impl RDGltf {
         }
     }
 
-    fn write_gltf(mut self, dir: Option<PathBuf>) {
+    fn write_gltf(mut self, dir: Option<PathBuf>, optmat: Option<RDMaterial>) {
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("gltf_out");
             let _ = fs::create_dir(&f);
@@ -1412,6 +1405,10 @@ impl RDGltf {
             writer.write_all(&bin).expect("I/O error");
 
             idx = idx.saturating_sub(1);
+        }
+
+        if let Some(mat) = optmat.as_ref() {
+            mat.run_dds_converter(&udir);
         }
     }
 

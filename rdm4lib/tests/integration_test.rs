@@ -136,7 +136,9 @@ mod tests {
         let anim = RDAnim::from("rdm/excavator_tycoons_work02.rdm");
         rdm.add_anim(anim);
 
-        fs::create_dir("gltf_out1").unwrap();
+        if !Path::new("gltf_out1").exists() {
+            fs::create_dir("gltf_out1").unwrap();
+        }
         gltf_export::build(rdm, Some(Path::new("gltf_out1").into()));
     }
 
@@ -153,8 +155,9 @@ mod tests {
             ],
         });
         assert_eq!(rdm.vertex.len(), 1965);
-
-        fs::create_dir("gltf_out2").unwrap();
+        if !Path::new("gltf_out2").exists() {
+            fs::create_dir("gltf_out2").unwrap();
+        }
         gltf_export::build(rdm, Some(Path::new("gltf_out2").into()));
     }
 

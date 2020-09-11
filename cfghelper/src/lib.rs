@@ -159,7 +159,5 @@ pub mod cfghelper {
     }
 
     #[cfg(test)]
-    mod tests {
-        
-    }
+    mod tests {}
 }
