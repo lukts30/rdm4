@@ -5,7 +5,7 @@ pub mod cfghelper {
     use serde::{Deserialize, Serialize};
     use std::{fs, path::Path};
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct AnnoCfg {
         #[serde(rename = "RenderPropertyFlags", default)]
         render_property_flags: String,
@@ -14,13 +14,13 @@ pub mod cfghelper {
         pub models: Models,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Models {
         #[serde(rename = "$value")]
         pub models_vec: Vec<Model>,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Model {
         #[serde(rename = "Materials")]
         pub materials: Materials,
@@ -31,46 +31,46 @@ pub mod cfghelper {
         #[serde(rename = "FileName", default)]
         pub file_name: String,
         #[serde(rename = "IgnoreRuinState", default)]
-        ignore_ruin_state: bool,
+        ignore_ruin_state: Option<bool>,
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Materials {
         #[serde(rename = "$value")]
         pub materials_vec: Vec<Material>,
     }
 
     #[allow(non_snake_case)]
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Material {
         Name: String,
         ShaderID: u32,
         pub VertexFormat: String,
         NumBonesPerVertex: u32,
-        METALLIC_TEX_ENABLED: bool,
-        cModelMetallicTex: String,
-        cUseTerrainTinting: String,
-        SEPARATE_AO_TEXTURE: String,
-        cSeparateAOTex: String,
-        Common: String,
-        DIFFUSE_ENABLED: bool,
+        METALLIC_TEX_ENABLED: Option<bool>,
+        cModelMetallicTex: Option<String>,
+        cUseTerrainTinting: Option<String>,
+        SEPARATE_AO_TEXTURE: Option<String>,
+        cSeparateAOTex: Option<String>,
+        Common: Option<String>,
+        DIFFUSE_ENABLED: Option<bool>,
         pub cModelDiffTex: String,
-        NORMAL_ENABLED: bool,
-        cModelNormalTex: String,
+        NORMAL_ENABLED: Option<bool>,
+        cModelNormalTex: Option<String>,
         #[serde(rename = "cDiffuseColor.r")]
         cDiffuseColor_r: f32,
         #[serde(rename = "cDiffuseColor.g")]
         cDiffuseColor_g: f32,
         #[serde(rename = "cDiffuseColor.b")]
         cDiffuseColor_b: f32,
-        ALPHA_BLEND_ENABLED: bool,
+        ALPHA_BLEND_ENABLED: Option<bool>,
         cTexScrollSpeed: String,
-        DYE_MASK_ENABLED: bool,
-        WATER_CUTOUT_ENABLED: bool,
+        DYE_MASK_ENABLED: Option<bool>,
+        WATER_CUTOUT_ENABLED: Option<bool>,
         TerrainAdaption: String,
-        ADJUST_TO_TERRAIN_HEIGHT: bool,
+        ADJUST_TO_TERRAIN_HEIGHT: Option<bool>,
         VERTEX_COLORED_TERRAIN_ADAPTION: String,
-        ABSOLUTE_TERRAIN_ADAPTION: String,
+        ABSOLUTE_TERRAIN_ADAPTION: Option<bool>,
         Environment: String,
         cUseLocalEnvironmentBox: String,
         #[serde(rename = "cEnvironmentBoundingBox.x")]
@@ -82,25 +82,25 @@ pub mod cfghelper {
         #[serde(rename = "cEnvironmentBoundingBox.w")]
         cEnvironmentBoundingBox_w: f32,
         Glow: String,
-        GLOW_ENABLED: bool,
+        GLOW_ENABLED: Option<bool>,
         #[serde(rename = "cEmissiveColor.r")]
         cEmissiveColor_r: f32,
         #[serde(rename = "cEmissiveColor.g")]
         cEmissiveColor_g: f32,
         #[serde(rename = "cEmissiveColor.b")]
         cEmissiveColor_b: f32,
-        NIGHT_GLOW_ENABLED: bool,
+        NIGHT_GLOW_ENABLED: Option<bool>,
     }
 
     #[allow(non_snake_case)]
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Animations {
         #[serde(rename = "$value")]
         animations_vec: Vec<Animation>,
     }
 
     #[allow(non_snake_case)]
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
     pub struct Animation {
         FileName: String,
         LoopCount: u32,
@@ -146,7 +146,7 @@ pub mod cfghelper {
         let p = match_config_type_to_tag_open
             .replace_all(&p0, |captures: &regex::Captures| captures[1].to_string());
 
-        dbg!(&types);
+        //dbg!(&types);
 
         let match_config_close_to_tag_close = Regex::new(r"</Config>").unwrap();
         let mut i = 0;

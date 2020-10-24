@@ -34,6 +34,7 @@ mod cfg_xml_tests {
 
         let expected = fs::read_to_string("tests/cfgs/expected/battle_cruiser.cfgn").unwrap();
         assert_eq!(out, expected);
+
         // https://github.com/tafia/quick-xml/issues/187
         // notice the serialized xml gets spammed with <$value> & </$value> tags.
     }

@@ -69,6 +69,7 @@ impl RDMaterial {
 
     // Strips UNC from canonicalized paths.
     // See https://github.com/rust-lang/rust/issues/42869 for why this is needed.
+    #[cfg(target_os = "windows")]
     fn canonicalize_path<'p, P>(path: P) -> Result<PathBuf, Error>
     where
         P: Into<&'p Path>,
@@ -82,6 +83,15 @@ impl RDMaterial {
                 return Ok(Path::new(&OsString::from_wide(&vec_chars[4..])).to_owned());
             }
         }
+        Ok(canonical)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn canonicalize_path<'p, P>(path: P) -> Result<PathBuf, Error>
+    where
+        P: Into<&'p Path>,
+    {
+        let canonical = path.into().canonicalize()?;
         Ok(canonical)
     }
 }
