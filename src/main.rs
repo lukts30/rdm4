@@ -35,7 +35,7 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
 struct Opts {
     /// Convert from glTF to .rdm
     #[clap(
-        short = "g",
+        short = 'g',
         long = "gltf",
         conflicts_with("rdanimation"),
         display_order(1)
@@ -43,12 +43,12 @@ struct Opts {
     gltf: bool,
 
     /// Export (available) skin
-    #[clap(short = "s", long = "skeleton", display_order(2))]
+    #[clap(short = 's', long = "skeleton", display_order(2))]
     skeleton: bool,
 
     /// Export (available) animation. RDM to glTF needs external animation file (rdanimation)
     #[clap(
-        short = "a",
+        short = 'a',
         long = "animation",
         display_order(3),
         requires("skeleton")
@@ -57,7 +57,7 @@ struct Opts {
 
     /// External animation file for rdm
     #[clap(
-        short = "m",
+        short = 'm',
         long = "rdanimation",
         display_order(4),
         value_name("anim/*.rdm"),
@@ -70,7 +70,7 @@ struct Opts {
 
     /// Input file
     #[clap(
-        short = "f",
+        short = 'f',
         long = "file",
         value_name("glTF or rdm FILE"),
         validator_os(cli_in_is_file),
@@ -80,7 +80,7 @@ struct Opts {
 
     /// DiffuseTextures
     #[clap(
-        short = "t",
+        short = 't',
         long = "diffusetexture",
         value_name("*.dds"),
         display_order(4),
@@ -98,9 +98,9 @@ fn main() {
     let opts: Opts = Opts::parse();
 
     match opts.verbose {
-        0 => env_logger::from_env(Env::default().default_filter_or("info")).init(),
-        1 => env_logger::from_env(Env::default().default_filter_or("debug")).init(),
-        2 => env_logger::from_env(Env::default().default_filter_or("trace")).init(),
+        0 => env_logger::Builder::from_env(Env::default().default_filter_or("info")).init(),
+        1 => env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init(),
+        2 => env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init(),
         _ => warn!("Don't be crazy"),
     }
 

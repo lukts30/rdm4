@@ -10,7 +10,7 @@ repository = "https://github.com/lukts30/rdm4"
 
 [dependencies]
 log = "0.4"
-env_logger = "0.7.1"
+env_logger = "0.8.1"
 bytes = "0.5"
 half = "1.6.0"
 nalgebra = "0.22.0"
