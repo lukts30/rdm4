@@ -1,6 +1,6 @@
 use bytes::{Buf, Bytes};
 
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 use crate::*;
 
@@ -45,6 +45,12 @@ impl GetUniqueIdentifier for P4h {
 impl GetUniqueIdentifier for N4b {
     fn get_unique_identifier() -> UniqueIdentifier {
         UniqueIdentifier::N4b
+    }
+}
+
+impl GetUniqueIdentifier for G4b {
+    fn get_unique_identifier() -> UniqueIdentifier {
+        UniqueIdentifier::G4b
     }
 }
 
@@ -339,6 +345,14 @@ impl GetVertex for N4b {
     }
 }
 
+impl GetVertex for G4b {
+    fn get_unit(b: &mut Bytes) -> Self {
+        G4b {
+            tangent: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
+        }
+    }
+}
+
 impl GetVertex for T2h {
     fn get_unit(b: &mut Bytes) -> Self {
         T2h {
@@ -427,6 +441,15 @@ impl VertexIdentifier {
             count: 1,
         }
     }
+
+    pub const fn w4b() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::W4b,
+            unit_size: IdentifierSize::U32,
+            interpretation: 0x2,
+            count: 1,
+        }
+    }
 }
 
 pub const fn p4h_n4b_g4b_b4b_t2h_i4b() -> [VertexIdentifier; 6] {
@@ -438,6 +461,48 @@ pub const fn p4h_n4b_g4b_b4b_t2h_i4b() -> [VertexIdentifier; 6] {
         VertexIdentifier::t2h(),
         VertexIdentifier::i4b(),
     ]
+}
+
+pub const fn p4h_n4b_g4b_b4b_t2h_i4b_w4b() -> [VertexIdentifier; 7] {
+    [
+        VertexIdentifier::p4h(),
+        VertexIdentifier::n4b(),
+        VertexIdentifier::g4b(),
+        VertexIdentifier::b4b(),
+        VertexIdentifier::t2h(),
+        VertexIdentifier::i4b(),
+        VertexIdentifier::w4b(),
+    ]
+}
+
+pub const fn p4h_n4b_g4b_b4b_t2h() -> [VertexIdentifier; 5] {
+    [
+        VertexIdentifier::p4h(),
+        VertexIdentifier::n4b(),
+        VertexIdentifier::g4b(),
+        VertexIdentifier::b4b(),
+        VertexIdentifier::t2h(),
+    ]
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(non_camel_case_types)]
+pub enum TargetVertexFormat {
+    P4h_N4b_G4b_B4b_T2h,
+    P4h_N4b_G4b_B4b_T2h_I4b,
+    P4h_N4b_G4b_B4b_T2h_I4b_W4b,
+}
+impl FromStr for TargetVertexFormat {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<TargetVertexFormat, Self::Err> {
+        match input {
+            "P4h_N4b_G4b_B4b_T2h" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
+            "P4h_N4b_G4b_B4b_T2h_I4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
+            "P4h_N4b_G4b_B4b_T2h_I4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b),
+            _ => Err(format!("Invalid value for VertexFormat: {}", input)),
+        }
+    }
 }
 
 #[cfg(test)]

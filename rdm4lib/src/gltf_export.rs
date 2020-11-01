@@ -11,7 +11,7 @@ use std::io::Write;
 
 use crate::{rdm_material::RDMaterial, Triangle};
 use crate::{vertex::UniqueIdentifier, RDModell};
-use crate::{I4b, N4b, P4h, T2h};
+use crate::{G4b, I4b, N4b, P4h, T2h};
 use crate::{RDJoint, W4b};
 
 use nalgebra::*;
@@ -1022,19 +1022,31 @@ impl RDGltfBuilder {
 
         //TODO: unwrap -> if let Some ...
         for n4b in self.rdm.vertex.iter::<N4b>(0).unwrap() {
-            let nx = ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32;
-            let ny = ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32;
-            let nz = ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32;
+            let nx = if n4b.normals[0] == 127 {
+                0.0f32
+            } else {
+                ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32
+            };
+            let ny = if n4b.normals[1] == 127 {
+                0.0f32
+            } else {
+                ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32
+            };
+            let nz = if n4b.normals[2] == 127 {
+                0.0f32
+            } else {
+                ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32
+            };
 
             // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
-            //let len = ((nx*nx)+(ny*ny)+(nz*nz)).sqrt();
-            //let unx = nx/len;
-            //let uny = ny/len;
-            //let unz = nz/len;
+            let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
+            let unx = nx / len;
+            let uny = ny / len;
+            let unz = nz / len;
 
-            buff.put_f32_le(nx);
-            buff.put_f32_le(ny);
-            buff.put_f32_le(nz);
+            buff.put_f32_le(unx);
+            buff.put_f32_le(uny);
+            buff.put_f32_le(unz);
         }
 
         let vec = buff.to_vec(); //stupid
@@ -1094,30 +1106,25 @@ impl RDGltfBuilder {
 
     #[allow(dead_code)]
     fn put_tangent(&mut self) {
-        unimplemented!("put_tangent");
-        /*
         let mut buff = BytesMut::with_capacity(1000);
-        let input_vec = &self.rdm.vertices;
 
-        for vert in input_vec {
-            let g4b = vert.get_g4b();
-
-            let tx = ((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32;
-            let ty = ((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32;
-            let tz = ((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32;
-            let tw_u8 = g4b.tangent[3];
+        //TODO: unwrap -> if let Some ...
+        for g4b in self.rdm.vertex.iter::<G4b>(0).unwrap() {
+            let nx = -(((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32);
+            let ny = -(((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32);
+            let nz = -(((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32);
 
             // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
-            // let len = ((tx*tx)+(ty*ty)+(tz*tz)).sqrt();
-            // let utx = tx/len;
-            // let uty = ty/len;
-            // let utz = tz/len;
+            let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
+            let unx = nx / len;
+            let uny = ny / len;
+            let unz = nz / len;
 
-            buff.put_f32_le(tx);
-            buff.put_f32_le(ty);
-            buff.put_f32_le(tz);
-
-            if tw_u8 == 1 {
+            buff.put_f32_le(unx);
+            buff.put_f32_le(uny);
+            buff.put_f32_le(unz);
+            // TODO is this right ?
+            if g4b.tangent[3] == 1 {
                 buff.put_f32_le(1.0);
             } else {
                 buff.put_f32_le(-1.0);
@@ -1125,7 +1132,7 @@ impl RDGltfBuilder {
         }
 
         let vec = buff.to_vec(); //stupid
-        let tang_len = input_vec.len() as u32;
+        let tex_len = self.rdm.vertex.len();
 
         let buffer_p = self.obj.push_buffer(vec);
         let buffer_length = buffer_p.len as u32;
@@ -1152,10 +1159,10 @@ impl RDGltfBuilder {
         self.buffer_views.push(buffer_view);
         let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
 
-        let tang_acc = json::Accessor {
+        let tangent_acc = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_views_idx)),
             byte_offset: 0,
-            count: tang_len,
+            count: tex_len,
             component_type: Valid(json::accessor::GenericComponentType(
                 json::accessor::ComponentType::F32,
             )),
@@ -1169,7 +1176,7 @@ impl RDGltfBuilder {
             sparse: None,
         };
 
-        self.accessors.push(tang_acc);
+        self.accessors.push(tangent_acc);
 
         let accessors_idx = (self.accessors.len() - 1) as u32;
 
@@ -1177,7 +1184,6 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::Tangents),
             json::Index::new(accessors_idx),
         );
-        */
     }
 
     fn put_idx(&mut self) {
@@ -1343,9 +1349,9 @@ impl From<RDModell> for RDGltfBuilder {
 
         b.put_tex();
         b.put_material();
-        //b.put_normal();
 
-        //b.put_tangent();
+        b.put_normal();
+        b.put_tangent();
 
         if has_skin {
             b.put_joint_nodes(JointOption::ResolveParentNode);

@@ -17,22 +17,8 @@ impl RDWriter {
         let mut rdw = RDWriter {
             meta_deref: 331,
             input: rdm,
-            buf: BytesMut::with_capacity(5000),
+            buf: BytesMut::with_capacity(64000),
         };
-
-        /*
-        rdw.read_inv();
-
-        let gltf_imp = gltf_reader::start().unwrap();
-        rdw.input.vertices = gltf_imp.0;
-        rdw.input.vertex_buffer_size = 28;
-        rdw.input.vertices_count = rdw.input.vertices.len() as u32;
-
-        rdw.input.triangle_indices = gltf_imp.1;
-        rdw.input.triangles_idx_count = rdw.input.triangle_indices.len() as u32*3;
-        rdw.input.triangles_idx_size = 2 as u32;
-        //rdw.read_pos_norm_tang_bi();
-        */
 
         rdw.put_header();
         rdw.put_vertex_buffer();
@@ -42,6 +28,15 @@ impl RDWriter {
 
         if rdw.input.has_skin() {
             rdw.put_skin();
+        } else {
+            // RAW_DATA is from template with anim
+            // TODO clean up this mess move make the inverse in put_skin
+            // (repleace 0x_FF_FF_FF_FF in RAW_DATA with zeros for skin)
+            let buff_off = (rdw.meta_deref + 24) as usize;
+            byteorder::LittleEndian::write_u32(
+                &mut rdw.buf[buff_off..buff_off + 4],
+                0x_FF_FF_FF_FF,
+            );
         }
 
         rdw

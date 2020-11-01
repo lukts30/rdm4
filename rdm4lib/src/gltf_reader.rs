@@ -1,6 +1,5 @@
-use crate::Triangle;
-use crate::VertexFormatSize;
 use crate::{rdm_writer::PutVertex, RDJoint};
+use crate::{vertex::TargetVertexFormat, Triangle, W4b};
 use crate::{MeshInstance, RDModell};
 
 use crate::B4b;
@@ -219,10 +218,27 @@ pub fn read_animation(
     anim
 }
 
-pub fn load_gltf(f_path: &Path, load_skin: bool) -> RDModell {
+pub fn load_gltf(
+    f_path: &Path,
+    dst_format: TargetVertexFormat,
+    load_skin: bool,
+    negative_x_and_v0v2v1: bool,
+) -> RDModell {
+    info!("gltf::import start!");
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
-
-    let gltf_imp = read_mesh(&gltf, &buffers, load_skin).unwrap();
+    info!("gltf::import end!");
+    if negative_x_and_v0v2v1 {
+        warn!("negative_x_and_v0v2v1: {}", negative_x_and_v0v2v1);
+        warn!("negative_x_and_v0v2v1 may cause lighting artifacts !");
+    }
+    let gltf_imp = read_mesh(
+        &gltf,
+        &buffers,
+        dst_format,
+        load_skin,
+        negative_x_and_v0v2v1,
+    )
+    .unwrap();
     let size = 0;
     let vertices = gltf_imp.1;
     let triangles = gltf_imp.2;
@@ -378,7 +394,9 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 fn read_mesh(
     gltf: &gltf::Document,
     buffers: &[gltf::buffer::Data],
+    dst_format: TargetVertexFormat,
     read_joints: bool,
+    negative_x_and_v0v2v1: bool,
 ) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32)> {
     //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
     for mesh in gltf.meshes() {
@@ -386,13 +404,34 @@ fn read_mesh(
 
         #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
+            let ident = match dst_format {
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
+                }
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
+                }
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
+                }
+            };
+            let vertsize = ident.iter().map(|x| x.get_size()).sum();
+
             info!("- Primitive #{}", primitive.index());
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
             let mut position_iter = reader.read_positions().unwrap();
             let mut count = position_iter.len();
-            //let mut normal_iter = reader.read_normals().unwrap();
-            //let mut tangent_iter = reader.read_tangents().unwrap();
+            let mut normal_iter = reader.read_normals().unwrap();
+
+            let tangent_it = match reader.read_tangents() {
+                Some(iter) => iter.collect(),
+                None => {
+                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
+                    vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
+                }
+            };
+            let mut tangent_iter = tangent_it.into_iter().cycle();
 
             let tex_iter1 = reader.read_tex_coords(0);
             let p: Vec<[f32; 2]> = match tex_iter1 {
@@ -415,7 +454,7 @@ fn read_mesh(
                     j
                 }
                 _ => {
-                    error!("No joints in glTF file !");
+                    warn!("No joints in glTF file !");
                     if read_joints {
                         panic!("No joints in glTF file but --skeleton flag was set!")
                     }
@@ -425,54 +464,81 @@ fn read_mesh(
 
             let mut joints_iter = jvecarr.into_iter().cycle();
 
-            let vertsize = VertexFormatSize::P4h_N4b_G4b_B4b_T2h_I4b;
+            let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
+                Some(weight) if read_joints => {
+                    let j: Vec<[f32; 4]> = weight.into_f32().collect();
+                    assert_eq!(count, j.len());
+                    j
+                }
+                _ => {
+                    warn!("No weights in glTF file !");
+                    if read_joints {
+                        panic!("No joints/weights in glTF file but --skeleton flag was set!")
+                    }
+                    vec![[0.0, 0.0, 0.0, 0.0]]
+                }
+            };
+
+            let mut weights_iter = wvecarr.into_iter().cycle();
+
+            warn!("dst_format: {:?}", dst_format);
             let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
+            trace!("vertex read loop");
             while count > 0 {
+                trace!("count {}", count);
                 let vertex_position = position_iter.next().unwrap();
-                let p4h = P4h {
-                    pos: [
-                        f16::from_f32(vertex_position[0]),
-                        f16::from_f32(vertex_position[1]),
-                        f16::from_f32(vertex_position[2]),
-                        f16::from_f32(0.0),
-                    ],
+                let p4h = if negative_x_and_v0v2v1 {
+                    P4h {
+                        pos: [
+                            f16::from_f32(-1.0 * vertex_position[0]),
+                            f16::from_f32(1.0 * vertex_position[1]),
+                            f16::from_f32(1.0 * vertex_position[2]),
+                            f16::from_f32(0.0),
+                        ],
+                    }
+                } else {
+                    P4h {
+                        pos: [
+                            f16::from_f32(1.0 * vertex_position[0]),
+                            f16::from_f32(1.0 * vertex_position[1]),
+                            f16::from_f32(1.0 * vertex_position[2]),
+                            f16::from_f32(0.0),
+                        ],
+                    }
                 };
 
-                //let normals = normal_iter.next().unwrap();
-                let normals = [0.0, 0.0, 0.0, 0.0];
+                let normals = normal_iter.next().unwrap();
+                //let normals = [0.0, 0.0, 0.0, 0.0];
                 let nx = normals[0];
                 let ny = normals[1];
                 let nz = normals[2];
 
+                // old = (nx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                // new = (((nx+1.0)/2.0) * 255.0) as u8
+
                 let n4b = N4b {
                     normals: [
-                        (nx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                        (ny * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                        (nz * (255.0 / 2.0) + 255.0 / 2.0) as u8,
+                        (((nx + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((ny + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((nz + 1.0) / 2.0) * 255.0).round() as u8,
                         0,
                     ],
                 };
 
-                //let tangents = tangent_iter.next().unwrap();
-                let tx = 0.25;
-                let ty = 0.25;
-                let tz = 0.5;
-                let tw = -1.0;
+                let tangents = tangent_iter.next().unwrap();
+                let tx = -tangents[0];
+                let ty = -tangents[1];
+                let tz = -tangents[2];
+                let tw = -tangents[3];
+                assert_relative_eq!(tw.abs(), 1.0);
 
                 let g4b = G4b {
                     tangent: [
-                        (tx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                        (ty * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                        (tz * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                        {
-                            let is_neg = relative_eq!(tw, -1.0);
-                            if is_neg {
-                                0
-                            } else {
-                                1
-                            }
-                        },
+                        (((tx + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((ty + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((tz + 1.0) / 2.0) * 255.0).round() as u8,
+                        0,
                     ],
                 };
 
@@ -485,9 +551,9 @@ fn read_mesh(
 
                 let b4b = B4b {
                     binormal: [
-                        ((b.x * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
-                        ((b.y * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
-                        ((b.z * (255.0 / 2.0) + 255.0 / 2.0) as u8).saturating_add(1),
+                        (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
+                        (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
                         0,
                     ],
                 };
@@ -500,26 +566,41 @@ fn read_mesh(
                     tex: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
                 };
 
-                // joints idx
-
-                let joint = joints_iter.next().unwrap();
-
-                let i4b = I4b {
-                    blend_idx: [
-                        joint[0] as u8,
-                        joint[1] as u8,
-                        joint[2] as u8,
-                        joint[3] as u8,
-                    ],
-                };
-
-                // P4h_N4b_G4b_B4b_T2h_I4b
                 verts_vec.put_p4h(&p4h);
                 verts_vec.put_n4b(&n4b);
                 verts_vec.put_g4b(&g4b);
                 verts_vec.put_b4b(&b4b);
                 verts_vec.put_t2h(&t2h);
-                verts_vec.put_i4b(&i4b);
+                // TODO clean up checks
+                if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b
+                    || dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b
+                {
+                    // joints idx
+                    let joint = joints_iter.next().unwrap();
+
+                    let i4b = I4b {
+                        blend_idx: [
+                            joint[0] as u8,
+                            joint[1] as u8,
+                            joint[2] as u8,
+                            joint[3] as u8,
+                        ],
+                    };
+                    verts_vec.put_i4b(&i4b);
+                }
+
+                if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b {
+                    let weight = weights_iter.next().unwrap();
+                    let w4b = W4b {
+                        blend_weight: [
+                            (weight[0] * 255.0).round() as u8,
+                            (weight[1] * 255.0).round() as u8,
+                            (weight[2] * 255.0).round() as u8,
+                            (weight[3] * 255.0).round() as u8,
+                        ],
+                    };
+                    verts_vec.put_w4b(&w4b);
+                }
 
                 count -= 1;
             }
@@ -527,13 +608,7 @@ fn read_mesh(
             let vertices_count = verts_vec.len() as u32 / vertsize;
             info!("vertices_count {}", vertices_count);
 
-            let verts = VertexFormat2::new(
-                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec(),
-                vertices_count,
-                vertsize,
-                0,
-                verts_vec.freeze(),
-            );
+            let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
 
             let mut triangle_iter = reader.read_indices().unwrap().into_u32();
             let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
@@ -542,12 +617,17 @@ fn read_mesh(
 
             while tcount > 0 {
                 //let ctri = triangle_iter.next().unwrap();
-                let t = Triangle {
-                    indices: [
-                        triangle_iter.next().unwrap() as u16,
-                        triangle_iter.next().unwrap() as u16,
-                        triangle_iter.next().unwrap() as u16,
-                    ],
+                let v0 = triangle_iter.next().unwrap() as u16;
+                let v1 = triangle_iter.next().unwrap() as u16;
+                let v2 = triangle_iter.next().unwrap() as u16;
+                let t = if negative_x_and_v0v2v1 {
+                    Triangle {
+                        indices: [v0, v2, v1],
+                    }
+                } else {
+                    Triangle {
+                        indices: [v0, v1, v2],
+                    }
                 };
                 tcount -= 1;
                 triangle_vec.push(t);

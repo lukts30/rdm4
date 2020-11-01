@@ -377,6 +377,7 @@ impl VertexFormatSize {
     const P4h_N4b_T2h_I4b_W4b: u32 = 24;
     const P4h_N4b_G4b_B4b_T2h_C4c: u32 = 28;
     const P4h_N4b_G4b_B4b_T2h_I4b: u32 = 28;
+    const P4h_N4b_G4b_B4b_T2h_I4b_W4b: u32 = 32;
     const P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b: u32 = 56;
 }
 

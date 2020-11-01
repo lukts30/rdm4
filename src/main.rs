@@ -1,6 +1,6 @@
 extern crate rdm4lib;
 
-use rdm4lib::RDModell;
+use rdm4lib::{vertex::TargetVertexFormat, RDModell};
 
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RDAnim;
@@ -29,18 +29,19 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
 
 #[derive(Clap)]
 #[clap(
-    version = "v0.2-alpha",
+    version = "v0.3-alpha",
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
     /// Convert from glTF to .rdm
+    /// Possible values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
     #[clap(
         short = 'g',
         long = "gltf",
         conflicts_with("rdanimation"),
         display_order(1)
     )]
-    gltf: bool,
+    gltf: Option<TargetVertexFormat>,
 
     /// Export (available) skin
     #[clap(short = 's', long = "skeleton", display_order(2))]
@@ -89,6 +90,9 @@ struct Opts {
     )]
     diffusetexture: Option<Vec<PathBuf>>,
 
+    #[clap(long)]
+    negative_x_and_v0v2v1: bool,
+
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
     verbose: i32,
@@ -108,7 +112,7 @@ fn main() {
     info!("Using input file: {:?}", opts.input);
     info!("Export skeleton: {:?}", opts.skeleton);
     info!("Export rdanimation: {:?}", opts.rdanimation);
-    if !opts.gltf {
+    if opts.gltf.is_none() {
         let mut rdm = RDModell::from(opts.input.as_path());
         if opts.skeleton && opts.rdanimation.is_none() {
             rdm.add_skin();
@@ -131,7 +135,12 @@ fn main() {
         gltf_export::build(rdm, None);
     } else {
         let f_path = opts.input.as_path();
-        let rdm = gltf_reader::load_gltf(f_path, opts.skeleton);
+        let rdm = gltf_reader::load_gltf(
+            f_path,
+            opts.gltf.unwrap(),
+            opts.skeleton,
+            opts.negative_x_and_v0v2v1,
+        );
 
         if opts.skeleton && opts.animation {
             let jj = rdm.joints.as_ref().unwrap();

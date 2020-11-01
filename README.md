@@ -3,21 +3,25 @@
 ## command-line interface rdm4-bin
 
 ```
-rdm4-bin v0.2-alpha
+rdm4-bin v0.3-alpha
 lukts30 <https://github.com/lukts30/rdm4>
 
 USAGE:
     rdm4-bin.exe [FLAGS] [OPTIONS] --file <glTF or rdm FILE>
 
 FLAGS:
-    -g, --gltf         Convert from glTF to .rdm
-    -s, --skeleton     Export (available) skin
-    -a, --animation    Export (available) animation. RDM to glTF needs external animation file (rdanimation)
-    -h, --help         Prints help information
-    -v, --verbose      A level of verbosity, and can be used multiple times
-    -V, --version      Prints version information
+    -s, --skeleton                 Export (available) skin
+    -a, --animation                Export (available) animation. RDM to glTF needs external
+                                   animation file (rdanimation)
+    -h, --help                     Prints help information
+        --negative-x-and-v0v2v1
+    -v, --verbose                  A level of verbosity, and can be used multiple times
+    -V, --version                  Prints version information
 
 OPTIONS:
+    -g, --gltf <gltf>                  Convert from glTF to .rdm Possible values are:
+                                       P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b |
+                                       P4h_N4b_G4b_B4b_T2h_I4b_W4b
     -t, --diffusetexture <*.dds>...    DiffuseTextures
     -m, --rdanimation <anim/*.rdm>     External animation file for rdm
     -f, --file <glTF or rdm FILE>      Input file
@@ -58,11 +62,12 @@ $ ./rdm4-bin.exe -f rdm/resident_tier03_work.rdm -sam anim/resident_tier03_work_
 
 ## Example usage glTF 2.0 🠚 rdm
 **Flag --gltf or the alias -g must be used !**
+*Possible values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b*
 <details>
 <summary>Click to expand</summary>
 
 ```console
-$ ./rdm4-bin.exe -f untitled.gltf -gsa
+$ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -f untitled.gltf -sa
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Using input file: "untitled.gltf"
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Export skelton: true
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Export rdanimation: None
@@ -340,7 +345,8 @@ $ ./rdm4-bin.exe -f untitled.gltf -gsa
 
 ---
 ## Current limitations
-- normals & tangent & bitangent contain placeholder garbage values.
+- ~~normals & tangent & bitangent contain placeholder garbage values.~~
+ - gltf -> rdm: gltf file needs to include normals and tangents. they are not computed in the converter !
 - material or texture or shader id bytes were not yet "investigated"
 - while glTF files can contain multiple animation this is not handled at all.
     - e.g cannot export "idle" and "work" into one glTF file

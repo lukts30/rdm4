@@ -16,7 +16,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rdm4lib::rdm_material::RDMaterial;
+    use rdm4lib::{rdm_material::RDMaterial, vertex::TargetVertexFormat};
     use std::{fs, path::PathBuf};
 
     #[test]
@@ -205,7 +205,12 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf() {
-        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), true);
+        let rdm = gltf_reader::load_gltf(
+            Path::new("rdm/gltf/stormtrooper.gltf"),
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
+            true,
+            false,
+        );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -220,7 +225,12 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
-        let rdm = gltf_reader::load_gltf(&f_path, true);
+        let rdm = gltf_reader::load_gltf(
+            &f_path,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
+            true,
+            false,
+        );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -237,7 +247,12 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin() {
-        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/stormtrooper.gltf"), false);
+        let rdm = gltf_reader::load_gltf(
+            Path::new("rdm/gltf/stormtrooper_with_tangent.gltf"),
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+            false,
+            false,
+        );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -250,8 +265,15 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
+    #[ignore]
     fn read_gltf_no_skin2() {
-        let rdm = gltf_reader::load_gltf(Path::new("rdm/gltf/triangle.gltf"), false);
+        // no normals so ignore it !
+        let rdm = gltf_reader::load_gltf(
+            Path::new("rdm/gltf/triangle.gltf"),
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+            false,
+            false,
+        );
         assert_eq!(rdm.vertex.len(), 3);
         assert_eq!(
             rdm.triangles_idx_count as usize,
