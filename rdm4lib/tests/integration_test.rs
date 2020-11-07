@@ -210,6 +210,7 @@ mod tests {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
+            false,
         );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
@@ -230,6 +231,7 @@ mod tests {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
+            false,
         );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
@@ -241,7 +243,7 @@ mod tests {
         let anim = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
 
         let exp_rdm = RDAnimWriter::from(anim);
-        exp_rdm.write_anim_rdm();
+        exp_rdm.write_anim_rdm(None);
     }
 
     #[test]
@@ -250,6 +252,7 @@ mod tests {
         let rdm = gltf_reader::load_gltf(
             Path::new("rdm/gltf/stormtrooper_with_tangent.gltf"),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+            false,
             false,
             false,
         );
@@ -271,6 +274,7 @@ mod tests {
         let rdm = gltf_reader::load_gltf(
             Path::new("rdm/gltf/triangle.gltf"),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+            false,
             false,
             false,
         );

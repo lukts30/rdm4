@@ -223,6 +223,7 @@ pub fn load_gltf(
     dst_format: TargetVertexFormat,
     load_skin: bool,
     negative_x_and_v0v2v1: bool,
+    no_transform: bool,
 ) -> RDModell {
     info!("gltf::import start!");
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
@@ -237,6 +238,7 @@ pub fn load_gltf(
         dst_format,
         load_skin,
         negative_x_and_v0v2v1,
+        no_transform,
     )
     .unwrap();
     let size = 0;
@@ -397,8 +399,8 @@ fn read_mesh(
     dst_format: TargetVertexFormat,
     read_joints: bool,
     mut negative_x_and_v0v2v1: bool,
+    no_transform: bool,
 ) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32)> {
-
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
 
@@ -406,7 +408,11 @@ fn read_mesh(
             find_first_mesh_instantiating_node(&gltf, mesh.index()).unwrap();
         debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
 
-        let mut base: Matrix4<f32> = build_transform2(&gltf, mesh_instantiating_node);
+        let mut base: Matrix4<f32> = if no_transform {
+            Matrix4::identity()
+        } else {
+            build_transform2(&gltf, mesh_instantiating_node)
+        };
 
         if negative_x_and_v0v2v1 {
             let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
@@ -426,7 +432,6 @@ fn read_mesh(
         let mat3 = base.resize(3, 3, 0.0);
         let inv_transform_mat3 = mat3.try_inverse().unwrap();
         let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
-
 
         #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
@@ -740,7 +745,7 @@ fn calculate_global_transform(
     let doc = gltf.clone();
 
     let nodes: Vec<gltf::scene::Node> = doc.nodes().collect();
-    debug!("target_node: {} ",target_node);
+    debug!("target_node: {} ", target_node);
     let rel_transform_data = nodes[target_node].transform().matrix();
     let mut mat4rel_transform = Matrix4::identity();
     mat4rel_transform.m11 = rel_transform_data[0][0];

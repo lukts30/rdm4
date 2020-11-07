@@ -1397,7 +1397,9 @@ impl RDGltf {
         });
         let udir = file.clone();
 
-        file.push("out.gltf");
+        if file.is_dir() {
+            file.push("out.gltf");
+        }
         info!("{:?}", file);
 
         let mut writer = fs::File::create(file).expect("I/O error");

@@ -39,19 +39,19 @@ struct Opts {
         short = 'g',
         long = "gltf",
         conflicts_with("rdanimation"),
-        display_order(1)
+        display_order(2)
     )]
     gltf: Option<TargetVertexFormat>,
 
     /// Export (available) skin
-    #[clap(short = 's', long = "skeleton", display_order(2))]
+    #[clap(short = 's', long = "skeleton", display_order(5))]
     skeleton: bool,
 
     /// Export (available) animation. RDM to glTF needs external animation file (rdanimation)
     #[clap(
         short = 'a',
         long = "animation",
-        display_order(3),
+        display_order(6),
         requires("skeleton")
     )]
     animation: bool,
@@ -60,7 +60,7 @@ struct Opts {
     #[clap(
         short = 'm',
         long = "rdanimation",
-        display_order(4),
+        display_order(7),
         value_name("anim/*.rdm"),
         validator_os(cli_in_is_file),
         parse(from_str),
@@ -73,28 +73,37 @@ struct Opts {
     #[clap(
         short = 'f',
         long = "file",
+        display_order(0),
         value_name("glTF or rdm FILE"),
         validator_os(cli_in_is_file),
         parse(from_str)
     )]
     input: PathBuf,
 
-    /// Output folder
-    #[clap(short = 'd', long = "outdir", display_order(2), parse(from_str))]
+    /// Output file or folder. If 'in_is_out_filename' is set this must be a folder!
+    #[clap(short = 'd', long = "outdst", display_order(1), parse(from_str))]
     out: Option<PathBuf>,
+
+    /// Sets output to input file name
+    #[clap(long = "in_is_out_filename", display_order(2), requires("gltf"))]
+    in_is_out_filename: bool,
+
+    /// glTF to rdm: Do not apply node transforms.
+    #[clap(long = "no_transform", display_order(3), requires("gltf"))]
+    no_transform: bool,
 
     /// DiffuseTextures
     #[clap(
         short = 't',
         long = "diffusetexture",
         value_name("*.dds"),
-        display_order(4),
+        display_order(5),
         validator_os(cli_in_is_file),
         parse(from_str)
     )]
     diffusetexture: Option<Vec<PathBuf>>,
 
-    #[clap(long)]
+    #[clap(long, display_order(4))]
     negative_x_and_v0v2v1: bool,
 
     /// A level of verbosity, and can be used multiple times
@@ -103,13 +112,26 @@ struct Opts {
 }
 
 fn main() {
-    let opts: Opts = Opts::parse();
+    let mut opts: Opts = Opts::parse();
 
     match opts.verbose {
         0 => env_logger::Builder::from_env(Env::default().default_filter_or("info")).init(),
         1 => env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init(),
         2 => env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init(),
         _ => warn!("Don't be crazy"),
+    }
+
+    if let Some(ref mut out) = opts.out {
+        if opts.in_is_out_filename {
+            let k = opts.input.file_stem().unwrap();
+            assert_eq!(
+                out.is_dir(),
+                true,
+                "in_is_out_filename: output must not be a file!"
+            );
+            out.push(k);
+            out.set_extension("rdm");
+        }
     }
 
     // Gets a value for config if supplied by user, or defaults to "default.conf"
@@ -144,6 +166,7 @@ fn main() {
             opts.gltf.unwrap(),
             opts.skeleton,
             opts.negative_x_and_v0v2v1,
+            opts.no_transform,
         );
 
         if opts.skeleton && opts.animation {
@@ -152,7 +175,7 @@ fn main() {
             match gltf_reader::read_animation(&f_path, &jj, 6, 0.33333) {
                 Some(anim) => {
                     let exp_rdm = RDAnimWriter::from(anim);
-                    exp_rdm.write_anim_rdm();
+                    exp_rdm.write_anim_rdm(opts.out.clone());
                 }
                 None => error!("Could not read animation. Does glTF contain any animations ?"),
             }

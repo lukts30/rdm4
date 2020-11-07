@@ -1,8 +1,8 @@
 use bytes::{BufMut, BytesMut};
 
 use byteorder::ByteOrder;
-use std::fs;
 use std::io::Write;
+use std::{fs, path::PathBuf};
 
 use crate::*;
 
@@ -157,10 +157,22 @@ impl RDAnimWriter {
         }
     }
 
-    pub fn write_anim_rdm(self) {
-        let _ = fs::create_dir("rdm_out");
+    pub fn write_anim_rdm(self, dir: Option<PathBuf>) {
+        let mut file = dir.unwrap_or_else(|| {
+            let f = PathBuf::from("rdm_out");
+            let _ = fs::create_dir(&f);
+            f
+        });
+        if file.is_dir() {
+            file.push("anim.rdm");
+        } else {
+            let n = file.file_stem().unwrap();
+            let anim_name = format!("{}_anim", n.to_string_lossy());
+            file.set_file_name(anim_name);
+            file.set_extension("rdm");
+        }
 
-        let mut writer = fs::File::create("rdm_out/anim.rdm").expect("I/O error");
+        let mut writer = fs::File::create(file).expect("I/O error");
         writer.write_all(&self.buf).expect("I/O error");
     }
 }

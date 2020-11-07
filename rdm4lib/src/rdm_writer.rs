@@ -470,8 +470,9 @@ impl RDWriter {
             let _ = fs::create_dir(&f);
             f
         });
-
-        file.push("out.rdm");
+        if file.is_dir() {
+            file.push("out.rdm");
+        }
 
         let mut writer = fs::File::create(file).expect("I/O error");
         writer.write_all(&self.buf).expect("I/O error");
