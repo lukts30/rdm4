@@ -199,7 +199,7 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm();
+        exp_rdm.write_rdm(None);
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm();
+        exp_rdm.write_rdm(None);
     }
 
     #[test]
@@ -260,7 +260,7 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm();
+        exp_rdm.write_rdm(None);
     }
 
     #[test]
@@ -281,6 +281,6 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm();
+        exp_rdm.write_rdm(None);
     }
 }

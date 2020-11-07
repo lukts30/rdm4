@@ -396,11 +396,37 @@ fn read_mesh(
     buffers: &[gltf::buffer::Data],
     dst_format: TargetVertexFormat,
     read_joints: bool,
-    negative_x_and_v0v2v1: bool,
+    mut negative_x_and_v0v2v1: bool,
 ) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32)> {
-    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
+
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
+
+        let mesh_instantiating_node =
+            find_first_mesh_instantiating_node(&gltf, mesh.index()).unwrap();
+        debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
+
+        let mut base: Matrix4<f32> = build_transform2(&gltf, mesh_instantiating_node);
+
+        if negative_x_and_v0v2v1 {
+            let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+            base *= m.to_homogeneous();
+            negative_x_and_v0v2v1 = false;
+        }
+
+        debug!("base: {}", &base);
+
+        let det = base.determinant();
+        if det.is_sign_negative() {
+            warn!("determinant is negative: {}", det);
+            warn!("negative determinant requires special code path!");
+            negative_x_and_v0v2v1 = true;
+        }
+
+        let mat3 = base.resize(3, 3, 0.0);
+        let inv_transform_mat3 = mat3.try_inverse().unwrap();
+        let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
+
 
         #[allow(clippy::never_loop)]
         for primitive in mesh.primitives() {
@@ -427,6 +453,8 @@ fn read_mesh(
             let tangent_it = match reader.read_tangents() {
                 Some(iter) => iter.collect(),
                 None => {
+                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
+                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
                     error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
                     vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
                 }
@@ -488,34 +516,33 @@ fn read_mesh(
             while count > 0 {
                 trace!("count {}", count);
                 let vertex_position = position_iter.next().unwrap();
-                let p4h = if negative_x_and_v0v2v1 {
-                    P4h {
-                        pos: [
-                            f16::from_f32(-1.0 * vertex_position[0]),
-                            f16::from_f32(1.0 * vertex_position[1]),
-                            f16::from_f32(1.0 * vertex_position[2]),
-                            f16::from_f32(0.0),
-                        ],
-                    }
-                } else {
-                    P4h {
-                        pos: [
-                            f16::from_f32(1.0 * vertex_position[0]),
-                            f16::from_f32(1.0 * vertex_position[1]),
-                            f16::from_f32(1.0 * vertex_position[2]),
-                            f16::from_f32(0.0),
-                        ],
-                    }
+                let vertex =
+                    Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
+                let transformed_vertex = base.transform_point(&vertex);
+
+                let p4h = P4h {
+                    pos: [
+                        f16::from_f32(1.0 * transformed_vertex[0]),
+                        f16::from_f32(1.0 * transformed_vertex[1]),
+                        f16::from_f32(1.0 * transformed_vertex[2]),
+                        f16::from_f32(0.0),
+                    ],
                 };
 
                 let normals = normal_iter.next().unwrap();
-                //let normals = [0.0, 0.0, 0.0, 0.0];
-                let nx = normals[0];
-                let ny = normals[1];
-                let nz = normals[2];
+                let normv = Vector3::new(normals[0], normals[1], normals[2]);
+                let transformed_normals = &transpose_inv_transform_mat3 * normv;
 
-                // old = (nx * (255.0 / 2.0) + 255.0 / 2.0) as u8,
-                // new = (((nx+1.0)/2.0) * 255.0) as u8
+                let mut nx = transformed_normals[0];
+                let mut ny = transformed_normals[1];
+                let mut nz = transformed_normals[2];
+                //dbg!(((nx * nx) + (ny * ny) + (nz * nz)).sqrt());
+
+                let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
+
+                nx /= len;
+                ny /= len;
+                nz /= len;
 
                 let n4b = N4b {
                     normals: [
@@ -527,10 +554,26 @@ fn read_mesh(
                 };
 
                 let tangents = tangent_iter.next().unwrap();
-                let tx = -tangents[0];
-                let ty = -tangents[1];
-                let tz = -tangents[2];
-                let tw = -tangents[3];
+                let tangv = Vector3::new(tangents[0], tangents[1], tangents[2]);
+                let transformed_tangents = &transpose_inv_transform_mat3 * tangv;
+
+                let mut tx = transformed_tangents[0];
+                let mut ty = transformed_tangents[1];
+                let mut tz = transformed_tangents[2];
+
+                //let tlen = -1.0f32*((tx * tx) + (ty * ty) + (tz * tz)).sqrt();
+                //dbg!(((tx * tx) + (ty * ty) + (tz * tz)).sqrt());
+                let tlen = -1.0;
+
+                tx /= tlen;
+                ty /= tlen;
+                tz /= tlen;
+
+                let tw = if negative_x_and_v0v2v1 {
+                    tangents[3]
+                } else {
+                    -tangents[3]
+                };
                 assert_relative_eq!(tw.abs(), 1.0);
 
                 let g4b = G4b {
@@ -542,10 +585,9 @@ fn read_mesh(
                     ],
                 };
 
-                // bi
-
                 let normal = Vector3::new(nx, ny, nz);
                 let tangent = Vector3::new(tx, ty, tz);
+                trace!("normal.dot(&tangent): {}", normal.dot(&tangent));
 
                 let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
@@ -637,4 +679,140 @@ fn read_mesh(
         }
     }
     None
+}
+
+fn find_first_mesh_instantiating_node(gltf: &gltf::Document, mesh_idx: usize) -> Option<usize> {
+    for (i, node) in gltf.nodes().enumerate() {
+        match node.mesh() {
+            Some(mesh) => {
+                debug!("mesh.index(): {}", mesh.index());
+                if mesh.index() == mesh_idx {
+                    return Some(i);
+                }
+            }
+            None => continue,
+        }
+    }
+    None
+}
+
+fn build_transform2(gltf: &gltf::Document, mesh_node: usize) -> Matrix4<f32> {
+    let mut child_list: Vec<Option<Vec<usize>>> = vec![None; gltf.nodes().count()];
+
+    let mut tmp: Vec<usize> = Vec::new();
+    for (i, node) in gltf.nodes().enumerate() {
+        for child in node.children() {
+            tmp.push(child.index());
+        }
+        if !tmp.is_empty() {
+            child_list[i] = Some(tmp);
+            tmp = Vec::new();
+        }
+    }
+
+    //let mesh_node = 1;
+    let mut find_node: usize = mesh_node;
+    let mut tree: Vec<usize> = Vec::new();
+    assert_eq!(find_node < child_list.len(), true);
+    loop {
+        let idx = find_parent(find_node, &child_list);
+        match idx {
+            Some(value) => {
+                tree.push(value);
+                find_node = value;
+            }
+            None => {
+                break;
+            }
+        }
+    }
+
+    debug!("tree: {:?}", &tree);
+
+    calculate_global_transform(mesh_node, &tree, gltf)
+}
+
+fn calculate_global_transform(
+    target_node: usize,
+    tree: &[usize],
+    gltf: &gltf::Document,
+) -> Matrix4<f32> {
+    let doc = gltf.clone();
+
+    let nodes: Vec<gltf::scene::Node> = doc.nodes().collect();
+    debug!("target_node: {} ",target_node);
+    let rel_transform_data = nodes[target_node].transform().matrix();
+    let mut mat4rel_transform = Matrix4::identity();
+    mat4rel_transform.m11 = rel_transform_data[0][0];
+    mat4rel_transform.m21 = rel_transform_data[0][1];
+    mat4rel_transform.m31 = rel_transform_data[0][2];
+    mat4rel_transform.m41 = rel_transform_data[0][3];
+
+    mat4rel_transform.m12 = rel_transform_data[1][0];
+    mat4rel_transform.m22 = rel_transform_data[1][1];
+    mat4rel_transform.m32 = rel_transform_data[1][2];
+    mat4rel_transform.m42 = rel_transform_data[1][3];
+
+    mat4rel_transform.m13 = rel_transform_data[2][0];
+    mat4rel_transform.m23 = rel_transform_data[2][1];
+    mat4rel_transform.m33 = rel_transform_data[2][2];
+    mat4rel_transform.m43 = rel_transform_data[2][3];
+
+    mat4rel_transform.m14 = rel_transform_data[3][0];
+    mat4rel_transform.m24 = rel_transform_data[3][1];
+    mat4rel_transform.m34 = rel_transform_data[3][2];
+    mat4rel_transform.m44 = rel_transform_data[3][3];
+
+    let mut bmat4: Matrix4<f32> = Matrix4::identity();
+    //dbg!(&rel_transform);
+    if !tree.is_empty() {
+        for p in tree.iter().rev() {
+            let mat = nodes[*p].transform().matrix();
+            let mut mat4: Matrix4<f32> = Matrix4::identity();
+            mat4.m11 = mat[0][0];
+            mat4.m21 = mat[0][1];
+            mat4.m31 = mat[0][2];
+            mat4.m41 = mat[0][3];
+
+            mat4.m12 = mat[1][0];
+            mat4.m22 = mat[1][1];
+            mat4.m32 = mat[1][2];
+            mat4.m42 = mat[1][3];
+
+            mat4.m13 = mat[2][0];
+            mat4.m23 = mat[2][1];
+            mat4.m33 = mat[2][2];
+            mat4.m43 = mat[2][3];
+
+            mat4.m14 = mat[3][0];
+            mat4.m24 = mat[3][1];
+            mat4.m34 = mat[3][2];
+            mat4.m44 = mat[3][3];
+
+            bmat4 *= mat4;
+        }
+    }
+    mat4rel_transform = bmat4 * mat4rel_transform;
+    mat4rel_transform
+}
+
+fn find_parent(mesh_node: usize, child_list: &[Option<Vec<usize>>]) -> Option<usize> {
+    let mut parent_idx: Option<usize> = None;
+    for (i, opt_children) in child_list.iter().enumerate() {
+        match opt_children {
+            Some(c) => {
+                let opt_parent_idx = c.iter().position(|&r| r == mesh_node);
+
+                match opt_parent_idx {
+                    Some(_) => {
+                        parent_idx = Some(i);
+                        break;
+                    }
+                    None => continue,
+                }
+            }
+            None => continue,
+        }
+    }
+    parent_idx
 }

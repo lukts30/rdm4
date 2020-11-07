@@ -79,6 +79,10 @@ struct Opts {
     )]
     input: PathBuf,
 
+    /// Output folder
+    #[clap(short = 'd', long = "outdir", display_order(2), parse(from_str))]
+    out: Option<PathBuf>,
+
     /// DiffuseTextures
     #[clap(
         short = 't',
@@ -132,7 +136,7 @@ fn main() {
             });
         }
         info!("running gltf_export ...");
-        gltf_export::build(rdm, None);
+        gltf_export::build(rdm, opts.out);
     } else {
         let f_path = opts.input.as_path();
         let rdm = gltf_reader::load_gltf(
@@ -155,6 +159,6 @@ fn main() {
         }
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm();
+        exp_rdm.write_rdm(opts.out);
     }
 }

@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 
-use std::fs;
 use std::io::Write;
+use std::{fs, path::PathBuf};
 
 use crate::*;
 use byteorder::ByteOrder;
@@ -464,10 +464,16 @@ impl RDWriter {
         }
     }
 
-    pub fn write_rdm(self) {
-        let _ = fs::create_dir("rdm_out");
+    pub fn write_rdm(self, dir: Option<PathBuf>) {
+        let mut file = dir.unwrap_or_else(|| {
+            let f = PathBuf::from("rdm_out");
+            let _ = fs::create_dir(&f);
+            f
+        });
 
-        let mut writer = fs::File::create("rdm_out/out.rdm").expect("I/O error");
+        file.push("out.rdm");
+
+        let mut writer = fs::File::create(file).expect("I/O error");
         writer.write_all(&self.buf).expect("I/O error");
     }
 }

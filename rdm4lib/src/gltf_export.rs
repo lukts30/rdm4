@@ -1369,8 +1369,10 @@ impl From<RDModell> for RDGltfBuilder {
 pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
     let mat_opt = rdm.mat.clone();
     let b = RDGltfBuilder::from(rdm);
-    let p = b.build();
 
+    let p = b.build();
+    info!("gltf build end");
+    info!("write_gltf");
     p.write_gltf(dir, mat_opt);
 }
 
@@ -1396,10 +1398,14 @@ impl RDGltf {
         let udir = file.clone();
 
         file.push("out.gltf");
+        info!("{:?}", file);
 
-        let writer = fs::File::create(file).expect("I/O error");
-        json::serialize::to_writer_pretty(writer, &self.root.unwrap())
-            .expect("Serialization error");
+        let mut writer = fs::File::create(file).expect("I/O error");
+        let vjson =
+            json::serialize::to_vec_pretty(&self.root.unwrap()).expect("Serialization error");
+        writer.write_all(&vjson).expect("I/O error");
+
+        info!("wrote json to disk!");
 
         let mut idx = self.buffers.len() - 1;
         while !self.buffers.is_empty() {
@@ -1407,9 +1413,9 @@ impl RDGltf {
             let bin = e;
             let mut file_path = udir.clone();
             file_path.push(format!("buffer{}.bin", idx));
+            info!("write_all {:?}", &file_path);
             let mut writer = fs::File::create(file_path).expect("I/O error");
             writer.write_all(&bin).expect("I/O error");
-
             idx = idx.saturating_sub(1);
         }
 
