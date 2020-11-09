@@ -3,42 +3,47 @@
 ## command-line interface rdm4-bin
 
 ```
-rdm4-bin v0.3-alpha
+rdm4-bin v0.4-alpha
 lukts30 <https://github.com/lukts30/rdm4>
 
 USAGE:
-    rdm4-bin.exe [FLAGS] [OPTIONS] --file <glTF or rdm FILE>
+    rdm [FLAGS] [OPTIONS] --input <glTF or rdm FILE(s>
 
 FLAGS:
+    -n, --in_is_out_filename       Sets output to input file name
+    -b, --batch                    Batch process recursively
+        --no_transform             glTF to rdm: Do not apply node transforms
+        --negative-x-and-v0v2v1    Mirrors the object on the x axis
     -s, --skeleton                 Export (available) skin
     -a, --animation                Export (available) animation. RDM to glTF needs external
                                    animation file (rdanimation)
     -h, --help                     Prints help information
-        --negative-x-and-v0v2v1
     -v, --verbose                  A level of verbosity, and can be used multiple times
     -V, --version                  Prints version information
 
 OPTIONS:
-    -g, --gltf <gltf>                  Convert from glTF to .rdm Possible values are:
-                                       P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b |
-                                       P4h_N4b_G4b_B4b_T2h_I4b_W4b
-    -t, --diffusetexture <*.dds>...    DiffuseTextures
-    -m, --rdanimation <anim/*.rdm>     External animation file for rdm
-    -f, --file <glTF or rdm FILE>      Input file
+    -i, --input <glTF or rdm FILE(s>    Input file or folder (see --batch)
+    -o, --outdst <out>                  Output file or folder. If 'in_is_out_filename' is set this
+                                        must be a folder!
+    -g, --gltf <gltf>                   Convert from glTF to .rdm Possible VertexFormat values are:
+                                        P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b |
+                                        P4h_N4b_G4b_B4b_T2h_I4b_W4b
+    -t, --diffusetexture <*.dds>...     DiffuseTextures
+    -m, --rdanimation <anim/*.rdm>      External animation file for rdm
 ```
 
 ## Example usage rdm 🠚 glTF 2.0
 ```console
-$ ./rdm4-bin.exe --file rdm/container_ship_tycoons_lod1.rdm
+$ ./rdm4-bin.exe --input rdm/container_ship_tycoons_lod1.rdm
 ```
 
 ## Usage with animation
 ```console
-$ ./rdm4-bin.exe --file rdm/container_ship_tycoons_lod1.rdm --skeleton --animation --rdanimation anim/container_ship_tycoons_idle01.rdm
+$ ./rdm4-bin.exe --input rdm/container_ship_tycoons_lod1.rdm --skeleton --animation --rdanimation anim/container_ship_tycoons_idle01.rdm
 ```
 Can be shortened to:
 ```console
-$ ./rdm4-bin.exe -f rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship_tycoons_idle01.rdm
+$ ./rdm4-bin.exe -i rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship_tycoons_idle01.rdm
 [2020-08-25T21:48:17Z INFO  rdm4_bin] Using input file: "rdm/container_ship_tycoons_lod1.rdm"
 [2020-08-25T21:48:17Z INFO  rdm4_bin] Export skeleton: true
 [2020-08-25T21:48:17Z INFO  rdm4_bin] Export rdanimation: Some("anim/container_ship_tycoons_idle01.rdm")
@@ -57,7 +62,7 @@ $ ./rdm4-bin.exe -f rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship
 
 ## Usage with animation & diffuse texture (must match \*.cfg `cModelDiffTex` order) [**requires texconv**]
 ```console
-$ ./rdm4-bin.exe -f rdm/resident_tier03_work.rdm -sam anim/resident_tier03_work_friendly_talk.rdm -t maps/resident_tier03_diff_0.dds ../resident_tier03/maps/resident_tier03_diff_0.dds
+$ ./rdm4-bin.exe -i rdm/resident_tier03_work.rdm -sam anim/resident_tier03_work_friendly_talk.rdm -t maps/resident_tier03_diff_0.dds ../resident_tier03/maps/resident_tier03_diff_0.dds
 ```
 
 ## Example usage glTF 2.0 🠚 rdm
@@ -67,7 +72,7 @@ $ ./rdm4-bin.exe -f rdm/resident_tier03_work.rdm -sam anim/resident_tier03_work_
 <summary>Click to expand</summary>
 
 ```console
-$ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -f untitled.gltf -sa
+$ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i untitled.gltf -sa
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Using input file: "untitled.gltf"
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Export skelton: true
 [2020-08-25T22:29:12Z INFO  rdm4_bin] Export rdanimation: None
@@ -345,14 +350,13 @@ $ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -f untitled.gltf -sa
 
 ---
 ## Current limitations
-- ~~normals & tangent & bitangent contain placeholder garbage values.~~
- - gltf -> rdm: gltf file needs to include normals and tangents. they are not computed in the converter !
+ - gltf -> rdm: gltf file needs to include normals and **tangents**. they are not computed in the converter !
 - material or texture or shader id bytes were not yet "investigated"
 - while glTF files can contain multiple animation this is not handled at all.
     - e.g cannot export "idle" and "work" into one glTF file
     - glTF animations json nodes could be cut out to generate all rdanimation files (workaround)
-- [glTF 2.0 🠚 rdm](https://github.com/lukts30/rdm4/pull/4)
+- glTF 2.0 🠚 rdm
     - limited to glTF files that contain only **one** mesh and only **one** animation
     - channel.path: `translation` and `rotation` are supported. 
-    - `scale` and `weights` are totally unsupported and are ignored ! To my knowledge impossible to implement since rdanimation "units" are 32 bytes large = 4\*4 rotation + 3\*4 translation + 1\*4 time
+    - Morph Targets: `scale` and `weights` are totally unsupported and are ignored ! To my knowledge impossible to implement since rdanimation "units" are 32 bytes large = 4\*4 rotation + 3\*4 translation + 1\*4 time
     - Must not require interpolation e.g. rotation t=[0,2,6] while translation t=[0,7]. Bypassed by using Blenders 'Always Sample Animation' export option.
