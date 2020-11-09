@@ -15,7 +15,9 @@ extern crate log;
 
 use clap::Clap;
 use env_logger::Env;
-use std::ffi::OsStr;
+use std::{ffi::OsStr, panic};
+use walkdir::WalkDir;
+
 use std::path::PathBuf;
 
 fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
@@ -27,6 +29,15 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
     }
 }
 
+fn cli_in_is_file_or_dir(v: &OsStr) -> Result<(), String> {
+    let p = PathBuf::from(v);
+    if p.is_file() || p.is_dir() {
+        Ok(())
+    } else {
+        Err(format!("No such file or directory {}", v.to_string_lossy()))
+    }
+}
+
 #[derive(Clap)]
 #[clap(
     version = "v0.3-alpha",
@@ -34,7 +45,7 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
 )]
 struct Opts {
     /// Convert from glTF to .rdm
-    /// Possible values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
+    /// Possible VertexFormat values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
     #[clap(
         short = 'g',
         long = "gltf",
@@ -69,30 +80,40 @@ struct Opts {
     )]
     rdanimation: Option<PathBuf>,
 
-    /// Input file
+    /// Input file or folder (see --batch)
     #[clap(
-        short = 'f',
-        long = "file",
+        short = 'i',
+        long = "input",
         display_order(0),
-        value_name("glTF or rdm FILE"),
-        validator_os(cli_in_is_file),
+        value_name("glTF or rdm FILE(s"),
+        validator_os(cli_in_is_file_or_dir),
         parse(from_str)
     )]
     input: PathBuf,
 
     /// Output file or folder. If 'in_is_out_filename' is set this must be a folder!
-    #[clap(short = 'd', long = "outdst", display_order(1), parse(from_str))]
+    #[clap(
+        short = 'o',
+        long = "outdst",
+        display_order(1),
+        parse(from_str),
+        validator_os(cli_in_is_file_or_dir)
+    )]
     out: Option<PathBuf>,
 
     /// Sets output to input file name
-    #[clap(long = "in_is_out_filename", display_order(2), requires("gltf"))]
+    #[clap(long = "in_is_out_filename", display_order(2),short = 'n')]
     in_is_out_filename: bool,
+
+    /// Batch process recursively
+    #[clap(short = 'b',long = "batch", display_order(3),conflicts_with_all(&["diffusetexture", "rdanimation"]))]
+    batch: bool,
 
     /// glTF to rdm: Do not apply node transforms.
     #[clap(long = "no_transform", display_order(3), requires("gltf"))]
     no_transform: bool,
 
-    /// DiffuseTextures
+    /// DiffuseTextures.
     #[clap(
         short = 't',
         long = "diffusetexture",
@@ -103,7 +124,8 @@ struct Opts {
     )]
     diffusetexture: Option<Vec<PathBuf>>,
 
-    #[clap(long, display_order(4))]
+    /// Mirrors the object on the x axis.
+    #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
 
     /// A level of verbosity, and can be used multiple times
@@ -112,15 +134,22 @@ struct Opts {
 }
 
 fn main() {
-    let mut opts: Opts = Opts::parse();
-
+    let opts: Opts = Opts::parse();
     match opts.verbose {
         0 => env_logger::Builder::from_env(Env::default().default_filter_or("info")).init(),
         1 => env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init(),
         2 => env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init(),
         _ => warn!("Don't be crazy"),
     }
+    if opts.batch {
+        batch(opts).unwrap();
+    } else {
+        entry_do_work(opts);
+    }
+}
 
+fn entry_do_work(mut opts: Opts) {
+    assert_eq!(opts.input.is_file(), true, "Input must be a file! Missing --batch / -b ?");
     if let Some(ref mut out) = opts.out {
         if opts.in_is_out_filename {
             let k = opts.input.file_stem().unwrap();
@@ -130,7 +159,12 @@ fn main() {
                 "in_is_out_filename: output must not be a file!"
             );
             out.push(k);
-            out.set_extension("rdm");
+
+            if opts.gltf.is_some() {
+                out.set_extension("rdm");
+            } else {
+                out.set_extension("gltf");
+            }
         }
     }
 
@@ -184,4 +218,107 @@ fn main() {
         let exp_rdm = RDWriter::from(rdm);
         exp_rdm.write_rdm(opts.out);
     }
+}
+
+#[ignore]
+#[test]
+fn test_batch() {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    let input = PathBuf::from(r"C:\Users\lukas\Desktop\anno7\data");
+    let dst = PathBuf::from(r"C:\Users\lukas\Desktop\anno7\dst\final");
+    let opt = Opts {
+        batch: true,
+        gltf: None,
+        animation: false,
+        diffusetexture: None,
+        in_is_out_filename: true,
+        input: input,
+        negative_x_and_v0v2v1: false,
+        no_transform: false,
+        rdanimation: None,
+        skeleton: false,
+        verbose: 0,
+        out: Some(dst),
+    };
+    batch(opt).expect("msg");
+}
+
+fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
+    let input = defopt.input;
+    assert_eq!(input.is_dir(), true, "Batch: input must be a folder!");
+
+    let mut dst = defopt.out.unwrap();
+    let dst_clone = dst.clone();
+    assert_eq!(dst.is_dir(), true, "Batch: dst must be a folder!");
+
+    let rext = if defopt.gltf.is_some() {
+        OsStr::new("gltf")
+    } else {
+        OsStr::new("rdm")
+    };
+    let rext2 = if defopt.gltf.is_some() {
+        OsStr::new("glb")
+    } else {
+        OsStr::new("rdm")
+    };
+
+    let anim = OsStr::new("anim");
+    let anims = OsStr::new("anims");
+    for entry in WalkDir::new(&input).min_depth(1) {
+        let rel_enty = entry?;
+        let path = rel_enty.path();
+
+        match path.extension() {
+            Some(ext) => {
+                if ext.eq(rext) || ext.eq(rext2) {
+                    let parent = path.parent().unwrap();
+
+                    if (!parent.ends_with(anim) && !parent.ends_with(anims)) || defopt.gltf.is_some() {
+                        let base = input.parent().unwrap();
+                        dst.push(path.strip_prefix(base).unwrap());
+
+                        if defopt.gltf.is_some() && (defopt.in_is_out_filename || !ext.eq("glb")){
+                            dbg!(&dst);
+                            dst.pop();
+                            dbg!(&dst);
+                            if defopt.in_is_out_filename && !ext.eq(rext2) {
+                                dst.pop();
+                            }
+                            dbg!(&dst);
+                        }
+                        std::fs::create_dir_all(&dst)?;
+                        let input_final = PathBuf::from(path);
+                        let opt = Opts {
+                            batch: false,
+                            gltf: defopt.gltf.clone(),
+                            animation: false,
+                            diffusetexture: None,
+                            in_is_out_filename: defopt.in_is_out_filename,
+                            input: input_final.clone(),
+                            negative_x_and_v0v2v1: defopt.negative_x_and_v0v2v1,
+                            no_transform: defopt.no_transform,
+                            rdanimation: None,
+                            skeleton: defopt.skeleton,
+                            verbose: defopt.verbose,
+                            out: Some(dst),
+                        };
+                        let result = panic::catch_unwind(|| {
+                            entry_do_work(opt);
+                        });
+                        match result {
+                            Ok(_) => {}
+                            Err(_) => {
+                                error!("Thread panicked !");
+                                error!("Could not convert: {}", &input_final.display());
+                            }
+                        }
+                        dst = dst_clone.clone();
+                    }
+                }
+            }
+            None => continue,
+        }
+    }
+
+    Ok(())
 }

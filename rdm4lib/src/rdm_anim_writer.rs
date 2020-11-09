@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 
 use byteorder::ByteOrder;
-use std::io::Write;
+use std::{fs::OpenOptions, io::Write};
 use std::{fs, path::PathBuf};
 
 use crate::*;
@@ -172,7 +172,11 @@ impl RDAnimWriter {
             file.set_extension("rdm");
         }
 
-        let mut writer = fs::File::create(file).expect("I/O error");
+        let mut writer = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&file)
+            .expect("I/O error");
         writer.write_all(&self.buf).expect("I/O error");
     }
 }

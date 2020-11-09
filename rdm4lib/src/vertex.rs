@@ -94,7 +94,7 @@ pub struct VertexFormat2 {
     offsets: Vec<usize>,
     text: String,
     vertex_offset: u32,
-    vertex_count: u32,
+    pub vertex_count: u32,
     size: u32,
     vertex_buffer: Bytes,
     pub weight_sum: Option<Vec<u32>>,
@@ -277,6 +277,7 @@ impl VertexFormat2 {
         let mut vbuffer = self.vertex_buffer.clone();
         assert_eq!(vbuffer.len() as u32 % self.size, 0);
         let n = vbuffer.len() as u32 / self.size;
+        assert_eq!(self.vertex_count,n);
 
         vbuffer.advance(offset);
         let it = std::iter::from_fn(move || {
@@ -325,6 +326,7 @@ pub trait GetVertex {
 }
 
 impl GetVertex for P4h {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         P4h {
             pos: [
@@ -338,6 +340,7 @@ impl GetVertex for P4h {
 }
 
 impl GetVertex for N4b {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         N4b {
             normals: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
@@ -346,6 +349,7 @@ impl GetVertex for N4b {
 }
 
 impl GetVertex for G4b {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         G4b {
             tangent: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
@@ -354,6 +358,7 @@ impl GetVertex for G4b {
 }
 
 impl GetVertex for T2h {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         T2h {
             tex: [
@@ -365,6 +370,7 @@ impl GetVertex for T2h {
 }
 
 impl GetVertex for I4b {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         I4b {
             blend_idx: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
@@ -373,6 +379,7 @@ impl GetVertex for I4b {
 }
 
 impl GetVertex for W4b {
+    #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         W4b {
             blend_weight: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],

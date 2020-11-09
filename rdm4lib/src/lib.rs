@@ -384,8 +384,10 @@ impl VertexFormatSize {
 impl From<&Path> for RDModell {
     fn from(f_path: &Path) -> Self {
         let mut f = File::open(f_path).unwrap();
-        let mut buffer = Vec::new();
-        std::io::Read::read_to_end(&mut f, &mut buffer).ok();
+        let metadata = f.metadata().unwrap();
+        let len = metadata.len() as usize;
+        let mut buffer = vec![0; len];
+        std::io::Read::read_exact(&mut f, &mut buffer).expect("I/O ERROR");
 
         let buffer_len = buffer.len();
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());

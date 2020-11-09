@@ -199,14 +199,16 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm(None);
+        let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_rdm(Some(dir_dst));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf() {
         let rdm = gltf_reader::load_gltf(
-            Path::new("rdm/gltf/stormtrooper.gltf"),
+            Path::new("rdm/gltf/stormtrooper_with_tangent.gltf"),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
@@ -219,13 +221,15 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm(None);
+        let dir_dst = PathBuf::from("rdm_out/stormtrooper");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_rdm(Some(dir_dst));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf_anim() {
-        let f_path = Path::new("rdm/gltf/stormtrooper.gltf");
+        let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
         let rdm = gltf_reader::load_gltf(
             &f_path,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
@@ -243,14 +247,16 @@ mod tests {
         let anim = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
 
         let exp_rdm = RDAnimWriter::from(anim);
-        exp_rdm.write_anim_rdm(None);
+        let dir_dst = PathBuf::from("rdm_out/stormtrooper");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_anim_rdm(Some(dir_dst));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin() {
         let rdm = gltf_reader::load_gltf(
-            Path::new("rdm/gltf/stormtrooper_with_tangent.gltf"),
+            Path::new("rdm/gltf/stormtrooper.gltf"),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
             false,
             false,
@@ -263,7 +269,9 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm(None);
+        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_rdm(Some(dir_dst));
     }
 
     #[test]
@@ -285,6 +293,9 @@ mod tests {
         );
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm(None);
+
+        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_rdm(Some(dir_dst));
     }
 }
