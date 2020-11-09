@@ -277,7 +277,7 @@ impl VertexFormat2 {
         let mut vbuffer = self.vertex_buffer.clone();
         assert_eq!(vbuffer.len() as u32 % self.size, 0);
         let n = vbuffer.len() as u32 / self.size;
-        assert_eq!(self.vertex_count,n);
+        assert_eq!(self.vertex_count, n);
 
         vbuffer.advance(offset);
         let it = std::iter::from_fn(move || {

@@ -799,7 +799,7 @@ impl RDGltfBuilder {
     }
 
     fn rdm_vertex_to_gltf(rdm: &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
-        let mut out: Vec<Vertex> = Vec::with_capacity(3*4*rdm.vertex.vertex_count as usize);
+        let mut out: Vec<Vertex> = Vec::with_capacity(3 * 4 * rdm.vertex.vertex_count as usize);
 
         //TODO FIXME arbitrarily chosen
         let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
@@ -892,7 +892,7 @@ impl RDGltfBuilder {
 
     fn put_tex(&mut self) {
         if let Some(iter) = self.rdm.vertex.iter::<T2h>(0) {
-            let mut buff = BytesMut::with_capacity(2*4*self.rdm.vertex.vertex_count as usize);
+            let mut buff = BytesMut::with_capacity(2 * 4 * self.rdm.vertex.vertex_count as usize);
 
             for t2h in iter {
                 buff.put_f32_le(t2h.tex[0].to_f32());
@@ -1024,7 +1024,7 @@ impl RDGltfBuilder {
 
     #[allow(dead_code)]
     fn put_normal(&mut self) {
-        let mut buff = BytesMut::with_capacity(4*1*self.rdm.vertex.vertex_count as usize);
+        let mut buff = BytesMut::with_capacity(4 * self.rdm.vertex.vertex_count as usize);
 
         if let Some(iter) = self.rdm.vertex.iter::<N4b>(0) {
             for n4b in iter {
@@ -1113,7 +1113,7 @@ impl RDGltfBuilder {
 
     #[allow(dead_code)]
     fn put_tangent(&mut self) {
-        let mut buff = BytesMut::with_capacity(4*1*self.rdm.vertex.vertex_count as usize);
+        let mut buff = BytesMut::with_capacity(4 * self.rdm.vertex.vertex_count as usize);
 
         if let Some(iter) = self.rdm.vertex.iter::<G4b>(0) {
             for g4b in iter {

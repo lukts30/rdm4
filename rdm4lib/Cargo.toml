@@ -23,4 +23,4 @@ features = ["extras", "names"]
 
 [dependencies.half]
 version = "1.6.0"
-features = ["use-intrinsics"]
+features = []

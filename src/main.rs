@@ -102,7 +102,7 @@ struct Opts {
     out: Option<PathBuf>,
 
     /// Sets output to input file name
-    #[clap(long = "in_is_out_filename", display_order(2),short = 'n')]
+    #[clap(long = "in_is_out_filename", display_order(2), short = 'n')]
     in_is_out_filename: bool,
 
     /// Batch process recursively
@@ -149,7 +149,11 @@ fn main() {
 }
 
 fn entry_do_work(mut opts: Opts) {
-    assert_eq!(opts.input.is_file(), true, "Input must be a file! Missing --batch / -b ?");
+    assert_eq!(
+        opts.input.is_file(),
+        true,
+        "Input must be a file! Missing --batch / -b ?"
+    );
     if let Some(ref mut out) = opts.out {
         if opts.in_is_out_filename {
             let k = opts.input.file_stem().unwrap();
@@ -273,11 +277,13 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                 if ext.eq(rext) || ext.eq(rext2) {
                     let parent = path.parent().unwrap();
 
-                    if (!parent.ends_with(anim) && !parent.ends_with(anims)) || defopt.gltf.is_some() {
+                    if (!parent.ends_with(anim) && !parent.ends_with(anims))
+                        || defopt.gltf.is_some()
+                    {
                         let base = input.parent().unwrap();
                         dst.push(path.strip_prefix(base).unwrap());
 
-                        if defopt.gltf.is_some() && (defopt.in_is_out_filename || !ext.eq("glb")){
+                        if defopt.gltf.is_some() && (defopt.in_is_out_filename || !ext.eq("glb")) {
                             dbg!(&dst);
                             dst.pop();
                             dbg!(&dst);
