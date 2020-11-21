@@ -322,8 +322,8 @@ pub struct Triangle {
 
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct P4h {
-    pos: [f16; 4],
+pub struct P4h<T> {
+    pos: [T; 4],
 }
 #[derive(Clone, Debug)]
 #[repr(C)]

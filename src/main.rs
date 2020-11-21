@@ -236,7 +236,7 @@ fn test_batch() {
         animation: false,
         diffusetexture: None,
         in_is_out_filename: true,
-        input: input,
+        input,
         negative_x_and_v0v2v1: false,
         no_transform: false,
         rdanimation: None,

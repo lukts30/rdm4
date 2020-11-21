@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes};
+use half::prelude::HalfFloatSliceExt;
 
 use std::{fmt, str::FromStr};
 
@@ -48,7 +49,7 @@ pub trait GetUniqueIdentifier {
     fn get_unique_identifier() -> UniqueIdentifier;
 }
 
-impl GetUniqueIdentifier for P4h {
+impl<T> GetUniqueIdentifier for P4h<T> {
     fn get_unique_identifier() -> UniqueIdentifier {
         UniqueIdentifier::P4h
     }
@@ -282,7 +283,11 @@ impl VertexFormat2 {
         assert_eq!(offset_idx.len() < 5, true);
         let offset = self.offsets[offset_idx[set]];
 
-        let unit_size = std::mem::size_of::<T>();
+        let unit_size = self.identifiers[offset_idx[set]].get_size() as usize;
+        let mem_size = std::mem::size_of::<T>();
+        if unit_size != mem_size {
+            error!("unit_size != mem_size: {} != {}", unit_size, mem_size);
+        }
 
         let mut count = 0;
 
@@ -339,7 +344,7 @@ pub trait GetVertex {
     fn get_unit(b: &mut Bytes) -> Self;
 }
 
-impl GetVertex for P4h {
+impl GetVertex for P4h<f16> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
         P4h {
@@ -350,6 +355,23 @@ impl GetVertex for P4h {
                 f16::from_bits(b.get_u16_le()),
             ],
         }
+    }
+}
+
+impl GetVertex for P4h<f32> {
+    #[inline]
+    fn get_unit(b: &mut Bytes) -> Self {
+        P4h {
+            pos: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
+        }
+    }
+}
+
+impl From<P4h<f16>> for P4h<f32> {
+    fn from(p4h: P4h<f16>) -> Self {
+        let mut buffer = [0f32; 4];
+        p4h.pos.convert_to_f32_slice(&mut buffer);
+        P4h { pos: buffer }
     }
 }
 

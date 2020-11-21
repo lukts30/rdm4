@@ -490,7 +490,7 @@ impl From<RDModell> for RDWriter {
 }
 
 pub trait PutVertex {
-    fn put_p4h(&mut self, p4h: &P4h);
+    fn put_p4h(&mut self, p4h: &P4h<f16>);
     fn put_n4b(&mut self, n4b: &N4b);
     fn put_g4b(&mut self, g4b: &G4b);
     fn put_b4b(&mut self, b4b: &B4b);
@@ -501,7 +501,7 @@ pub trait PutVertex {
 }
 
 impl PutVertex for BytesMut {
-    fn put_p4h(&mut self, p4h: &P4h) {
+    fn put_p4h(&mut self, p4h: &P4h<f16>) {
         self.put_u16_le(p4h.pos[0].to_bits());
         self.put_u16_le(p4h.pos[1].to_bits());
         self.put_u16_le(p4h.pos[2].to_bits());

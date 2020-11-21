@@ -1,7 +1,7 @@
 use gltf::json;
 
 use gltf::json as gltf_json;
-use half::slice::HalfFloatSliceExt;
+use half::f16;
 use std::{
     fs::{self, OpenOptions},
     mem,
@@ -805,12 +805,12 @@ impl RDGltfBuilder {
         let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
         let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
 
-        for p4h in rdm.vertex.iter::<P4h>(0).unwrap() {
-            let mut buffer = [0f32; 4];
-            p4h.pos.convert_to_f32_slice(&mut buffer);
-            let x = buffer[0];
-            let y = buffer[1];
-            let z = buffer[2];
+        for p4h in rdm.vertex.iter::<P4h<f16>>(0).unwrap() {
+            let buffer: P4h<f32> = P4h::from(p4h);
+            //p4h.pos.convert_to_f32_slice(&mut buffer);
+            let x = buffer.pos[0];
+            let y = buffer.pos[1];
+            let z = buffer.pos[2];
 
             min[0] = x.min(min[0]);
             min[1] = y.min(min[1]);
