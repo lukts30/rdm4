@@ -15,7 +15,19 @@ pub struct VertexIdentifier {
 
 impl fmt::Display for VertexIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.uniq, f)
+        let tmp = format!("{:?}", &self.uniq);
+        let unit_size = match self.unit_size {
+            IdentifierSize::U32 => 'b',
+            IdentifierSize::U16 => 'h',
+            IdentifierSize::F32 => 'f',
+        };
+        let r = if self.count == 0x1 && self.interpretation != 0x0 {
+            4
+        } else {
+            self.count
+        };
+        write!(f, "{}{}{}", tmp.chars().next().unwrap(), r, unit_size)
+        //fmt::Debug::fmt(&self.uniq, f)
     }
 }
 
@@ -309,6 +321,7 @@ impl VertexFormat2 {
 pub enum IdentifierSize {
     U32 = 0x5,
     U16 = 0x6,
+    F32 = 0x7,
 }
 
 impl From<u32> for IdentifierSize {
@@ -316,6 +329,7 @@ impl From<u32> for IdentifierSize {
         match i {
             0x5 => IdentifierSize::U32,
             0x6 => IdentifierSize::U16,
+            0x7 => IdentifierSize::F32,
             _ => todo!(),
         }
     }
@@ -392,6 +406,7 @@ impl VertexIdentifier {
         match self.unit_size {
             IdentifierSize::U32 => 4 * self.count,
             IdentifierSize::U16 => 2 * self.count,
+            IdentifierSize::F32 => 4 * self.count,
         }
     }
 
