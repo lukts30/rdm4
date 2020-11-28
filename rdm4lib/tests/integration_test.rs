@@ -23,8 +23,10 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
         let rdm = RDModell::from("rdm/fishery_others_lod2.rdm");
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.vertex.len(), 3291);
         assert_eq!(rdm.triangles_idx_count, 7473);
+        assert_eq!(rdm.mesh_info.len(), 2);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -37,6 +39,9 @@ mod tests {
     fn basalt_crusher_others_lod2() {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertex.len(), 2615);
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
+        assert_eq!(rdm.vertex.get_size(), 28);
+        assert_eq!(rdm.mesh_info.len(), 1);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -130,6 +135,8 @@ mod tests {
             r"rdm/excavator_tycoons_diff_0.dds",
         )));
         assert_eq!(rdm.vertex.len(), 5225);
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
+        assert_eq!(rdm.mesh_info.len(), 1);
 
         rdm.add_skin();
 
@@ -155,6 +162,9 @@ mod tests {
             ],
         });
         assert_eq!(rdm.vertex.len(), 1965);
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
+        assert_eq!(rdm.mesh_info.len(), 3);
+
         if !Path::new("gltf_out2").exists() {
             fs::create_dir("gltf_out2").unwrap();
         }
@@ -167,6 +177,8 @@ mod tests {
         let rdm = RDModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.triangles_idx_count, 78);
+        assert_eq!(rdm.vertex.to_string(), "P4h");
+        assert_eq!(rdm.mesh_info.len(), 1);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -179,6 +191,9 @@ mod tests {
     fn ark_waterfall2() {
         let rdm = RDModell::from("rdm/ark_waterfall2.rdm");
         assert_eq!(rdm.vertex.len(), 105);
+        // TODO: cfg says P4h_N4b_T2h_C4c
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
+        assert_eq!(rdm.mesh_info.len(), 1);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,
@@ -192,6 +207,8 @@ mod tests {
         let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
         assert_eq!(rdm.vertex.len(), 2615);
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
+        assert_eq!(rdm.mesh_info.len(), 1);
 
         assert_eq!(
             rdm.triangles_idx_count as usize,

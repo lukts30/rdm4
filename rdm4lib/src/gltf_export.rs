@@ -14,8 +14,8 @@ use json::validation::Checked::Valid;
 use std::io::Write;
 
 use crate::{rdm_material::RDMaterial, Triangle};
-use crate::{vertex::UniqueIdentifier, RDModell};
-use crate::{G4b, I4b, N4b, P4h, T2h};
+use crate::{vertex::Normalise, vertex::UniqueIdentifier, RDModell};
+use crate::{I4b, Normal, Position, Tangent, Texcoord};
 use crate::{RDJoint, W4b};
 
 use nalgebra::*;
@@ -374,13 +374,13 @@ impl RDGltfBuilder {
         }
         let n = self.rdm.vertex.find(UniqueIdentifier::I4b).len();
         for i in 0..n {
-            if let Some(iter) = self.rdm.vertex.iter::<I4b>(i) {
+            if let Some(iter) = self.rdm.vertex.iter::<I4b, I4b>(i) {
                 let mut weight_ap_joint_buf =
                     BytesMut::with_capacity((4 + 4 * 4) * self.rdm.vertex.len() as usize);
                 let mut joint_buf = BytesMut::with_capacity(4 * self.rdm.vertex.len() as usize);
 
                 let w4b_iter: Box<dyn Iterator<Item = W4b> + '_> =
-                    match self.rdm.vertex.iter::<W4b>(i) {
+                    match self.rdm.vertex.iter::<W4b, W4b>(i) {
                         Some(i) => Box::new(i),
                         None => Box::new(self.rdm.vertex.w4b_default_iter()),
                     };
@@ -805,12 +805,10 @@ impl RDGltfBuilder {
         let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
         let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
 
-        for p4h in rdm.vertex.iter::<P4h<f16>>(0).unwrap() {
-            let buffer: P4h<f32> = P4h::from(p4h);
-            //p4h.pos.convert_to_f32_slice(&mut buffer);
-            let x = buffer.pos[0];
-            let y = buffer.pos[1];
-            let z = buffer.pos[2];
+        for p4h in rdm.vertex.iter::<Position<f16>, Position<f32>>(0).unwrap() {
+            let x = p4h.pos[0];
+            let y = p4h.pos[1];
+            let z = p4h.pos[2];
 
             min[0] = x.min(min[0]);
             min[1] = y.min(min[1]);
@@ -887,16 +885,15 @@ impl RDGltfBuilder {
             Valid(json::mesh::Semantic::Positions),
             json::Index::new(accessors_idx),
         );
-        // end single vertex buffer
     }
 
     fn put_tex(&mut self) {
-        if let Some(iter) = self.rdm.vertex.iter::<T2h>(0) {
+        if let Some(iter) = self.rdm.vertex.iter::<Texcoord<f16>, Texcoord<f32>>(0) {
             let mut buff = BytesMut::with_capacity(2 * 4 * self.rdm.vertex.vertex_count as usize);
 
             for t2h in iter {
-                buff.put_f32_le(t2h.tex[0].to_f32());
-                buff.put_f32_le(t2h.tex[1].to_f32());
+                buff.put_f32_le(t2h.tex[0]);
+                buff.put_f32_le(t2h.tex[1]);
             }
 
             let vec = buff.to_vec(); //stupid
@@ -1022,37 +1019,15 @@ impl RDGltfBuilder {
         self.material_idx = Some(material_idx_vec);
     }
 
-    #[allow(dead_code)]
     fn put_normal(&mut self) {
-        let mut buff = BytesMut::with_capacity(4 * self.rdm.vertex.vertex_count as usize);
+        let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
 
-        if let Some(iter) = self.rdm.vertex.iter::<N4b>(0) {
+        if let Some(iter) = self.rdm.vertex.iter::<Normal<u8>, Normal<f32>>(0) {
             for n4b in iter {
-                let nx = if n4b.normals[0] == 127 {
-                    0.0f32
-                } else {
-                    ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32
-                };
-                let ny = if n4b.normals[1] == 127 {
-                    0.0f32
-                } else {
-                    ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32
-                };
-                let nz = if n4b.normals[2] == 127 {
-                    0.0f32
-                } else {
-                    ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32
-                };
-
-                // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
-                let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
-                let unx = nx / len;
-                let uny = ny / len;
-                let unz = nz / len;
-
-                buff.put_f32_le(unx);
-                buff.put_f32_le(uny);
-                buff.put_f32_le(unz);
+                let n = n4b.normalise().normals;
+                buff.put_f32_le(n[0]);
+                buff.put_f32_le(n[1]);
+                buff.put_f32_le(n[2]);
             }
 
             let vec = buff.to_vec(); //stupid
@@ -1111,34 +1086,26 @@ impl RDGltfBuilder {
         }
     }
 
-    #[allow(dead_code)]
     fn put_tangent(&mut self) {
-        let mut buff = BytesMut::with_capacity(4 * self.rdm.vertex.vertex_count as usize);
+        let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
 
-        if let Some(iter) = self.rdm.vertex.iter::<G4b>(0) {
+        if let Some(iter) = self.rdm.vertex.iter::<Tangent<u8>, Tangent<f32>>(0) {
             for g4b in iter {
-                let nx = -(((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32);
-                let ny = -(((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32);
-                let nz = -(((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32);
+                let t = g4b.normalise().tangent;
+                buff.put_f32_le(t[0]);
+                buff.put_f32_le(t[1]);
+                buff.put_f32_le(t[2]);
 
-                // calculate unit vector to suppress glTF-Validator ACCESSOR_VECTOR3_NON_UNIT
-                let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
-                let unx = nx / len;
-                let uny = ny / len;
-                let unz = nz / len;
-
-                buff.put_f32_le(unx);
-                buff.put_f32_le(uny);
-                buff.put_f32_le(unz);
                 // TODO is this right ?
-                if g4b.tangent[3] == 1 {
+                if relative_eq!(g4b.tangent[3], 1.0f32) {
                     buff.put_f32_le(1.0);
                 } else {
                     buff.put_f32_le(-1.0);
                 }
             }
 
-            let vec = buff.to_vec(); //stupid
+            // TODO remove alloc. stupid copy.
+            let vec = buff.to_vec();
             let tex_len = self.rdm.vertex.len();
 
             let buffer_p = self.obj.push_buffer(vec);
@@ -1254,7 +1221,6 @@ impl RDGltfBuilder {
         }
         assert_eq!((triangle_idx_p.num * 3), sum);
         self.idx = Some(accessor_idx_meshes);
-        // end Indexed triangle list
     }
 
     pub fn build(mut self) -> RDGltf {

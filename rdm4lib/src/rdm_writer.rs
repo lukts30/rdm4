@@ -490,33 +490,33 @@ impl From<RDModell> for RDWriter {
 }
 
 pub trait PutVertex {
-    fn put_p4h(&mut self, p4h: &P4h<f16>);
-    fn put_n4b(&mut self, n4b: &N4b);
-    fn put_g4b(&mut self, g4b: &G4b);
-    fn put_b4b(&mut self, b4b: &B4b);
-    fn put_t2h(&mut self, t2h: &T2h);
+    fn put_p4h(&mut self, p4h: &Position<f16>);
+    fn put_n4b(&mut self, n4b: &Normal<u8>);
+    fn put_g4b(&mut self, g4b: &Tangent<u8>);
+    fn put_b4b(&mut self, b4b: &Bitangent);
+    fn put_t2h(&mut self, t2h: &Texcoord<f16>);
     fn put_i4b(&mut self, i4b: &I4b);
     fn put_w4b(&mut self, w4b: &W4b);
     fn put_c4c(&mut self, c4c: &C4c);
 }
 
 impl PutVertex for BytesMut {
-    fn put_p4h(&mut self, p4h: &P4h<f16>) {
+    fn put_p4h(&mut self, p4h: &Position<f16>) {
         self.put_u16_le(p4h.pos[0].to_bits());
         self.put_u16_le(p4h.pos[1].to_bits());
         self.put_u16_le(p4h.pos[2].to_bits());
         self.put_u16_le(p4h.pos[3].to_bits());
     }
-    fn put_n4b(&mut self, n4b: &N4b) {
+    fn put_n4b(&mut self, n4b: &Normal<u8>) {
         self.put_slice(&n4b.normals);
     }
-    fn put_g4b(&mut self, g4b: &G4b) {
+    fn put_g4b(&mut self, g4b: &Tangent<u8>) {
         self.put_slice(&g4b.tangent);
     }
-    fn put_b4b(&mut self, b4b: &B4b) {
+    fn put_b4b(&mut self, b4b: &Bitangent) {
         self.put_slice(&b4b.binormal);
     }
-    fn put_t2h(&mut self, t2h: &T2h) {
+    fn put_t2h(&mut self, t2h: &Texcoord<f16>) {
         self.put_u16_le(t2h.tex[0].to_bits());
         self.put_u16_le(t2h.tex[1].to_bits());
     }

@@ -31,7 +31,7 @@ use vertex::VertexFormat2;
 pub struct RDModell {
     size: u32,
     buffer: Bytes,
-    mesh_info: Vec<MeshInstance>,
+    pub mesh_info: Vec<MeshInstance>,
     pub joints: Option<Vec<RDJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
@@ -320,30 +320,31 @@ pub struct Triangle {
     indices: [u16; 3],
 }
 
+// TODO: maybe use min_const_generics to match sizeof (3 vs 4 sized arrays)
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct P4h<T> {
+pub struct Position<T> {
     pos: [T; 4],
 }
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct N4b {
-    normals: [u8; 4],
+pub struct Normal<T> {
+    normals: [T; 4],
 }
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct G4b {
-    tangent: [u8; 4],
+pub struct Tangent<T> {
+    tangent: [T; 4],
 }
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct B4b {
+pub struct Bitangent {
     binormal: [u8; 4],
 }
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct T2h {
-    tex: [f16; 2],
+pub struct Texcoord<T> {
+    tex: [T; 2],
 }
 
 #[derive(Clone, Debug)]

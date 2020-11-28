@@ -85,7 +85,7 @@ struct Opts {
         short = 'i',
         long = "input",
         display_order(0),
-        value_name("glTF or rdm FILE(s"),
+        value_name("glTF or rdm FILE(s)"),
         validator_os(cli_in_is_file_or_dir),
         parse(from_str)
     )]

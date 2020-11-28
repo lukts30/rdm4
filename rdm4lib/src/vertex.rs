@@ -16,30 +16,26 @@ pub struct VertexIdentifier {
 
 impl fmt::Display for VertexIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: cleanup
         let tmp = format!("{:?}", &self.uniq);
         let unit_size = match self.unit_size {
             IdentifierSize::U32 => 'b',
             IdentifierSize::U16 => 'h',
             IdentifierSize::F32 => 'f',
         };
-        let r = if self.count == 0x1 && self.interpretation != 0x0 {
-            4
-        } else {
-            self.count
-        };
+        let r = if self.count == 0x1 { 4 } else { self.count };
         write!(f, "{}{}{}", tmp.chars().next().unwrap(), r, unit_size)
-        //fmt::Debug::fmt(&self.uniq, f)
     }
 }
 
 #[repr(u32)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum UniqueIdentifier {
-    P4h = 0x0,
-    N4b = 0x1,
-    G4b = 0x2,
-    B4b = 0x3,
-    T2h = 0x4,
+    Position = 0x0,
+    Normal = 0x1,
+    GTangent = 0x2,
+    Bitangent = 0x3,
+    Texcoord = 0x4,
     C4c = 0x5,
     I4b = 0x7,
     W4b = 0x6,
@@ -49,27 +45,27 @@ pub trait GetUniqueIdentifier {
     fn get_unique_identifier() -> UniqueIdentifier;
 }
 
-impl<T> GetUniqueIdentifier for P4h<T> {
+impl<T> GetUniqueIdentifier for Position<T> {
     fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::P4h
+        UniqueIdentifier::Position
     }
 }
 
-impl GetUniqueIdentifier for N4b {
+impl<T> GetUniqueIdentifier for Normal<T> {
     fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::N4b
+        UniqueIdentifier::Normal
     }
 }
 
-impl GetUniqueIdentifier for G4b {
+impl<T> GetUniqueIdentifier for Tangent<T> {
     fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::G4b
+        UniqueIdentifier::GTangent
     }
 }
 
-impl GetUniqueIdentifier for T2h {
+impl<T> GetUniqueIdentifier for Texcoord<T> {
     fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::T2h
+        UniqueIdentifier::Texcoord
     }
 }
 
@@ -88,11 +84,11 @@ impl GetUniqueIdentifier for W4b {
 impl From<u32> for UniqueIdentifier {
     fn from(i: u32) -> Self {
         match i {
-            0x0 => UniqueIdentifier::P4h,
-            0x1 => UniqueIdentifier::N4b,
-            0x2 => UniqueIdentifier::G4b,
-            0x3 => UniqueIdentifier::B4b,
-            0x4 => UniqueIdentifier::T2h,
+            0x0 => UniqueIdentifier::Position,
+            0x1 => UniqueIdentifier::Normal,
+            0x2 => UniqueIdentifier::GTangent,
+            0x3 => UniqueIdentifier::Bitangent,
+            0x4 => UniqueIdentifier::Texcoord,
             0x5 => UniqueIdentifier::C4c,
             0x7 => UniqueIdentifier::I4b,
             0x6 => UniqueIdentifier::W4b,
@@ -140,7 +136,7 @@ impl VertexFormat2 {
         } else {
             let mut vec: Vec<u32> = vec![0; self.len() as usize];
             for i in 0..n {
-                if let Some(iter) = self.iter::<W4b>(i) {
+                if let Some(iter) = self.iter::<W4b, W4b>(i) {
                     for (e, dst) in iter.zip(vec.iter_mut()) {
                         let n = e.blend_weight[0] as u32
                             + e.blend_weight[1] as u32
@@ -272,10 +268,14 @@ impl VertexFormat2 {
         &self.vertex_buffer
     }
 
-    pub fn iter<T: GetUniqueIdentifier + GetVertex>(
-        &self,
+    pub fn iter<
+        'a,
+        Z: GetUniqueIdentifier + GetVertex,
+        T: GetUniqueIdentifier + GetVertex + From<Z> + 'a,
+    >(
+        &'a self,
         set: usize,
-    ) -> Option<impl Iterator<Item = T> + '_> {
+    ) -> Option<impl Iterator<Item = T> + 'a> {
         let offset_idx = self.find(T::get_unique_identifier());
         if offset_idx.is_empty() {
             return None;
@@ -284,10 +284,13 @@ impl VertexFormat2 {
         let offset = self.offsets[offset_idx[set]];
 
         let unit_size = self.identifiers[offset_idx[set]].get_size() as usize;
-        let mem_size = std::mem::size_of::<T>();
-        if unit_size != mem_size {
-            error!("unit_size != mem_size: {} != {}", unit_size, mem_size);
-        }
+        let mem_size = std::mem::size_of::<Z>();
+        // TODO with min_const_generics assert size_of eq.
+        trace!("{} : {}", unit_size, mem_size);
+        let unit = &self.identifiers[offset_idx[set]];
+        // TODO: this needs far better checking!
+        let need_convert = unit.unit_size == IdentifierSize::U16
+            || unit.count == 0x1 && unit.interpretation != 0x0;
 
         let mut count = 0;
 
@@ -297,9 +300,13 @@ impl VertexFormat2 {
         assert_eq!(self.vertex_count, n);
 
         vbuffer.advance(offset);
-        let it = std::iter::from_fn(move || {
+        let it: _ = std::iter::from_fn(move || {
             let ret = if count < n {
-                Some(GetVertex::get_unit(&mut vbuffer))
+                if need_convert {
+                    Some(T::from(<Z as GetVertex>::get_unit(&mut vbuffer)))
+                } else {
+                    Some(<T as GetVertex>::get_unit(&mut vbuffer))
+                }
             } else {
                 None
             };
@@ -322,7 +329,7 @@ impl VertexFormat2 {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum IdentifierSize {
     U32 = 0x5,
     U16 = 0x6,
@@ -344,10 +351,10 @@ pub trait GetVertex {
     fn get_unit(b: &mut Bytes) -> Self;
 }
 
-impl GetVertex for P4h<f16> {
+impl GetVertex for Position<f16> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
-        P4h {
+        Position {
             pos: [
                 f16::from_bits(b.get_u16_le()),
                 f16::from_bits(b.get_u16_le()),
@@ -358,49 +365,145 @@ impl GetVertex for P4h<f16> {
     }
 }
 
-impl GetVertex for P4h<f32> {
+impl GetVertex for Position<f32> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
-        P4h {
+        Position {
             pos: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
         }
     }
 }
 
-impl From<P4h<f16>> for P4h<f32> {
-    fn from(p4h: P4h<f16>) -> Self {
+impl From<Position<f16>> for Position<f32> {
+    #[inline]
+    fn from(p4h: Position<f16>) -> Self {
         let mut buffer = [0f32; 4];
         p4h.pos.convert_to_f32_slice(&mut buffer);
-        P4h { pos: buffer }
+        Position { pos: buffer }
     }
 }
 
-impl GetVertex for N4b {
+pub trait Normalise {
+    /// calculate unit vector from self
+    fn normalise(&self) -> Self;
+}
+
+impl Normalise for Normal<f32> {
+    #[inline]
+    fn normalise(&self) -> Self {
+        let n = self.normals;
+        let len = ((n[0] * n[0]) + (n[1] * n[1]) + (n[2] * n[2])).sqrt();
+        let unx = n[0] / len;
+        let uny = n[1] / len;
+        let unz = n[2] / len;
+        Normal {
+            normals: [unx, uny, unz, n[3]],
+        }
+    }
+}
+
+impl Normalise for Tangent<f32> {
+    #[inline]
+    fn normalise(&self) -> Self {
+        let n = self.tangent;
+        let len = ((n[0] * n[0]) + (n[1] * n[1]) + (n[2] * n[2])).sqrt();
+        let unx = n[0] / len;
+        let uny = n[1] / len;
+        let unz = n[2] / len;
+        Tangent {
+            tangent: [unx, uny, unz, n[3]],
+        }
+    }
+}
+
+impl GetVertex for Normal<u8> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
-        N4b {
+        Normal {
             normals: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
         }
     }
 }
 
-impl GetVertex for G4b {
+impl GetVertex for Normal<f32> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
-        G4b {
+        Normal {
+            normals: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
+        }
+    }
+}
+
+impl GetVertex for Tangent<f32> {
+    #[inline]
+    fn get_unit(b: &mut Bytes) -> Self {
+        Tangent {
+            tangent: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
+        }
+    }
+}
+
+impl From<Tangent<u8>> for Tangent<f32> {
+    #[inline]
+    fn from(g4b: Tangent<u8>) -> Self {
+        let buffer: [f32; 4] = [
+            -(((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32),
+            -(((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32),
+            -(((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32),
+            g4b.tangent[3] as f32,
+        ];
+        Tangent { tangent: buffer }
+    }
+}
+
+impl From<Normal<u8>> for Normal<f32> {
+    #[inline]
+    fn from(n4b: Normal<u8>) -> Self {
+        let buffer: [f32; 4] = [
+            ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32,
+            ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32,
+            ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32,
+            ((2.0f32 * n4b.normals[3] as f32) / 255.0f32) - 1.0f32,
+        ];
+        Normal { normals: buffer }
+    }
+}
+
+impl GetVertex for Tangent<u8> {
+    #[inline]
+    fn get_unit(b: &mut Bytes) -> Self {
+        Tangent {
             tangent: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
         }
     }
 }
 
-impl GetVertex for T2h {
+impl GetVertex for Texcoord<f16> {
     #[inline]
     fn get_unit(b: &mut Bytes) -> Self {
-        T2h {
+        Texcoord {
             tex: [
                 f16::from_bits(b.get_u16_le()),
                 f16::from_bits(b.get_u16_le()),
             ],
+        }
+    }
+}
+
+impl GetVertex for Texcoord<f32> {
+    #[inline]
+    fn get_unit(b: &mut Bytes) -> Self {
+        Texcoord {
+            tex: [b.get_f32_le(), b.get_f32_le()],
+        }
+    }
+}
+
+impl From<Texcoord<f16>> for Texcoord<f32> {
+    #[inline]
+    fn from(t2h: Texcoord<f16>) -> Self {
+        Texcoord {
+            tex: [t2h.tex[0].to_f32(), t2h.tex[1].to_f32()],
         }
     }
 }
@@ -434,7 +537,7 @@ impl VertexIdentifier {
 
     pub const fn p4h() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::P4h,
+            uniq: UniqueIdentifier::Position,
             unit_size: IdentifierSize::U16,
             interpretation: 0,
             count: 4,
@@ -443,7 +546,7 @@ impl VertexIdentifier {
 
     pub const fn n4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::N4b,
+            uniq: UniqueIdentifier::Normal,
             unit_size: IdentifierSize::U32,
             interpretation: 0x6,
             count: 1,
@@ -452,7 +555,7 @@ impl VertexIdentifier {
 
     pub const fn g4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::G4b,
+            uniq: UniqueIdentifier::GTangent,
             unit_size: IdentifierSize::U32,
             interpretation: 0x6,
             count: 1,
@@ -461,7 +564,7 @@ impl VertexIdentifier {
 
     pub const fn b4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::B4b,
+            uniq: UniqueIdentifier::Bitangent,
             unit_size: IdentifierSize::U32,
             interpretation: 0x6,
             count: 1,
@@ -470,7 +573,7 @@ impl VertexIdentifier {
 
     pub const fn t2h() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::T2h,
+            uniq: UniqueIdentifier::Texcoord,
             unit_size: IdentifierSize::U16,
             interpretation: 0x0,
             count: 2,

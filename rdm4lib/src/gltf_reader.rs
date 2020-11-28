@@ -1,13 +1,8 @@
 use crate::{rdm_writer::PutVertex, RDJoint};
-use crate::{vertex::TargetVertexFormat, Triangle, W4b};
+use crate::{vertex::TargetVertexFormat, Triangle};
 use crate::{MeshInstance, RDModell};
 
-use crate::B4b;
-use crate::G4b;
-use crate::I4b;
-use crate::N4b;
-use crate::P4h;
-use crate::T2h;
+use crate::{Bitangent, I4b, Normal, Position, Tangent, Texcoord, W4b};
 use nalgebra::*;
 
 use half::f16;
@@ -525,7 +520,7 @@ fn read_mesh(
                     Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
                 let transformed_vertex = base.transform_point(&vertex);
 
-                let p4h = P4h {
+                let p4h = Position {
                     pos: [
                         f16::from_f32(1.0 * transformed_vertex[0]),
                         f16::from_f32(1.0 * transformed_vertex[1]),
@@ -549,7 +544,7 @@ fn read_mesh(
                 ny /= len;
                 nz /= len;
 
-                let n4b = N4b {
+                let n4b = Normal {
                     normals: [
                         (((nx + 1.0) / 2.0) * 255.0).round() as u8,
                         (((ny + 1.0) / 2.0) * 255.0).round() as u8,
@@ -581,7 +576,7 @@ fn read_mesh(
                 };
                 assert_relative_eq!(tw.abs(), 1.0);
 
-                let g4b = G4b {
+                let g4b = Tangent {
                     tangent: [
                         (((tx + 1.0) / 2.0) * 255.0).round() as u8,
                         (((ty + 1.0) / 2.0) * 255.0).round() as u8,
@@ -596,7 +591,7 @@ fn read_mesh(
 
                 let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
-                let b4b = B4b {
+                let b4b = Bitangent {
                     binormal: [
                         (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
                         (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
@@ -609,7 +604,7 @@ fn read_mesh(
 
                 let tex = tex_iter.next().unwrap();
                 //let tex = [0.0, 0.0];
-                let t2h = T2h {
+                let t2h = Texcoord {
                     tex: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
                 };
 
