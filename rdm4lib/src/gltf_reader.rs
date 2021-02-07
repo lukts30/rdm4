@@ -13,6 +13,8 @@ use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
 use crate::VertexFormat2;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::{
     collections::HashMap,
@@ -388,6 +390,8 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
     out_joints_vec
 }
 
+type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)>;
+
 fn read_mesh(
     gltf: &gltf::Document,
     buffers: &[gltf::buffer::Data],
@@ -395,7 +399,7 @@ fn read_mesh(
     read_joints: bool,
     mut negative_x_and_v0v2v1: bool,
     no_transform: bool,
-) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)> {
+) -> ReadMeshOutput {
     #[allow(clippy::never_loop)]
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
@@ -446,6 +450,8 @@ fn read_mesh(
         let mut merged_triangle_vec = Vec::new();
         let mut vertices_count = 0;
         let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
+
+        let mut kown_vbuffers = HashMap::new();
 
         for (i, primitive) in mesh.primitives().enumerate() {
             info!("- Primitive #{}", primitive.index());
@@ -518,8 +524,9 @@ fn read_mesh(
             //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
             trace!("vertex read loop");
-            let start_vertices_count: u16 =
-                u16::try_from(verts_vec.len() as u32 / vertsize).unwrap();
+            let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
+
+            let pre_vertices_added = verts_vec.len();
 
             while count > 0 {
                 trace!("count {}", count);
@@ -655,6 +662,21 @@ fn read_mesh(
                 count -= 1;
             }
 
+            let mut hasher = DefaultHasher::new();
+            Hash::hash_slice(&verts_vec[pre_vertices_added..verts_vec.len()], &mut hasher);
+            let hash_v = hasher.finish();
+            info!("Primivive {} hash is {:x}.", i, &hash_v);
+            match kown_vbuffers.get(&hash_v) {
+                Some(found_start_vertices_count) => {
+                    info!("found hash {:x}! Buffer already written.", &hash_v);
+                    start_vertices_count = *found_start_vertices_count;
+                    verts_vec.resize(pre_vertices_added, 0)
+                }
+                None => {
+                    kown_vbuffers.insert(hash_v, start_vertices_count);
+                }
+            }
+
             vertices_count = verts_vec.len() as u32 / vertsize;
             info!("vertices_count {}", vertices_count);
 
@@ -667,23 +689,23 @@ fn read_mesh(
 
             while tcount > 0 {
                 //let ctri = triangle_iter.next().unwrap();
-                let v0 = triangle_iter.next().unwrap() as u16;
-                let v1 = triangle_iter.next().unwrap() as u16;
-                let v2 = triangle_iter.next().unwrap() as u16;
+                let v0 = triangle_iter.next().unwrap();
+                let v1 = triangle_iter.next().unwrap();
+                let v2 = triangle_iter.next().unwrap();
                 let t = if negative_x_and_v0v2v1 {
                     Triangle {
                         indices: [
-                            start_vertices_count + v0,
-                            start_vertices_count + v2,
-                            start_vertices_count + v1,
+                            u16::try_from(start_vertices_count + v0).unwrap(),
+                            u16::try_from(start_vertices_count + v2).unwrap(),
+                            u16::try_from(start_vertices_count + v1).unwrap(),
                         ],
                     }
                 } else {
                     Triangle {
                         indices: [
-                            start_vertices_count + v0,
-                            start_vertices_count + v1,
-                            start_vertices_count + v2,
+                            u16::try_from(start_vertices_count + v0).unwrap(),
+                            u16::try_from(start_vertices_count + v1).unwrap(),
+                            u16::try_from(start_vertices_count + v2).unwrap(),
                         ],
                     }
                 };

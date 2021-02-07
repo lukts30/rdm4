@@ -301,7 +301,7 @@ impl RDWriter {
             p = p.max(triangle.indices[1]);
             p = p.max(triangle.indices[2]);
         }
-        error!("max idx: {}", p);
+        warn!("max triangle index is: {}", p);
     }
 
     fn put_blob(&mut self) {
