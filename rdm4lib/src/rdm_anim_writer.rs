@@ -48,7 +48,7 @@ impl RDAnimWriter {
         self.buf.put_u32_le(1);
         {
             let path_str_ptr = self.buf.len() as u32;
-            let buff_off = 84 as usize;
+            let buff_off = 84_usize;
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], path_str_ptr);
         }
         self.buf.put_slice(export_name);
@@ -58,7 +58,7 @@ impl RDAnimWriter {
         self.buf.put_u32_le(1);
         {
             let file_str_ptr = self.buf.len() as u32;
-            let buff_off = 88 as usize;
+            let buff_off = 88_usize;
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], file_str_ptr);
         }
         self.buf.put_slice(export_name_2);
@@ -71,7 +71,7 @@ impl RDAnimWriter {
 
         {
             let meta_ptr = self.buf.len() as u32;
-            let buff_off = 44 as usize;
+            let buff_off = 44_usize;
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], meta_ptr);
         }
 
