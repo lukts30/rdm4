@@ -310,15 +310,21 @@ impl RDWriter {
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], blob_ptr);
         }
 
+        let mut max_mesh = 0;
+        for m in self.input.mesh_info.iter() {
+            max_mesh = max_mesh.max(m.mesh);
+        }
+        max_mesh += 1;
+
         let start = self.buf.len();
+        self.buf.put_u32_le(max_mesh);
+        self.buf.put_u32_le(28);
 
-        {
-            // unknown png
+        let mut ptrvec = Vec::new();
 
-            self.buf.put_u32_le(1);
-            self.buf.put_u32_le(28);
-
-            self.buf.put_u32_le(self.buf.len() as u32 + 4 + 24 + 8);
+        for _ in 0..max_mesh {
+            ptrvec.push(self.buf.len());
+            self.buf.put_u32_le(0xDEAD_BEEF);
 
             static UNKNOWN: [u8; 24] = [
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -327,9 +333,11 @@ impl RDWriter {
             self.buf.put_slice(&UNKNOWN);
         }
 
-        {
+        for e in ptrvec {
             self.buf.put_u32_le(1);
             self.buf.put_u32_le(48);
+            let cnt = self.buf.len() as u32;
+            byteorder::LittleEndian::write_u32(&mut self.buf[e..e + 4], cnt);
 
             static UNKNOWN2: [u8; 40] = [
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -358,7 +366,7 @@ impl RDWriter {
 
         let written = end - start;
 
-        assert_eq!(written, 243);
+        assert_eq!(written as u32, 235 * max_mesh + 8);
 
         // 8+1*28 : -> (0 -> next)
         // 8+1*48 : (0 -> next) (4 -> next+1)
