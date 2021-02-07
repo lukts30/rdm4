@@ -1,6 +1,6 @@
 use bytes::{BufMut, BytesMut};
 
-use std::{fs, path::PathBuf};
+use std::{convert::TryInto, fs, path::PathBuf};
 use std::{fs::OpenOptions, io::Write};
 
 use crate::*;
@@ -226,7 +226,8 @@ impl RDWriter {
 
         // for each MeshInstance.
         {
-            self.buf.put_u32_le(1);
+            self.buf
+                .put_u32_le(self.input.mesh_info.len().try_into().unwrap());
             self.buf.put_u32_le(28);
 
             // pointer to the first MeshInstance
@@ -238,20 +239,22 @@ impl RDWriter {
                     triangle_count_ptr,
                 );
             }
+            for submesh in self.input.mesh_info.iter() {
+                self.buf.put_u32_le(submesh.start_index_location);
+                self.buf.put_u32_le(submesh.index_count);
+                self.buf.put_u32_le(submesh.mesh);
+                static ZERO_16_OF_28: [u8; 16] = [
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00,
+                ];
 
-            self.buf.put_u32_le(0);
-            self.buf.put_u32_le(self.input.triangles_idx_count);
-            static ZERO_20_OF_28: [u8; 20] = [
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            ];
-
-            self.buf.put_slice(&ZERO_20_OF_28);
+                self.buf.put_slice(&ZERO_16_OF_28);
+            }
         }
 
         assert_eq!(
             self.buf.len(),
-            608 + self.input.vertex.identifiers_as_bytes().len()
+            580 + self.input.vertex.identifiers_as_bytes().len() + 28 * self.input.mesh_info.len()
         );
     }
 
@@ -289,11 +292,16 @@ impl RDWriter {
             );
         }
 
+        let mut p = 0;
         for triangle in self.input.triangle_indices.iter() {
             self.buf.put_u16_le(triangle.indices[0]);
             self.buf.put_u16_le(triangle.indices[1]);
             self.buf.put_u16_le(triangle.indices[2]);
+            p = p.max(triangle.indices[0]);
+            p = p.max(triangle.indices[1]);
+            p = p.max(triangle.indices[2]);
         }
+        error!("max idx: {}", p);
     }
 
     fn put_blob(&mut self) {

@@ -13,8 +13,11 @@ use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
 
 use crate::VertexFormat2;
-use std::collections::HashMap;
 use std::path::Path;
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 pub fn read_animation(
     f_path: &Path,
@@ -254,14 +257,11 @@ pub fn load_gltf(
     };
 
     // todo!("TODO : FIX ME !!!");
+    let mesh_info_vec = gltf_imp.4;
     RDModell {
         size,
         buffer: Bytes::new(),
-        mesh_info: vec![MeshInstance {
-            start_index_location: 0,
-            index_count: triangles.len() as u32,
-            mesh: 0,
-        }],
+        mesh_info: mesh_info_vec,
         joints: joints_vec,
         triangle_indices: triangles,
         meta,
@@ -395,7 +395,8 @@ fn read_mesh(
     read_joints: bool,
     mut negative_x_and_v0v2v1: bool,
     no_transform: bool,
-) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32)> {
+) -> Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)> {
+    #[allow(clippy::never_loop)]
     for mesh in gltf.meshes() {
         info!("Mesh #{}", mesh.index());
 
@@ -428,21 +429,25 @@ fn read_mesh(
         let inv_transform_mat3 = mat3.try_inverse().unwrap();
         let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
 
-        #[allow(clippy::never_loop)]
-        for primitive in mesh.primitives() {
-            let ident = match dst_format {
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
-                }
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
-                }
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
-                }
-            };
-            let vertsize = ident.iter().map(|x| x.get_size()).sum();
+        let ident = match dst_format {
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
+                crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
+            }
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
+                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
+            }
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
+                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
+            }
+        };
+        let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
+        let mut mesh_info: Vec<MeshInstance> = Vec::new();
+        let mut merged_triangle_vec = Vec::new();
+        let mut vertices_count = 0;
+        let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
+
+        for (i, primitive) in mesh.primitives().enumerate() {
             info!("- Primitive #{}", primitive.index());
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -510,9 +515,12 @@ fn read_mesh(
             let mut weights_iter = wvecarr.into_iter().cycle();
 
             warn!("dst_format: {:?}", dst_format);
-            let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
+            //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
             trace!("vertex read loop");
+            let start_vertices_count: u16 =
+                u16::try_from(verts_vec.len() as u32 / vertsize).unwrap();
+
             while count > 0 {
                 trace!("count {}", count);
                 let vertex_position = position_iter.next().unwrap();
@@ -647,10 +655,10 @@ fn read_mesh(
                 count -= 1;
             }
 
-            let vertices_count = verts_vec.len() as u32 / vertsize;
+            vertices_count = verts_vec.len() as u32 / vertsize;
             info!("vertices_count {}", vertices_count);
 
-            let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
+            //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
 
             let mut triangle_iter = reader.read_indices().unwrap().into_u32();
             let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
@@ -664,19 +672,44 @@ fn read_mesh(
                 let v2 = triangle_iter.next().unwrap() as u16;
                 let t = if negative_x_and_v0v2v1 {
                     Triangle {
-                        indices: [v0, v2, v1],
+                        indices: [
+                            start_vertices_count + v0,
+                            start_vertices_count + v2,
+                            start_vertices_count + v1,
+                        ],
                     }
                 } else {
                     Triangle {
-                        indices: [v0, v1, v2],
+                        indices: [
+                            start_vertices_count + v0,
+                            start_vertices_count + v1,
+                            start_vertices_count + v2,
+                        ],
                     }
                 };
                 tcount -= 1;
                 triangle_vec.push(t);
             }
 
-            return Some((vertsize, verts, triangle_vec, vertices_count));
+            mesh_info.push(MeshInstance {
+                start_index_location: merged_triangle_vec.len() as u32 * 3,
+                index_count: triangle_vec.len() as u32 * 3,
+                mesh: i.try_into().unwrap(),
+            });
+
+            merged_triangle_vec.append(&mut triangle_vec);
+
+            warn!("{:?}", &mesh_info);
+            //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
         }
+        let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
+        return Some((
+            vertsize,
+            verts,
+            merged_triangle_vec,
+            vertices_count,
+            mesh_info,
+        ));
     }
     None
 }
