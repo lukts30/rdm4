@@ -987,13 +987,20 @@ impl RDGltfBuilder {
                     tex_coord: 0,
                     extensions: None,
                     extras: None,
-                }))
+                }));
             }
         }
-        while self.rdm.mesh_info.len() > info_vec.len() {
+        
+        //assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
+        let mut max_mesh: usize = 0;
+        for m in self.rdm.mesh_info.iter() {
+            max_mesh = max_mesh.max(m.mesh as usize);
+        }
+
+        while max_mesh+1 > info_vec.len() {
             info_vec.push(None);
         }
-        assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
+        debug!("{:#?} {:#?}",max_mesh,info_vec.len());
 
         let mut material_idx_vec = Vec::new();
         for itex in info_vec {
@@ -1232,7 +1239,7 @@ impl RDGltfBuilder {
         };
 
         let mut triangle_vec = Vec::new();
-        for (i, ((submesh, idx), mesh_idx)) in self
+        for (_i, ((submesh, idx), _mesh_idx)) in self
             .rdm
             .mesh_info
             .iter()
@@ -1240,13 +1247,13 @@ impl RDGltfBuilder {
             .zip(self.material_idx.unwrap())
             .enumerate()
         {
-            assert_eq!(i as u32, submesh.mesh);
+            //assert_eq!(i as u32, submesh.mesh);
             let primitive = json::mesh::Primitive {
                 attributes: self.attr_map.clone(),
                 extensions: Default::default(),
                 extras: Default::default(),
                 indices: Some(json::Index::new(idx)),
-                material: Some(json::Index::new(mesh_idx)),
+                material: Some(json::Index::new(submesh.mesh)),
                 mode: Valid(json::mesh::Mode::Triangles),
                 targets: None,
             };
