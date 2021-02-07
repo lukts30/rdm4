@@ -230,6 +230,7 @@ mod tests {
             true,
             false,
             false,
+            None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
@@ -253,6 +254,7 @@ mod tests {
             true,
             false,
             false,
+            None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
@@ -278,6 +280,7 @@ mod tests {
             false,
             false,
             false,
+            None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
         assert_eq!(
@@ -302,6 +305,7 @@ mod tests {
             false,
             false,
             false,
+            None,
         );
         assert_eq!(rdm.vertex.len(), 3);
         assert_eq!(

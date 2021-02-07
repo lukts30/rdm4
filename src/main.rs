@@ -124,6 +124,10 @@ struct Opts {
     )]
     diffusetexture: Option<Vec<PathBuf>>,
 
+    /// Overrides MeshInstance mesh indcies. Useful to match existing cfg material orders.
+    #[clap(long = "overide_mesh_idx")]
+    overide_mesh_idx: Option<Vec<u32>>,
+
     /// Mirrors the object on the x axis.
     #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
@@ -172,6 +176,7 @@ fn entry_do_work(mut opts: Opts) {
         }
     }
 
+    warn!("{:?}", &opts.overide_mesh_idx);
     // Gets a value for config if supplied by user, or defaults to "default.conf"
     info!("Using input file: {:?}", opts.input);
     info!("Export skeleton: {:?}", opts.skeleton);
@@ -205,6 +210,7 @@ fn entry_do_work(mut opts: Opts) {
             opts.skeleton,
             opts.negative_x_and_v0v2v1,
             opts.no_transform,
+            opts.overide_mesh_idx,
         );
 
         if opts.skeleton && opts.animation {
@@ -243,6 +249,7 @@ fn test_batch() {
         skeleton: false,
         verbose: 0,
         out: Some(dst),
+        overide_mesh_idx: None,
     };
     batch(opt).expect("msg");
 }
@@ -307,6 +314,7 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             skeleton: defopt.skeleton,
                             verbose: defopt.verbose,
                             out: Some(dst),
+                            overide_mesh_idx: None,
                         };
                         let result = panic::catch_unwind(|| {
                             entry_do_work(opt);

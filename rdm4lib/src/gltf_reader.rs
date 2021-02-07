@@ -224,6 +224,7 @@ pub fn load_gltf(
     load_skin: bool,
     negative_x_and_v0v2v1: bool,
     no_transform: bool,
+    overide_mesh_idx: Option<Vec<u32>>,
 ) -> RDModell {
     info!("gltf::import start!");
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
@@ -239,6 +240,7 @@ pub fn load_gltf(
         load_skin,
         negative_x_and_v0v2v1,
         no_transform,
+        overide_mesh_idx,
     )
     .unwrap();
     let size = 0;
@@ -399,6 +401,7 @@ fn read_mesh(
     read_joints: bool,
     mut negative_x_and_v0v2v1: bool,
     no_transform: bool,
+    overide_mesh_idx: Option<Vec<u32>>,
 ) -> ReadMeshOutput {
     #[allow(clippy::never_loop)]
     for mesh in gltf.meshes() {
@@ -453,6 +456,9 @@ fn read_mesh(
 
         let mut kown_vbuffers = HashMap::new();
 
+        if let Some(v) = overide_mesh_idx.as_ref() {
+            assert_eq!(mesh.primitives().len(), v.len());
+        }
         for (i, primitive) in mesh.primitives().enumerate() {
             info!("- Primitive #{}", primitive.index());
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -716,7 +722,10 @@ fn read_mesh(
             mesh_info.push(MeshInstance {
                 start_index_location: merged_triangle_vec.len() as u32 * 3,
                 index_count: triangle_vec.len() as u32 * 3,
-                mesh: i.try_into().unwrap(),
+                mesh: match overide_mesh_idx.as_ref() {
+                    Some(j) => j[i],
+                    None => i.try_into().unwrap(),
+                },
             });
 
             merged_triangle_vec.append(&mut triangle_vec);

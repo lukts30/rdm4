@@ -990,17 +990,17 @@ impl RDGltfBuilder {
                 }));
             }
         }
-        
+
         //assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
         let mut max_mesh: usize = 0;
         for m in self.rdm.mesh_info.iter() {
             max_mesh = max_mesh.max(m.mesh as usize);
         }
 
-        while max_mesh+1 > info_vec.len() {
+        while max_mesh + 1 > info_vec.len() {
             info_vec.push(None);
         }
-        debug!("{:#?} {:#?}",max_mesh,info_vec.len());
+        debug!("{:#?} {:#?}", max_mesh, info_vec.len());
 
         let mut material_idx_vec = Vec::new();
         for itex in info_vec {
