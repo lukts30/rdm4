@@ -16,7 +16,9 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rdm4lib::{rdm_material::RDMaterial, vertex::TargetVertexFormat};
+    use rdm4lib::{
+        gltf_export::GltfExportFormat, rdm_material::RDMaterial, vertex::TargetVertexFormat,
+    };
     use std::{fs, path::PathBuf};
 
     #[test]
@@ -53,7 +55,7 @@ mod tests {
         let anim = RDAnim::from("rdm/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
-        gltf_export::build(rdm, None, false);
+        gltf_export::build(rdm, None, false, GltfExportFormat::GltfSeparate);
 
         let output = if cfg!(target_os = "windows") {
             Command::new("..\\gltf_validator.exe")
@@ -146,7 +148,12 @@ mod tests {
         if !Path::new("gltf_out1").exists() {
             fs::create_dir("gltf_out1").unwrap();
         }
-        gltf_export::build(rdm, Some(Path::new("gltf_out1").into()), false);
+        gltf_export::build(
+            rdm,
+            Some(Path::new("gltf_out1").into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
     }
 
     #[test]
@@ -168,7 +175,12 @@ mod tests {
         if !Path::new("gltf_out2").exists() {
             fs::create_dir("gltf_out2").unwrap();
         }
-        gltf_export::build(rdm, Some(Path::new("gltf_out2").into()), false);
+        gltf_export::build(
+            rdm,
+            Some(Path::new("gltf_out2").into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
     }
 
     #[test]

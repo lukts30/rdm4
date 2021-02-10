@@ -1,6 +1,6 @@
 extern crate rdm4lib;
 
-use rdm4lib::{vertex::TargetVertexFormat, RDModell};
+use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RDModell};
 
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RDAnim;
@@ -132,6 +132,10 @@ struct Opts {
     #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
 
+    /// glTF Separate (.gltf + .bin + textures), Exports multiple files, with separate JSON, binary and texture data. Easiest to edit later.
+    #[clap(long)]
+    gltf_separate: bool,
+
     /// Override existing files
     #[clap(long)]
     force: bool,
@@ -180,7 +184,7 @@ fn entry_do_work(mut opts: Opts) {
         }
     }
 
-    warn!("{:?}", &opts.overide_mesh_idx);
+    info!("overide_mesh_idx: {:?}", &opts.overide_mesh_idx);
     // Gets a value for config if supplied by user, or defaults to "default.conf"
     info!("Using input file: {:?}", opts.input);
     info!("Export skeleton: {:?}", opts.skeleton);
@@ -205,7 +209,12 @@ fn entry_do_work(mut opts: Opts) {
             });
         }
         info!("running gltf_export ...");
-        gltf_export::build(rdm, opts.out, !opts.force);
+        let gltf_export_format = if opts.gltf_separate {
+            GltfExportFormat::GltfSeparate
+        } else {
+            GltfExportFormat::GLB
+        };
+        gltf_export::build(rdm, opts.out, !opts.force, gltf_export_format);
     } else {
         let f_path = opts.input.as_path();
         let rdm = gltf_reader::load_gltf(
@@ -260,6 +269,7 @@ fn test_batch() {
         out: Some(dst),
         overide_mesh_idx: None,
         force: false,
+        gltf_separate: true,
     };
     batch(opt).expect("msg");
 }
@@ -326,6 +336,7 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             out: Some(dst),
                             overide_mesh_idx: None,
                             force: defopt.force,
+                            gltf_separate: true,
                         };
                         let result = panic::catch_unwind(|| {
                             entry_do_work(opt);

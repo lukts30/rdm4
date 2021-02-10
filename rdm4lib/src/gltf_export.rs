@@ -3,6 +3,8 @@ use gltf::json;
 use gltf::json as gltf_json;
 use half::f16;
 use std::{
+    borrow::Cow,
+    convert::TryInto,
     fs::{self, OpenOptions},
     mem,
     path::PathBuf,
@@ -1316,6 +1318,35 @@ impl RDGltfBuilder {
 
         self.obj
     }
+
+    fn merge_buffers(&mut self) {
+        let size_merge_buffer = self.obj.buffers.iter().map(|x| x.len()).sum();
+
+        debug!("size_merge_buffer: {:#?}", size_merge_buffer);
+        let mut combined_vec = vec![0; size_merge_buffer];
+
+        let mut view_off_mapping = Vec::new();
+        let mut cnt = 0;
+        for v in &self.obj.buffers {
+            combined_vec[cnt..cnt + v.len()].copy_from_slice(v);
+            view_off_mapping.push(cnt as u32);
+            cnt += v.len();
+        }
+
+        for view in self.buffer_views.iter_mut() {
+            let n = view_off_mapping[view.buffer.value()];
+            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n as u32);
+            view.buffer = json::Index::new(0);
+        }
+
+        self.buffers[0].byte_length = combined_vec.len().try_into().unwrap();
+        let padded_combined_vec = to_padded_byte_vector(combined_vec);
+        debug!("size_merge_buffer: {:#?}", padded_combined_vec.len());
+        debug!("cnt: {:#?}", cnt);
+
+        self.buffers.truncate(1);
+        self.obj.buffers = vec![padded_combined_vec];
+    }
 }
 
 impl From<RDModell> for RDGltfBuilder {
@@ -1347,19 +1378,32 @@ impl From<RDModell> for RDGltfBuilder {
     }
 }
 
-pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool) {
+pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool, config: GltfExportFormat) {
     let mat_opt = rdm.mat.clone();
-    let b = RDGltfBuilder::from(rdm);
+    let mut b = RDGltfBuilder::from(rdm);
+    if config == GltfExportFormat::GLB || config == GltfExportFormat::GltfSeparateMinimise {
+        b.merge_buffers();
+        if config == GltfExportFormat::GLB {
+            b.buffers[0].uri = None;
+        }
+    }
 
     let p = b.build();
     info!("gltf build end");
     info!("write_gltf");
-    p.write_gltf(dir, mat_opt, create_new);
+    p.write_gltf(dir, mat_opt, create_new, config);
 }
 
 struct RDGltf {
     buffers: Vec<Vec<u8>>,
     root: Option<json::Root>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum GltfExportFormat {
+    GltfSeparate,
+    GltfSeparateMinimise,
+    GLB,
 }
 
 impl RDGltf {
@@ -1370,7 +1414,13 @@ impl RDGltf {
         }
     }
 
-    fn write_gltf(mut self, dir: Option<PathBuf>, optmat: Option<RDMaterial>, create_new: bool) {
+    fn write_gltf(
+        mut self,
+        dir: Option<PathBuf>,
+        optmat: Option<RDMaterial>,
+        create_new: bool,
+        config: GltfExportFormat,
+    ) {
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("gltf_out");
             let _ = fs::create_dir(&f);
@@ -1378,44 +1428,73 @@ impl RDGltf {
         });
 
         if file.is_dir() {
-            file.push("out.gltf");
+            file.push("out");
+        }
+        if config == GltfExportFormat::GLB {
+            file.set_extension("glb");
+        } else {
+            file.set_extension("gltf");
         }
         info!("{:?}", file);
 
         let mut writer = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .create_new(create_new)
             .open(&file)
             .expect("I/O error");
-        let vjson =
-            json::serialize::to_vec_pretty(&self.root.unwrap()).expect("Serialization error");
-        writer.write_all(&vjson).expect("I/O error");
 
-        debug!("wrote json to disk!");
+        match config {
+            GltfExportFormat::GLB => {
+                //TODO fix this. Currently glb writer ignores these values otherwise this would not work.
+                let header: gltf::binary::Header = gltf::binary::Header {
+                    magic: Default::default(),
+                    version: 2,
+                    length: 0xDEAD_BEEF,
+                };
+                let j = json::serialize::to_vec(&self.root.unwrap()).expect("Serialization error");
+                let glb = gltf::Glb {
+                    header,
+                    json: Cow::from(&j),
+                    bin: Some(Cow::from(&self.buffers[0])),
+                };
+                glb.to_writer(writer).expect("I/O error");
+                debug!("json: {}", glb.json.len());
+                debug!("bin: {}", &self.buffers[0].len());
+            }
+            _ => {
+                let vjson = json::serialize::to_vec_pretty(&self.root.unwrap())
+                    .expect("Serialization error");
+                writer.write_all(&vjson).expect("I/O error");
 
-        file.pop();
-        let udir = file;
+                debug!("wrote json to disk!");
 
-        let mut idx = self.buffers.len() - 1;
-        while !self.buffers.is_empty() {
-            let e = self.buffers.pop().unwrap();
-            let bin = e;
-            let mut file_path = udir.clone();
-            file_path.push(format!("buffer{}.bin", idx));
-            debug!("write_all {:?}", &file_path);
-            let mut writer = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .create_new(create_new)
-                .open(&file_path)
-                .expect("I/O error");
-            writer.write_all(&bin).expect("I/O error");
-            idx = idx.saturating_sub(1);
-        }
+                file.pop();
+                let udir = file;
 
-        if let Some(mat) = optmat.as_ref() {
-            mat.run_dds_converter(&udir);
+                let mut idx = self.buffers.len() - 1;
+                while !self.buffers.is_empty() {
+                    let e = self.buffers.pop().unwrap();
+                    let bin = e;
+                    let mut file_path = udir.clone();
+                    file_path.push(format!("buffer{}.bin", idx));
+                    debug!("write_all {:?}", &file_path);
+                    let mut writer = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .create_new(create_new)
+                        .open(&file_path)
+                        .expect("I/O error");
+                    writer.write_all(&bin).expect("I/O error");
+                    idx = idx.saturating_sub(1);
+                }
+
+                if let Some(mat) = optmat.as_ref() {
+                    mat.run_dds_converter(&udir);
+                }
+            }
         }
     }
 

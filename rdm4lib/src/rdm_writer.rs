@@ -492,6 +492,7 @@ impl RDWriter {
         let mut writer = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .create_new(create_new)
             .open(&file)
             .expect("I/O error");
