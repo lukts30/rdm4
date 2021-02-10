@@ -157,7 +157,7 @@ impl RDAnimWriter {
         }
     }
 
-    pub fn write_anim_rdm(self, dir: Option<PathBuf>) {
+    pub fn write_anim_rdm(self, dir: Option<PathBuf>, create_new: bool) {
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("rdm_out");
             let _ = fs::create_dir(&f);
@@ -175,7 +175,7 @@ impl RDAnimWriter {
 
         let mut writer = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create_new(create_new)
             .open(&file)
             .expect("I/O error");
         writer.write_all(&self.buf).expect("I/O error");

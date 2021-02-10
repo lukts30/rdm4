@@ -1347,14 +1347,14 @@ impl From<RDModell> for RDGltfBuilder {
     }
 }
 
-pub fn build(rdm: RDModell, dir: Option<PathBuf>) {
+pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool) {
     let mat_opt = rdm.mat.clone();
     let b = RDGltfBuilder::from(rdm);
 
     let p = b.build();
     info!("gltf build end");
     info!("write_gltf");
-    p.write_gltf(dir, mat_opt);
+    p.write_gltf(dir, mat_opt, create_new);
 }
 
 struct RDGltf {
@@ -1370,7 +1370,7 @@ impl RDGltf {
         }
     }
 
-    fn write_gltf(mut self, dir: Option<PathBuf>, optmat: Option<RDMaterial>) {
+    fn write_gltf(mut self, dir: Option<PathBuf>, optmat: Option<RDMaterial>, create_new: bool) {
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("gltf_out");
             let _ = fs::create_dir(&f);
@@ -1384,7 +1384,7 @@ impl RDGltf {
 
         let mut writer = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create_new(create_new)
             .open(&file)
             .expect("I/O error");
         let vjson =
@@ -1405,7 +1405,7 @@ impl RDGltf {
             debug!("write_all {:?}", &file_path);
             let mut writer = OpenOptions::new()
                 .write(true)
-                .create_new(true)
+                .create_new(create_new)
                 .open(&file_path)
                 .expect("I/O error");
             writer.write_all(&bin).expect("I/O error");

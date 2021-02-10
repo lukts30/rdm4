@@ -132,6 +132,10 @@ struct Opts {
     #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
 
+    /// Override existing files
+    #[clap(long)]
+    force: bool,
+
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
     verbose: i32,
@@ -201,7 +205,7 @@ fn entry_do_work(mut opts: Opts) {
             });
         }
         info!("running gltf_export ...");
-        gltf_export::build(rdm, opts.out);
+        gltf_export::build(rdm, opts.out, !opts.force);
     } else {
         let f_path = opts.input.as_path();
         let rdm = gltf_reader::load_gltf(
@@ -220,7 +224,7 @@ fn entry_do_work(mut opts: Opts) {
                 Some(mut anims) => {
                     for anim in anims.drain(..) {
                         let exp_rdm = RDAnimWriter::from(anim);
-                        exp_rdm.write_anim_rdm(opts.out.clone());
+                        exp_rdm.write_anim_rdm(opts.out.clone(), !opts.force);
                     }
                 }
                 None => error!("Could not read animation. Does glTF contain any animations ?"),
@@ -228,7 +232,7 @@ fn entry_do_work(mut opts: Opts) {
         }
 
         let exp_rdm = RDWriter::from(rdm);
-        exp_rdm.write_rdm(opts.out);
+        exp_rdm.write_rdm(opts.out, !opts.force);
         if opts.skeleton && !opts.no_transform {
             error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
         }
@@ -255,6 +259,7 @@ fn test_batch() {
         verbose: 0,
         out: Some(dst),
         overide_mesh_idx: None,
+        force: false,
     };
     batch(opt).expect("msg");
 }
@@ -320,6 +325,7 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             verbose: defopt.verbose,
                             out: Some(dst),
                             overide_mesh_idx: None,
+                            force: defopt.force,
                         };
                         let result = panic::catch_unwind(|| {
                             entry_do_work(opt);

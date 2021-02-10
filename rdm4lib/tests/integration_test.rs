@@ -53,7 +53,7 @@ mod tests {
         let anim = RDAnim::from("rdm/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
-        gltf_export::build(rdm, None);
+        gltf_export::build(rdm, None, false);
 
         let output = if cfg!(target_os = "windows") {
             Command::new("..\\gltf_validator.exe")
@@ -146,7 +146,7 @@ mod tests {
         if !Path::new("gltf_out1").exists() {
             fs::create_dir("gltf_out1").unwrap();
         }
-        gltf_export::build(rdm, Some(Path::new("gltf_out1").into()));
+        gltf_export::build(rdm, Some(Path::new("gltf_out1").into()), false);
     }
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         if !Path::new("gltf_out2").exists() {
             fs::create_dir("gltf_out2").unwrap();
         }
-        gltf_export::build(rdm, Some(Path::new("gltf_out2").into()));
+        gltf_export::build(rdm, Some(Path::new("gltf_out2").into()), false);
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
         let exp_rdm = RDWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst));
+        exp_rdm.write_rdm(Some(dir_dst), false);
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
         let exp_rdm = RDWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst));
+        exp_rdm.write_rdm(Some(dir_dst), false);
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
         let exp_rdm = RDAnimWriter::from(anim);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_anim_rdm(Some(dir_dst));
+        exp_rdm.write_anim_rdm(Some(dir_dst), false);
     }
 
     #[test]
@@ -293,7 +293,7 @@ mod tests {
         let exp_rdm = RDWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst));
+        exp_rdm.write_rdm(Some(dir_dst), false);
     }
 
     #[test]
@@ -319,6 +319,6 @@ mod tests {
 
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst));
+        exp_rdm.write_rdm(Some(dir_dst), false);
     }
 }
