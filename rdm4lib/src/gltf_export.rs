@@ -1384,6 +1384,7 @@ impl RDGltf {
 
         let mut writer = OpenOptions::new()
             .write(true)
+            .create(true)
             .create_new(create_new)
             .open(&file)
             .expect("I/O error");
@@ -1405,6 +1406,7 @@ impl RDGltf {
             debug!("write_all {:?}", &file_path);
             let mut writer = OpenOptions::new()
                 .write(true)
+                .create(true)
                 .create_new(create_new)
                 .open(&file_path)
                 .expect("I/O error");
