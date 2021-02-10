@@ -26,16 +26,15 @@ pub fn read_animation(
     joints: &[RDJoint],
     frames: usize,
     tmax: f32,
-) -> Option<RDAnim> {
+) -> Option<Vec<RDAnim>> {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
-    //let (gltf, buffers, _) = gltf::import("triangle/triangle.gltf").unwrap();
-    let mut anim = None;
 
     let mut rotation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
     let mut translation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
+    let mut animvec = Vec::new();
 
     // s1
-    for animation in gltf.animations() {
+    for (anim_idx, animation) in gltf.animations().enumerate() {
         let mut anim_vec: Vec<FrameCollection> = Vec::new();
         debug!("animations #{}", animation.name().unwrap_or("default"));
         let mut t_max = 0.0;
@@ -209,13 +208,18 @@ pub fn read_animation(
             anim_vec.push(ent);
         }
 
-        anim = Some(RDAnim {
+        let name = format!("anim_{}", anim_idx);
+        animvec.push(RDAnim {
             time_max: (t_max * 1000.0) as u32,
             anim_vec,
-            name: String::from(animation.name().unwrap_or("default")),
+            name,
         });
     }
-    anim
+    if animvec.is_empty() {
+        None
+    } else {
+        Some(animvec)
+    }
 }
 
 pub fn load_gltf(

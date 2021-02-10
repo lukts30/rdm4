@@ -263,8 +263,10 @@ mod tests {
         );
 
         let jj = &rdm.joints.unwrap();
-        let anim = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
+        let mut anims = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
 
+        assert_eq!(anims.len(), 1);
+        let anim = anims.pop().unwrap();
         let exp_rdm = RDAnimWriter::from(anim);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();

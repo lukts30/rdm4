@@ -217,9 +217,11 @@ fn entry_do_work(mut opts: Opts) {
             let jj = rdm.joints.as_ref().unwrap();
 
             match gltf_reader::read_animation(&f_path, &jj, 6, 0.33333) {
-                Some(anim) => {
-                    let exp_rdm = RDAnimWriter::from(anim);
-                    exp_rdm.write_anim_rdm(opts.out.clone());
+                Some(mut anims) => {
+                    for anim in anims.drain(..) {
+                        let exp_rdm = RDAnimWriter::from(anim);
+                        exp_rdm.write_anim_rdm(opts.out.clone());
+                    }
                 }
                 None => error!("Could not read animation. Does glTF contain any animations ?"),
             }
@@ -227,6 +229,9 @@ fn entry_do_work(mut opts: Opts) {
 
         let exp_rdm = RDWriter::from(rdm);
         exp_rdm.write_rdm(opts.out);
+        if opts.skeleton && !opts.no_transform {
+            error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
+        }
     }
 }
 
