@@ -1,6 +1,6 @@
-use crate::{rdm_writer::PutVertex, RDJoint};
+use crate::{rdm_writer::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
-use crate::{MeshInstance, RDModell};
+use crate::{MeshInstance, RdModell};
 
 use crate::{Bitangent, I4b, Normal, Position, Tangent, Texcoord, W4b};
 use nalgebra::*;
@@ -23,10 +23,10 @@ use std::{
 
 pub fn read_animation(
     f_path: &Path,
-    joints: &[RDJoint],
+    joints: &[RdJoint],
     frames: usize,
     tmax: f32,
-) -> Option<Vec<RDAnim>> {
+) -> Option<Vec<RdAnim>> {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
 
     let mut rotation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
@@ -209,7 +209,7 @@ pub fn read_animation(
         }
 
         let name = format!("anim_{}", anim_idx);
-        animvec.push(RDAnim {
+        animvec.push(RdAnim {
             time_max: (t_max * 1000.0) as u32,
             anim_vec,
             name,
@@ -229,7 +229,7 @@ pub fn load_gltf(
     negative_x_and_v0v2v1: bool,
     no_transform: bool,
     overide_mesh_idx: Option<Vec<u32>>,
-) -> RDModell {
+) -> RdModell {
     info!("gltf::import start!");
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
     info!("gltf::import end!");
@@ -266,7 +266,7 @@ pub fn load_gltf(
 
     // todo!("TODO : FIX ME !!!");
     let mesh_info_vec = gltf_imp.4;
-    RDModell {
+    RdModell {
         size,
         buffer: Bytes::new(),
         mesh_info: mesh_info_vec,
@@ -284,7 +284,7 @@ pub fn load_gltf(
     }
 }
 
-fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoint> {
+fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoint> {
     let mut out_joints_vec = Vec::new();
 
     let mut node_names_vec = Vec::new();
@@ -375,7 +375,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RDJoi
 
             let quaternion_mat4 = uq.quaternion().coords;
 
-            let rdjoint = RDJoint {
+            let rdjoint = RdJoint {
                 nameptr: 0,
                 name: String::from(*node_names_vec_iter.next().unwrap()),
                 locked: false,

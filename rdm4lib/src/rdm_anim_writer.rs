@@ -6,15 +6,15 @@ use std::{fs::OpenOptions, io::Write};
 
 use crate::*;
 
-pub struct RDAnimWriter {
+pub struct RdAnimWriter {
     jtable_deref: u32,
-    input: RDAnim,
+    input: RdAnim,
     buf: BytesMut,
 }
 
-impl RDAnimWriter {
-    fn new(rdm: RDAnim) -> Self {
-        let mut rdw = RDAnimWriter {
+impl RdAnimWriter {
+    fn new(rdm: RdAnim) -> Self {
+        let mut rdw = RdAnimWriter {
             jtable_deref: 0,
             input: rdm,
             buf: BytesMut::with_capacity(5000),
@@ -184,8 +184,8 @@ impl RDAnimWriter {
     }
 }
 
-impl From<RDAnim> for RDAnimWriter {
-    fn from(anim: RDAnim) -> Self {
-        RDAnimWriter::new(anim)
+impl From<RdAnim> for RdAnimWriter {
+    fn from(anim: RdAnim) -> Self {
+        RdAnimWriter::new(anim)
     }
 }

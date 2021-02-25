@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Clone, Debug)]
-pub struct RDMaterial {
+pub struct RdMaterial {
     pub c_model_diff_tex: Vec<PathBuf>,
 }
 
-impl RDMaterial {
+impl RdMaterial {
     pub fn new(path: &Path) -> Self {
-        RDMaterial {
+        RdMaterial {
             c_model_diff_tex: vec![PathBuf::from(path)],
         }
     }
@@ -53,7 +53,7 @@ impl RDMaterial {
 
             let file_name = format!("{}.png", ab_path.file_stem().unwrap().to_str().unwrap());
             let file_path = Path::new(&file_name);
-            let ab_dst = RDMaterial::canonicalize_path(dst).unwrap();
+            let ab_dst = RdMaterial::canonicalize_path(dst).unwrap();
 
             let output = Command::new("CompressonatorCLI.exe")
                 .current_dir(ab_dst)

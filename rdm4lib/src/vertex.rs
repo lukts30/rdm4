@@ -199,7 +199,7 @@ impl VertexFormat2 {
         buf.advance(4);
 
         let format_identifiers_ptr = buf.get_u32_le();
-        buf.advance((RDModell::VERTEX_META - 8) as usize);
+        buf.advance((RdModell::VERTEX_META - 8) as usize);
         let vertex_offset = buf.get_u32_le();
 
         buf.seek(format_identifiers_ptr, rdm_size);
@@ -210,7 +210,7 @@ impl VertexFormat2 {
             (rdm_size - buf.remaining() as u32) - 4 + 8 + 24
         );
 
-        buf.seek(format_identifiers - RDModell::META_COUNT, rdm_size);
+        buf.seek(format_identifiers - RdModell::META_COUNT, rdm_size);
         let num = buf.get_u32_le();
         let size = buf.get_u32_le();
         assert_eq!(size, 0x10);
@@ -228,7 +228,7 @@ impl VertexFormat2 {
             trace!("{}", dst.to_string());
             vec.push(dst);
         }
-        buf.seek(vertex_offset - RDModell::META_COUNT, rdm_size);
+        buf.seek(vertex_offset - RdModell::META_COUNT, rdm_size);
         let vertex_count = buf.get_u32_le();
         let vertex_size = buf.get_u32_le();
         let mut vertex_buffer = buf;

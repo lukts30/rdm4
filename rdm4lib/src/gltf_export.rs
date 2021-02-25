@@ -15,10 +15,10 @@ use json::validation::Checked::Valid;
 
 use std::io::Write;
 
-use crate::{rdm_material::RDMaterial, Triangle};
-use crate::{vertex::Normalise, vertex::UniqueIdentifier, RDModell};
+use crate::{rdm_material::RdMaterial, Triangle};
+use crate::{vertex::Normalise, vertex::UniqueIdentifier, RdModell};
 use crate::{I4b, Normal, Position, Tangent, Texcoord};
-use crate::{RDJoint, W4b};
+use crate::{RdJoint, W4b};
 
 use nalgebra::*;
 use std::collections::VecDeque;
@@ -39,7 +39,7 @@ pub enum JointOption {
     ResolveAllRoot,
 }
 
-struct RDGltfBuilder {
+struct RdGltfBuilder {
     #[allow(dead_code)]
     name: Option<String>,
     buffers: Vec<json::Buffer>,
@@ -49,8 +49,8 @@ struct RDGltfBuilder {
     attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
-    rdm: RDModell,
-    obj: RDGltf, // private
+    rdm: RdModell,
+    obj: RdGltf, // private
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
     material_idx: Option<Vec<u32>>,
@@ -60,9 +60,9 @@ struct RDGltfBuilder {
     sampler_vec: Vec<json::texture::Sampler>,
 }
 
-impl RDGltfBuilder {
-    fn new(rdm: RDModell) -> Self {
-        RDGltfBuilder {
+impl RdGltfBuilder {
+    fn new(rdm: RdModell) -> Self {
+        RdGltfBuilder {
             name: None,
             buffers: Vec::new(),
             buffer_views: Vec::new(),
@@ -70,7 +70,7 @@ impl RDGltfBuilder {
             nodes: Vec::new(),
             attr_map: HashMap::new(),
             rdm,
-            obj: RDGltf::new(),
+            obj: RdGltf::new(),
             skin: None,
             idx: None,
             anim_node: None,
@@ -512,7 +512,7 @@ impl RDGltfBuilder {
     }
 
     fn put_joint_nodes(&mut self, cfg: JointOption) {
-        let mut joints_vec: Vec<RDJoint> = self.rdm.joints.clone().unwrap();
+        let mut joints_vec: Vec<RdJoint> = self.rdm.joints.clone().unwrap();
         let mut invbind_buf = BytesMut::with_capacity(64 * joints_vec.len());
 
         // inverseBindMatrices
@@ -783,7 +783,7 @@ impl RDGltfBuilder {
         }
     }
 
-    fn rdm_vertex_to_gltf(rdm: &RDModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
+    fn rdm_vertex_to_gltf(rdm: &RdModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
         let mut out: Vec<Vertex> = Vec::with_capacity(3 * 4 * rdm.vertex.vertex_count as usize);
 
         //TODO FIXME arbitrarily chosen
@@ -812,7 +812,7 @@ impl RDGltfBuilder {
     }
 
     fn put_vertex(&mut self) {
-        let conv = RDGltfBuilder::rdm_vertex_to_gltf(&self.rdm);
+        let conv = RdGltfBuilder::rdm_vertex_to_gltf(&self.rdm);
 
         let triangle_vertices = conv.0;
         let min = conv.1;
@@ -1215,7 +1215,7 @@ impl RDGltfBuilder {
         self.idx = Some(accessor_idx_meshes);
     }
 
-    pub fn build(mut self) -> RDGltf {
+    pub fn build(mut self) -> RdGltf {
         let skins = self.get_skins_or_default();
         let animation = if self.anim_node.is_some() {
             vec![self.anim_node.unwrap()]
@@ -1341,12 +1341,12 @@ impl RDGltfBuilder {
     }
 }
 
-impl From<RDModell> for RDGltfBuilder {
-    fn from(rdm: RDModell) -> Self {
+impl From<RdModell> for RdGltfBuilder {
+    fn from(rdm: RdModell) -> Self {
         let has_skin = rdm.has_skin();
         let has_anim = rdm.anim.is_some();
 
-        let mut b = RDGltfBuilder::new(rdm);
+        let mut b = RdGltfBuilder::new(rdm);
 
         b.put_vertex();
         b.put_idx();
@@ -1370,12 +1370,12 @@ impl From<RDModell> for RDGltfBuilder {
     }
 }
 
-pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool, config: GltfExportFormat) {
+pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: GltfExportFormat) {
     let mat_opt = rdm.mat.clone();
-    let mut b = RDGltfBuilder::from(rdm);
-    if config == GltfExportFormat::GLB || config == GltfExportFormat::GltfSeparateMinimise {
+    let mut b = RdGltfBuilder::from(rdm);
+    if config == GltfExportFormat::Glb || config == GltfExportFormat::GltfSeparateMinimise {
         b.merge_buffers();
-        if config == GltfExportFormat::GLB {
+        if config == GltfExportFormat::Glb {
             b.buffers[0].uri = None;
         }
     }
@@ -1386,7 +1386,7 @@ pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
     p.write_gltf(dir, mat_opt, create_new, config);
 }
 
-struct RDGltf {
+struct RdGltf {
     buffers: Vec<BufferContainer>,
     root: Option<json::Root>,
 }
@@ -1443,12 +1443,12 @@ impl BufferContainer {
 pub enum GltfExportFormat {
     GltfSeparate,
     GltfSeparateMinimise,
-    GLB,
+    Glb,
 }
 
-impl RDGltf {
+impl RdGltf {
     fn new() -> Self {
-        RDGltf {
+        RdGltf {
             buffers: vec![],
             root: None,
         }
@@ -1457,7 +1457,7 @@ impl RDGltf {
     fn write_gltf(
         mut self,
         dir: Option<PathBuf>,
-        optmat: Option<RDMaterial>,
+        optmat: Option<RdMaterial>,
         create_new: bool,
         config: GltfExportFormat,
     ) {
@@ -1470,7 +1470,7 @@ impl RDGltf {
         if file.is_dir() {
             file.push("out");
         }
-        if config == GltfExportFormat::GLB {
+        if config == GltfExportFormat::Glb {
             file.set_extension("glb");
         } else {
             file.set_extension("gltf");
@@ -1486,8 +1486,8 @@ impl RDGltf {
             .expect("I/O error");
 
         match config {
-            GltfExportFormat::GLB => {
-                //TODO fix this. Currently glb writer ignores these values otherwise this would not work.
+            GltfExportFormat::Glb => {
+                //TODO fix this. Currently Glb writer ignores these values otherwise this would not work.
                 let header: gltf::binary::Header = gltf::binary::Header {
                     magic: Default::default(),
                     version: 2,

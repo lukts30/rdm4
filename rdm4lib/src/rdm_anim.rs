@@ -3,7 +3,7 @@ use std::path::Path;
 
 use std::fs::File;
 
-use crate::RDModell;
+use crate::RdModell;
 use crate::Seek;
 use std::str;
 
@@ -22,13 +22,13 @@ pub struct FrameCollection {
 }
 
 #[derive(Debug, Clone)]
-pub struct RDAnim {
+pub struct RdAnim {
     pub time_max: u32,
     pub name: String,
     pub anim_vec: Vec<FrameCollection>,
 }
 
-impl RDAnim {
+impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut buffer = Bytes::from(buffer);
         let size = buffer.len() as u32;
@@ -44,7 +44,7 @@ impl RDAnim {
         buffer.advance(4);
         let time_max = buffer.get_u32_le();
 
-        buffer.seek(model_str_ptr - RDModell::META_COUNT, size);
+        buffer.seek(model_str_ptr - RdModell::META_COUNT, size);
 
         let model_str_len = buffer.get_u32_le() as usize;
         assert_eq!(model_str_len > 1, true);
@@ -75,7 +75,7 @@ impl RDAnim {
         for ent in &jtable {
             trace!("ent.0: {}", ent.0);
             trace!("buffer.remaining(): {}", buffer.remaining());
-            buffer.seek(ent.0 - RDModell::META_COUNT, size);
+            buffer.seek(ent.0 - RdModell::META_COUNT, size);
             let ent_str_len = buffer.get_u32_le() as usize;
             assert_eq!(ent_str_len > 1, true);
             assert_eq!(buffer.get_u32_le(), 1);
@@ -120,7 +120,7 @@ impl RDAnim {
 
         trace!("anim: {:?}", anim_vec);
 
-        RDAnim {
+        RdAnim {
             anim_vec,
             name: name_anim,
             time_max,
@@ -128,7 +128,7 @@ impl RDAnim {
     }
 }
 
-impl From<&Path> for RDAnim {
+impl From<&Path> for RdAnim {
     fn from(f_path: &Path) -> Self {
         let mut f = File::open(f_path).unwrap();
         let mut buffer = Vec::new();
@@ -137,23 +137,23 @@ impl From<&Path> for RDAnim {
         let buffer_len = buffer.len();
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
         info!("buffer size: {}", buffer_len);
-        RDModell::check_has_magic_byte(&buffer);
+        RdModell::check_has_magic_byte(&buffer);
 
-        RDAnim::new(
+        RdAnim::new(
             buffer,
             String::from(f_path.file_stem().unwrap().to_str().unwrap()),
         )
     }
 }
 
-impl From<&str> for RDAnim {
+impl From<&str> for RdAnim {
     fn from(str_path: &str) -> Self {
-        RDAnim::from(Path::new(str_path))
+        RdAnim::from(Path::new(str_path))
     }
 }
 
-impl From<&String> for RDAnim {
+impl From<&String> for RdAnim {
     fn from(string_path: &String) -> Self {
-        RDAnim::from(Path::new(string_path))
+        RdAnim::from(Path::new(string_path))
     }
 }

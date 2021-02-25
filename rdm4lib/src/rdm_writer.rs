@@ -6,15 +6,15 @@ use std::{fs::OpenOptions, io::Write};
 use crate::*;
 use byteorder::ByteOrder;
 
-pub struct RDWriter {
+pub struct RdWriter {
     meta_deref: u32,
-    input: RDModell,
+    input: RdModell,
     buf: BytesMut,
 }
 
-impl RDWriter {
-    fn new(rdm: RDModell) -> Self {
-        let mut rdw = RDWriter {
+impl RdWriter {
+    fn new(rdm: RdModell) -> Self {
+        let mut rdw = RdWriter {
             meta_deref: 331,
             input: rdm,
             buf: BytesMut::with_capacity(64000),
@@ -264,7 +264,7 @@ impl RDWriter {
 
         {
             let vertex_ptr = self.buf.len() as u32;
-            let buff_off = (self.meta_deref + RDModell::VERTEX_META) as usize;
+            let buff_off = (self.meta_deref + RdModell::VERTEX_META) as usize;
             byteorder::LittleEndian::write_u32(&mut self.buf[buff_off..buff_off + 4], vertex_ptr);
         }
         let start = self.buf.len();
@@ -284,7 +284,7 @@ impl RDWriter {
 
         {
             let triangle_list_ptr = self.buf.len() as u32;
-            let buff_off = (self.meta_deref + RDModell::TRIANGLES_META) as usize;
+            let buff_off = (self.meta_deref + RdModell::TRIANGLES_META) as usize;
             byteorder::LittleEndian::write_u32(
                 &mut self.buf[buff_off..buff_off + 4],
                 triangle_list_ptr,
@@ -500,9 +500,9 @@ impl RDWriter {
     }
 }
 
-impl From<RDModell> for RDWriter {
-    fn from(rdm: RDModell) -> Self {
-        RDWriter::new(rdm)
+impl From<RdModell> for RdWriter {
+    fn from(rdm: RdModell) -> Self {
+        RdWriter::new(rdm)
     }
 }
 

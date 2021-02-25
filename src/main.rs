@@ -1,14 +1,14 @@
 extern crate rdm4lib;
 
-use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RDModell};
+use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RdModell};
 
 use rdm4lib::gltf_export;
-use rdm4lib::rdm_anim::RDAnim;
-use rdm4lib::rdm_writer::RDWriter;
+use rdm4lib::rdm_anim::RdAnim;
+use rdm4lib::rdm_writer::RdWriter;
 
-use rdm4lib::rdm_anim_writer::RDAnimWriter;
+use rdm4lib::rdm_anim_writer::RdAnimWriter;
 
-use rdm4lib::{gltf_reader, rdm_material::RDMaterial};
+use rdm4lib::{gltf_reader, rdm_material::RdMaterial};
 
 #[macro_use]
 extern crate log;
@@ -190,13 +190,13 @@ fn entry_do_work(mut opts: Opts) {
     info!("Export skeleton: {:?}", opts.skeleton);
     info!("Export rdanimation: {:?}", opts.rdanimation);
     if opts.gltf.is_none() {
-        let mut rdm = RDModell::from(opts.input.as_path());
+        let mut rdm = RdModell::from(opts.input.as_path());
         if opts.skeleton && opts.rdanimation.is_none() {
             rdm.add_skin();
             info!("Skin added !");
         } else if opts.skeleton && opts.rdanimation.is_some() {
             rdm.add_skin();
-            let anim = RDAnim::from(opts.rdanimation.unwrap().as_path());
+            let anim = RdAnim::from(opts.rdanimation.unwrap().as_path());
             rdm.add_anim(anim);
             info!("Skin and anim added !");
         } else {
@@ -204,7 +204,7 @@ fn entry_do_work(mut opts: Opts) {
         }
 
         if let Some(diffusetexture) = opts.diffusetexture {
-            rdm.mat = Some(RDMaterial {
+            rdm.mat = Some(RdMaterial {
                 c_model_diff_tex: diffusetexture,
             });
         }
@@ -212,7 +212,7 @@ fn entry_do_work(mut opts: Opts) {
         let gltf_export_format = if opts.gltf_separate {
             GltfExportFormat::GltfSeparate
         } else {
-            GltfExportFormat::GLB
+            GltfExportFormat::Glb
         };
         gltf_export::build(rdm, opts.out, !opts.force, gltf_export_format);
     } else {
@@ -232,7 +232,7 @@ fn entry_do_work(mut opts: Opts) {
             match gltf_reader::read_animation(&f_path, &jj, 6, 0.33333) {
                 Some(mut anims) => {
                     for anim in anims.drain(..) {
-                        let exp_rdm = RDAnimWriter::from(anim);
+                        let exp_rdm = RdAnimWriter::from(anim);
                         exp_rdm.write_anim_rdm(opts.out.clone(), !opts.force);
                     }
                 }
@@ -240,7 +240,7 @@ fn entry_do_work(mut opts: Opts) {
             }
         }
 
-        let exp_rdm = RDWriter::from(rdm);
+        let exp_rdm = RdWriter::from(rdm);
         exp_rdm.write_rdm(opts.out, !opts.force);
         if opts.skeleton && !opts.no_transform {
             error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");

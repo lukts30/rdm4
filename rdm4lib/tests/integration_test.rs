@@ -1,10 +1,10 @@
-use rdm4lib::RDModell;
+use rdm4lib::RdModell;
 
 use rdm4lib::gltf_export;
-use rdm4lib::rdm_anim::RDAnim;
-use rdm4lib::rdm_writer::RDWriter;
+use rdm4lib::rdm_anim::RdAnim;
+use rdm4lib::rdm_writer::RdWriter;
 
-use rdm4lib::rdm_anim_writer::RDAnimWriter;
+use rdm4lib::rdm_anim_writer::RdAnimWriter;
 
 use rdm4lib::gltf_reader;
 
@@ -17,14 +17,14 @@ use std::str;
 mod tests {
     use super::*;
     use rdm4lib::{
-        gltf_export::GltfExportFormat, rdm_material::RDMaterial, vertex::TargetVertexFormat,
+        gltf_export::GltfExportFormat, rdm_material::RdMaterial, vertex::TargetVertexFormat,
     };
     use std::{fs, path::PathBuf};
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
-        let rdm = RDModell::from("rdm/fishery_others_lod2.rdm");
+        let rdm = RdModell::from("rdm/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.vertex.len(), 3291);
         assert_eq!(rdm.triangles_idx_count, 7473);
@@ -39,7 +39,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn basalt_crusher_others_lod2() {
-        let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
+        let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertex.len(), 2615);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.vertex.get_size(), 28);
@@ -52,7 +52,7 @@ mod tests {
 
         rdm.add_skin();
 
-        let anim = RDAnim::from("rdm/basalt_crusher_others_work01.rdm");
+        let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
         gltf_export::build(rdm, None, false, GltfExportFormat::GltfSeparate);
@@ -132,8 +132,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
     fn excavator_tycoons_lod1() {
-        let mut rdm = RDModell::from("rdm/excavator_tycoons_lod1.rdm");
-        rdm.mat = Some(RDMaterial::new(Path::new(
+        let mut rdm = RdModell::from("rdm/excavator_tycoons_lod1.rdm");
+        rdm.mat = Some(RdMaterial::new(Path::new(
             r"rdm/excavator_tycoons_diff_0.dds",
         )));
         assert_eq!(rdm.vertex.len(), 5225);
@@ -142,7 +142,7 @@ mod tests {
 
         rdm.add_skin();
 
-        let anim = RDAnim::from("rdm/excavator_tycoons_work02.rdm");
+        let anim = RdAnim::from("rdm/excavator_tycoons_work02.rdm");
         rdm.add_anim(anim);
 
         if !Path::new("gltf_out1").exists() {
@@ -160,8 +160,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
     fn residence_tier02_estate02() {
-        let mut rdm = RDModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
-        rdm.mat = Some(RDMaterial {
+        let mut rdm = RdModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
+        rdm.mat = Some(RdMaterial {
             c_model_diff_tex: vec![
                 PathBuf::from("rdm/residence_tier02_04_diff_0.dds"),
                 PathBuf::from("rdm/residence_02_05_diff_0.dds"),
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fishery_others_cutout_lod0() {
-        let rdm = RDModell::from("rdm/fishery_others_cutout_lod0.rdm");
+        let rdm = RdModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.triangles_idx_count, 78);
         assert_eq!(rdm.vertex.to_string(), "P4h");
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn ark_waterfall2() {
-        let rdm = RDModell::from("rdm/ark_waterfall2.rdm");
+        let rdm = RdModell::from("rdm/ark_waterfall2.rdm");
         assert_eq!(rdm.vertex.len(), 105);
         // TODO: cfg says P4h_N4b_T2h_C4c
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exp_rdm_inv_basalt_crusher_others_lod0() {
-        let mut rdm = RDModell::from("rdm/basalt_crusher_others_lod2.rdm");
+        let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
         assert_eq!(rdm.vertex.len(), 2615);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
@@ -227,7 +227,7 @@ mod tests {
             rdm.triangle_indices.len() * 3
         );
 
-        let exp_rdm = RDWriter::from(rdm);
+        let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -250,7 +250,7 @@ mod tests {
             rdm.triangle_indices.len() * 3
         );
 
-        let exp_rdm = RDWriter::from(rdm);
+        let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -279,7 +279,7 @@ mod tests {
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
-        let exp_rdm = RDAnimWriter::from(anim);
+        let exp_rdm = RdAnimWriter::from(anim);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_anim_rdm(Some(dir_dst), false);
@@ -302,7 +302,7 @@ mod tests {
             rdm.triangle_indices.len() * 3
         );
 
-        let exp_rdm = RDWriter::from(rdm);
+        let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -327,7 +327,7 @@ mod tests {
             rdm.triangle_indices.len() * 3
         );
 
-        let exp_rdm = RDWriter::from(rdm);
+        let exp_rdm = RdWriter::from(rdm);
 
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
         std::fs::create_dir_all(&dir_dst).unwrap();

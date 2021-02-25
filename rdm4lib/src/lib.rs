@@ -22,17 +22,17 @@ pub mod rdm_anim_writer;
 pub mod rdm_material;
 pub mod rdm_writer;
 pub mod vertex;
-use crate::rdm_anim::RDAnim;
-use rdm_material::RDMaterial;
+use crate::rdm_anim::RdAnim;
+use rdm_material::RdMaterial;
 
 use vertex::VertexFormat2;
 
 #[derive(Debug)]
-pub struct RDModell {
+pub struct RdModell {
     size: u32,
     buffer: Bytes,
     pub mesh_info: Vec<MeshInstance>,
-    pub joints: Option<Vec<RDJoint>>,
+    pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
     meta: u32,
@@ -42,8 +42,8 @@ pub struct RDModell {
     pub triangles_idx_count: u32,
     triangles_idx_size: u32,
 
-    anim: Option<RDAnim>,
-    pub mat: Option<RDMaterial>,
+    anim: Option<RdAnim>,
+    pub mat: Option<RdMaterial>,
 }
 
 trait Seek {
@@ -59,7 +59,7 @@ impl Seek for Bytes {
 }
 
 #[derive(Debug, Clone)]
-pub struct RDJoint {
+pub struct RdJoint {
     name: String,
     nameptr: u32,
     transition: [f32; 3],
@@ -94,7 +94,7 @@ impl PartialEq for MeshInstance {
 }
 
 #[allow(dead_code)]
-impl RDModell {
+impl RdModell {
     const META_OFFSET: u32 = 32;
     const META_COUNT: u32 = 8; //neg
     const META_SIZE: u32 = 4; //neg
@@ -105,7 +105,7 @@ impl RDModell {
         self.joints.is_some()
     }
 
-    pub fn add_anim(&mut self, anim: RDAnim) {
+    pub fn add_anim(&mut self, anim: RdAnim) {
         self.anim = Some(anim);
     }
 
@@ -140,7 +140,7 @@ impl RDModell {
         multi_buffer.seek(meta_deref + 20, size);
         let first_instance = multi_buffer.get_u32_le();
 
-        multi_buffer.seek(first_instance - RDModell::META_COUNT, size);
+        multi_buffer.seek(first_instance - RdModell::META_COUNT, size);
         let mesh_count = multi_buffer.get_u32_le();
         assert_eq!(multi_buffer.get_u32_le(), 28);
         warn!("mesh_count: {}", mesh_count);
@@ -168,18 +168,18 @@ impl RDModell {
         skin_buffer.seek(skin_offset, self.size);
 
         let first_skin_offset = skin_buffer.get_u32_le();
-        let joint_count_ptr = first_skin_offset - RDModell::META_COUNT;
+        let joint_count_ptr = first_skin_offset - RdModell::META_COUNT;
 
         skin_buffer.seek(joint_count_ptr, self.size);
 
         let joint_count = skin_buffer.get_u32_le();
         let joint_size = skin_buffer.get_u32_le();
 
-        let mut joints_vec: Vec<RDJoint> = Vec::with_capacity(joint_count as usize);
+        let mut joints_vec: Vec<RdJoint> = Vec::with_capacity(joint_count as usize);
 
         let mut joint_name_buffer = skin_buffer.clone();
 
-        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RDModell::META_COUNT;
+        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RdModell::META_COUNT;
         joint_name_buffer.seek(len_first_joint_name_ptr, self.size);
 
         assert_eq!(joint_size, 84);
@@ -218,7 +218,7 @@ impl RDModell {
 
             let parent_id = skin_buffer.get_u8();
 
-            let joint = RDJoint {
+            let joint = RdJoint {
                 name: joint_name,
                 nameptr,
                 transition: [trans_point.x, trans_point.y, trans_point.z],
@@ -240,7 +240,7 @@ impl RDModell {
     }
 
     fn new(buf: Vec<u8>) -> Self {
-        RDModell::check_has_magic_byte(&buf);
+        RdModell::check_has_magic_byte(&buf);
 
         let size = buf.len() as u32;
         let buffer = Bytes::from(buf);
@@ -254,25 +254,25 @@ impl RDModell {
         );
         let mut nbuffer = buffer.clone();
 
-        nbuffer.advance(RDModell::META_OFFSET as usize);
+        nbuffer.advance(RdModell::META_OFFSET as usize);
         let meta = nbuffer.get_u32_le();
 
         nbuffer.get_u32_le();
 
         let _skin_there = nbuffer.get_u32_le() > 0;
-        let mesh_info = RDModell::check_multi_mesh(buffer.clone(), meta, size);
+        let mesh_info = RdModell::check_multi_mesh(buffer.clone(), meta, size);
 
         nbuffer.seek(meta, size);
-        nbuffer.advance(RDModell::VERTEX_META as usize);
+        nbuffer.advance(RdModell::VERTEX_META as usize);
         let vertex_offset = nbuffer.get_u32_le();
 
         let triangles_offset = nbuffer.get_u32_le();
 
-        let vertex_count_off = vertex_offset - RDModell::META_COUNT;
+        let vertex_count_off = vertex_offset - RdModell::META_COUNT;
         info!("off : {}", vertex_count_off);
         nbuffer.seek(vertex_count_off, size);
 
-        let triangles_count_off = triangles_offset - RDModell::META_COUNT;
+        let triangles_count_off = triangles_offset - RdModell::META_COUNT;
         nbuffer.seek(triangles_count_off, size);
         let triangles_idx_count = nbuffer.get_u32_le();
         let triangles_idx_size = nbuffer.get_u32_le();
@@ -297,7 +297,7 @@ impl RDModell {
             triangles.push(t);
         }
 
-        RDModell {
+        RdModell {
             size,
             buffer,
             mesh_info,
@@ -382,7 +382,7 @@ impl VertexFormatSize {
     const P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b: u32 = 56;
 }
 
-impl From<&Path> for RDModell {
+impl From<&Path> for RdModell {
     fn from(f_path: &Path) -> Self {
         let mut f = File::open(f_path).unwrap();
         let metadata = f.metadata().unwrap();
@@ -394,19 +394,19 @@ impl From<&Path> for RDModell {
         info!("loaded {:?} into buffer", f_path.to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
-        RDModell::new(buffer)
+        RdModell::new(buffer)
     }
 }
 
-impl From<&str> for RDModell {
+impl From<&str> for RdModell {
     fn from(str_path: &str) -> Self {
-        RDModell::from(Path::new(str_path))
+        RdModell::from(Path::new(str_path))
     }
 }
 
-impl From<&String> for RDModell {
+impl From<&String> for RdModell {
     fn from(string_path: &String) -> Self {
-        RDModell::from(Path::new(string_path))
+        RdModell::from(Path::new(string_path))
     }
 }
 
@@ -508,7 +508,7 @@ mod tests_intern {
             0x73, 0x65, 0x2E, 0x70, 0x73, 0x64,
         ];
 
-        let rdm = RDModell::new(v);
+        let rdm = RdModell::new(v);
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.vertex.get_size(), 8);
         assert_eq!(rdm.triangles_idx_count, 78);
