@@ -40,8 +40,6 @@ pub enum JointOption {
 }
 
 struct RdGltfBuilder {
-    #[allow(dead_code)]
-    name: Option<String>,
     buffers: Vec<json::Buffer>,
     buffer_views: Vec<json::buffer::View>,
     accessors: Vec<json::Accessor>,
@@ -63,7 +61,6 @@ struct RdGltfBuilder {
 impl RdGltfBuilder {
     fn new(rdm: RdModell) -> Self {
         RdGltfBuilder {
-            name: None,
             buffers: Vec::new(),
             buffer_views: Vec::new(),
             accessors: Vec::new(),
@@ -354,9 +351,11 @@ impl RdGltfBuilder {
             self.rdm.vertex.set_weight_sum();
         }
         let n = self.rdm.vertex.find(UniqueIdentifier::I4b).len();
+        let mut ibuffers = Vec::with_capacity(n);
+        let mut wbuffers = Vec::with_capacity(n);
         for i in 0..n {
             if let Some(iter) = self.rdm.vertex.iter::<I4b, I4b>(i) {
-                let mut weight_ap_joint_buf =
+                let mut weight_buf =
                     BytesMut::with_capacity((4 + 4 * 4) * self.rdm.vertex.len() as usize);
                 let mut joint_buf = BytesMut::with_capacity(4 * self.rdm.vertex.len() as usize);
 
@@ -396,118 +395,50 @@ impl RdGltfBuilder {
                         // ACCESSOR_WEIGHTS_NON_NORMALIZED
                         let sum_float: f32 = 255.0f32 / *sum as f32;
 
-                        weight_ap_joint_buf
-                            .put_f32_le(w.blend_weight[0] as f32 / 255.0 * sum_float); // > 0.0
-                        weight_ap_joint_buf
-                            .put_f32_le(w.blend_weight[1] as f32 / 255.0 * sum_float); // 0.0
-                        weight_ap_joint_buf
-                            .put_f32_le(w.blend_weight[2] as f32 / 255.0 * sum_float); // 0.0
-                        weight_ap_joint_buf
-                            .put_f32_le(w.blend_weight[3] as f32 / 255.0 * sum_float);
+                        weight_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0 * sum_float); // > 0.0
+                        weight_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0 * sum_float); // 0.0
+                        weight_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0 * sum_float); // 0.0
+                        weight_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0 * sum_float);
                     } else {
                         joint_buf.put_u8(e.blend_idx[0]);
                         joint_buf.put_u8(e.blend_idx[1]);
                         joint_buf.put_u8(e.blend_idx[2]);
                         joint_buf.put_u8(e.blend_idx[3]);
 
-                        weight_ap_joint_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0); // > 0.0
-                        weight_ap_joint_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0); // 0.0
-                        weight_ap_joint_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0); // 0.0
-                        weight_ap_joint_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0);
+                        weight_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0); // > 0.0
+                        weight_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0); // 0.0
+                        weight_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0); // 0.0
+                        weight_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0);
                     }
                 }
-                let weight_len = weight_ap_joint_buf.len() as u32;
-                let joint_len = joint_buf.len() as u32;
-                weight_ap_joint_buf.put_slice(&joint_buf);
-                weight_ap_joint_buf.put_u32_le(0);
-
-                let jw_buffer_p = self
-                    .obj
-                    .push_buffer(BufferContainer::Bytes(weight_ap_joint_buf.freeze()));
-
-                let jw_buffer = json::Buffer {
-                    byte_length: jw_buffer_p.len,
-                    extensions: Default::default(),
-                    extras: Default::default(),
-                    name: None,
-                    uri: Some(jw_buffer_p.file_name.clone()),
-                };
-
-                self.buffers.push(jw_buffer);
-
-                let joint_buffer_view = json::buffer::View {
-                    buffer: json::Index::new(jw_buffer_p.idx),
-                    byte_length: joint_len,
-                    byte_offset: Some(weight_len),
-                    byte_stride: None,
-                    extensions: Default::default(),
-                    extras: Default::default(),
-                    name: None,
-                    target: None,
-                };
-                self.buffer_views.push(joint_buffer_view);
-                let joint_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
-
-                let joint_accessor = json::Accessor {
-                    buffer_view: Some(json::Index::new(joint_buffer_view_idx)),
-                    byte_offset: 0,
-                    count: self.rdm.vertex.len(),
-                    component_type: Valid(json::accessor::GenericComponentType(
-                        json::accessor::ComponentType::U8,
-                    )),
-                    extensions: Default::default(),
-                    extras: Default::default(),
-                    type_: Valid(json::accessor::Type::Vec4),
-                    min: None,
-                    max: None,
-                    name: None,
-                    normalized: false,
-                    sparse: None,
-                };
-                self.accessors.push(joint_accessor);
-                let joint_accessor_idx = (self.accessors.len() - 1) as u32;
-
-                let weight_buffer_view = json::buffer::View {
-                    buffer: json::Index::new(jw_buffer_p.idx),
-                    byte_length: weight_len,
-                    byte_offset: None,
-                    byte_stride: None,
-                    extensions: Default::default(),
-                    extras: Default::default(),
-                    name: None,
-                    target: None,
-                };
-                self.buffer_views.push(weight_buffer_view);
-                let weight_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
-
-                let weight_accessor = json::Accessor {
-                    buffer_view: Some(json::Index::new(weight_buffer_view_idx)),
-                    byte_offset: 0,
-                    count: self.rdm.vertex.len(),
-                    component_type: Valid(json::accessor::GenericComponentType(
-                        json::accessor::ComponentType::F32,
-                    )),
-                    extensions: Default::default(),
-                    extras: Default::default(),
-                    type_: Valid(json::accessor::Type::Vec4),
-                    min: None,
-                    max: None,
-                    name: None,
-                    normalized: false,
-                    sparse: None,
-                };
-                self.accessors.push(weight_accessor);
-                let weight_accessor_idx = (self.accessors.len() - 1) as u32;
-
-                self.attr_map.insert(
-                    Valid(json::mesh::Semantic::Joints(i as u32)),
-                    json::Index::new(joint_accessor_idx),
-                );
-                self.attr_map.insert(
-                    Valid(json::mesh::Semantic::Weights(i as u32)),
-                    json::Index::new(weight_accessor_idx),
-                );
+                wbuffers.push(BufferContainer::Bytes(weight_buf.freeze()));
+                ibuffers.push(BufferContainer::Bytes(joint_buf.freeze()));
             }
+        }
+        for (i, b) in wbuffers.into_iter().enumerate() {
+            self.put_attr(
+                b,
+                json::accessor::Type::Vec4,
+                json::accessor::ComponentType::F32,
+                None,
+                Some(json::mesh::Semantic::Weights(i as u32)),
+                None,
+                None,
+                None,
+            );
+        }
+
+        for (i, b) in ibuffers.into_iter().enumerate() {
+            self.put_attr(
+                b,
+                json::accessor::Type::Vec4,
+                json::accessor::ComponentType::U8,
+                None,
+                Some(json::mesh::Semantic::Joints(i as u32)),
+                None,
+                None,
+                None,
+            );
         }
     }
 
@@ -540,8 +471,8 @@ impl RdGltfBuilder {
 
                 // matrix is the inverse of the global transform of the respective joint, in its initial configuration.
                 let inv_bindmat = bindmat.try_inverse().unwrap();
-                let invbind_buf_len = invbind_buf.len();
 
+                //column-major order
                 invbind_buf.put_f32_le(inv_bindmat.m11);
                 invbind_buf.put_f32_le(inv_bindmat.m21);
                 invbind_buf.put_f32_le(inv_bindmat.m31);
@@ -563,54 +494,22 @@ impl RdGltfBuilder {
                 invbind_buf.put_f32_le(1.0f32);
 
                 // why is inv_bindmat.m44 not always 1.0 ?
-                // assert_relative_eq!(1.0, inv_bindmat.m44)
-                // assert_relative_eq!(1.0, 0.9999998807907104f32) => true but
                 // ACCESSOR_INVALID_IBM	Matrix element at index 143 (component index 15) contains invalid value: 0.9999998807907104.
-                let invbind_buf_written = invbind_buf.len() - invbind_buf_len;
-                assert_eq!(invbind_buf_written, 64);
             }
         }
-        let invbind_buf_p = self
-            .obj
-            .push_buffer(BufferContainer::Bytes(invbind_buf.freeze()));
 
-        let mat_buffer = json::Buffer {
-            byte_length: invbind_buf_p.len,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            uri: Some(invbind_buf_p.file_name),
-        };
+        let buff_freezed = invbind_buf.freeze();
+        let mat_accessor_idx = self.put_attr(
+            BufferContainer::Bytes(buff_freezed),
+            json::accessor::Type::Mat4,
+            json::accessor::ComponentType::F32,
+            Some(joints_vec.len() as u32),
+            None,
+            None,
+            None,
+            None,
+        );
 
-        let mat_buffer_view = json::buffer::View {
-            buffer: json::Index::new(invbind_buf_p.idx),
-            byte_length: invbind_buf_p.len,
-            byte_offset: None,
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: None,
-        };
-
-        let mut mat_accessor = json::Accessor {
-            buffer_view: Some(json::Index::new(2)),
-            byte_offset: 0,
-            count: joints_vec.len() as u32,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Mat4),
-            min: None,
-            max: None,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-
-        // end inverseBindMatrices
         let mut skin_nodes: Vec<json::Node> = Vec::new();
 
         let mut arm: Vec<json::root::Index<_>> = Vec::new();
@@ -673,8 +572,6 @@ impl RdGltfBuilder {
             let my = master_trans[1];
             let mz = master_trans[2];
 
-            //
-
             let master_quaternion = joints_vec[master_idx].quaternion;
 
             let mqx = master_quaternion[0];
@@ -699,8 +596,6 @@ impl RdGltfBuilder {
             let uqc = rel_uq.quaternion().coords;
 
             joints_vec[child_idx].quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
-
-            //
 
             let child_trans = joints_vec[child_idx].transition;
             let tx = child_trans[0];
@@ -746,20 +641,9 @@ impl RdGltfBuilder {
 
         skin_nodes.push(main_node);
         let nodes_count = skin_nodes.len() - 1;
-
-        self.buffers.push(mat_buffer);
-        self.buffer_views.push(mat_buffer_view);
-
-        let mat_buffer_view_idx = (self.buffer_views.len() - 1) as u32;
-
-        mat_accessor.buffer_view = Some(json::Index::new(mat_buffer_view_idx));
-        self.accessors.push(mat_accessor);
-        let mat_accessor_idx = (self.accessors.len() - 1) as u32;
-
         self.nodes.append(&mut skin_nodes);
 
         // skin root node
-
         let mut joint_indi_vec: Vec<json::root::Index<_>> = Vec::new();
         for i in 0..nodes_count {
             joint_indi_vec.push(json::Index::new(i as u32));
@@ -775,22 +659,18 @@ impl RdGltfBuilder {
         });
     }
 
-    fn get_skins_or_default(&self) -> Vec<json::Skin> {
-        if self.skin.is_some() {
-            vec![self.skin.clone().unwrap()]
-        } else {
-            Default::default()
-        }
-    }
+    fn put_vertex(&mut self) {
+        let mut triangle_vertices: Vec<Vertex> =
+            Vec::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
+        let mut min: Vec<f32> = vec![f32::MAX, f32::MAX, f32::MAX];
+        let mut max: Vec<f32> = vec![f32::MIN, f32::MIN, f32::MIN];
 
-    fn rdm_vertex_to_gltf(rdm: &RdModell) -> (Vec<Vertex>, Vec<f32>, Vec<f32>) {
-        let mut out: Vec<Vertex> = Vec::with_capacity(3 * 4 * rdm.vertex.vertex_count as usize);
-
-        //TODO FIXME arbitrarily chosen
-        let mut min: Vec<f32> = vec![100.0, 100.0, 100.0];
-        let mut max: Vec<f32> = vec![-100.0, -100.0, -100.0];
-
-        for p4h in rdm.vertex.iter::<Position<f16>, Position<f32>>(0).unwrap() {
+        for p4h in self
+            .rdm
+            .vertex
+            .iter::<Position<f16>, Position<f32>>(0)
+            .unwrap()
+        {
             let x = p4h.pos[0];
             let y = p4h.pos[1];
             let z = p4h.pos[2];
@@ -806,75 +686,25 @@ impl RdGltfBuilder {
             let t = Vertex {
                 position: [x, y, z],
             };
-            out.push(t);
+            triangle_vertices.push(t);
         }
-        (out, min, max)
-    }
-
-    fn put_vertex(&mut self) {
-        let conv = RdGltfBuilder::rdm_vertex_to_gltf(&self.rdm);
-
-        let triangle_vertices = conv.0;
-        let min = conv.1;
-        let max = conv.2;
-        let triangle_len = triangle_vertices.len() as u32;
-
+        let amin = Some(json::Value::from(min));
+        let amax = Some(json::Value::from(max));
         // single vertex buffer
-
-        let buffer_p = self
-            .obj
-            .push_buffer(BufferContainer::Vertex(triangle_vertices));
-        let buffer_length = buffer_p.len as u32;
-        let buffer = json::Buffer {
-            byte_length: buffer_length,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            uri: Some(buffer_p.file_name),
-        };
-        let buffer_view = json::buffer::View {
-            buffer: json::Index::new(buffer_p.idx),
-            byte_length: buffer.byte_length,
-            byte_offset: None,
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: Some(Valid(json::buffer::Target::ArrayBuffer)),
-        };
-
-        self.buffers.push(buffer);
-        self.buffer_views.push(buffer_view);
-        let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
-
-        let triangle_acc = json::Accessor {
-            buffer_view: Some(json::Index::new(buffer_views_idx)),
-            byte_offset: 0,
-            count: triangle_len,
-            component_type: Valid(json::accessor::GenericComponentType(
-                json::accessor::ComponentType::F32,
-            )),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(json::accessor::Type::Vec3),
-            min: Some(json::Value::from(min)),
-            max: Some(json::Value::from(max)),
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-
-        self.accessors.push(triangle_acc);
-
-        let accessors_idx = (self.accessors.len() - 1) as u32;
-
-        self.attr_map.insert(
-            Valid(json::mesh::Semantic::Positions),
-            json::Index::new(accessors_idx),
+        self.put_attr(
+            BufferContainer::Vertex(triangle_vertices),
+            json::accessor::Type::Vec3,
+            json::accessor::ComponentType::F32,
+            None,
+            Some(json::mesh::Semantic::Positions),
+            amin,
+            amax,
+            Some(Valid(json::buffer::Target::ArrayBuffer)),
         );
     }
 
     fn put_tex(&mut self) {
+        let mut tbuffers = Vec::new();
         if let Some(iter) = self.rdm.vertex.iter::<Texcoord<f16>, Texcoord<f32>>(0) {
             let mut buff = BytesMut::with_capacity(2 * 4 * self.rdm.vertex.vertex_count as usize);
 
@@ -882,58 +712,18 @@ impl RdGltfBuilder {
                 buff.put_f32_le(t2h.tex[0]);
                 buff.put_f32_le(t2h.tex[1]);
             }
-
-            let buff_freezed = buff.freeze();
-            let tex_len = self.rdm.vertex.len();
-
-            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
-            let buffer = json::Buffer {
-                byte_length: buffer_p.len,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                uri: Some(buffer_p.file_name),
-            };
-
-            let buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffer_p.idx),
-                byte_length: buffer.byte_length,
-                byte_offset: None,
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            self.buffers.push(buffer);
-            self.buffer_views.push(buffer_view);
-            let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
-
-            let tex_acc = json::Accessor {
-                buffer_view: Some(json::Index::new(buffer_views_idx)),
-                byte_offset: 0,
-                count: tex_len,
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Vec2),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-
-            self.accessors.push(tex_acc);
-
-            let accessors_idx = (self.accessors.len() - 1) as u32;
-
-            self.attr_map.insert(
-                Valid(json::mesh::Semantic::TexCoords(0)),
-                json::Index::new(accessors_idx),
+            tbuffers.push(BufferContainer::Bytes(buff.freeze()));
+        }
+        for (i, b) in tbuffers.into_iter().enumerate() {
+            self.put_attr(
+                b,
+                json::accessor::Type::Vec2,
+                json::accessor::ComponentType::F32,
+                None,
+                Some(json::mesh::Semantic::TexCoords(i as u32)),
+                None,
+                None,
+                None,
             );
         }
     }
@@ -1012,9 +802,71 @@ impl RdGltfBuilder {
         self.material_idx = Some(material_idx_vec);
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn put_attr(
+        &mut self,
+        buffer: BufferContainer,
+        acctype: json::accessor::Type,
+        component_type: json::accessor::ComponentType,
+        count: Option<u32>,
+        semantic: Option<json::mesh::Semantic>,
+        amin: Option<json::Value>,
+        amax: Option<json::Value>,
+        target: Option<json::validation::Checked<gltf::buffer::Target>>,
+    ) -> u32 {
+        let vattr_len = self.rdm.vertex.len();
+
+        let buffer_p = self.obj.push_buffer(buffer);
+        let buffer = json::Buffer {
+            byte_length: buffer_p.len,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            uri: Some(buffer_p.file_name),
+        };
+
+        let buffer_view = json::buffer::View {
+            buffer: json::Index::new(buffer_p.idx),
+            byte_length: buffer.byte_length,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            target,
+        };
+
+        self.buffers.push(buffer);
+        let buffer_views_idx = self.buffer_views.len() as u32;
+        self.buffer_views.push(buffer_view);
+
+        let normals_acc = json::Accessor {
+            buffer_view: Some(json::Index::new(buffer_views_idx)),
+            byte_offset: 0,
+            count: count.unwrap_or(vattr_len),
+            component_type: Valid(json::accessor::GenericComponentType(component_type)),
+            extensions: Default::default(),
+            extras: Default::default(),
+            type_: Valid(acctype),
+            min: amin,
+            max: amax,
+            name: None,
+            normalized: false,
+            sparse: None,
+        };
+
+        let accessors_idx = self.accessors.len() as u32;
+        self.accessors.push(normals_acc);
+
+        if let Some(semantic) = semantic {
+            self.attr_map
+                .insert(Valid(semantic), json::Index::new(accessors_idx));
+        }
+        accessors_idx
+    }
+
     fn put_normal(&mut self) {
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
-
         if let Some(iter) = self.rdm.vertex.iter::<Normal<u8>, Normal<f32>>(0) {
             for n4b in iter {
                 let n = n4b.normalise().normals;
@@ -1022,58 +874,18 @@ impl RdGltfBuilder {
                 buff.put_f32_le(n[1]);
                 buff.put_f32_le(n[2]);
             }
-
+        }
+        if !buff.is_empty() {
             let buff_freezed = buff.freeze();
-            let tex_len = self.rdm.vertex.len();
-
-            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
-            let buffer = json::Buffer {
-                byte_length: buffer_p.len,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                uri: Some(buffer_p.file_name),
-            };
-
-            let buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffer_p.idx),
-                byte_length: buffer.byte_length,
-                byte_offset: None,
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            self.buffers.push(buffer);
-            self.buffer_views.push(buffer_view);
-            let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
-
-            let normals_acc = json::Accessor {
-                buffer_view: Some(json::Index::new(buffer_views_idx)),
-                byte_offset: 0,
-                count: tex_len,
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Vec3),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-
-            self.accessors.push(normals_acc);
-
-            let accessors_idx = (self.accessors.len() - 1) as u32;
-
-            self.attr_map.insert(
-                Valid(json::mesh::Semantic::Normals),
-                json::Index::new(accessors_idx),
+            self.put_attr(
+                BufferContainer::Bytes(buff_freezed),
+                json::accessor::Type::Vec3,
+                json::accessor::ComponentType::F32,
+                None,
+                Some(json::mesh::Semantic::Normals),
+                None,
+                None,
+                None,
             );
         }
     }
@@ -1095,58 +907,18 @@ impl RdGltfBuilder {
                     buff.put_f32_le(-1.0);
                 }
             }
-
+        }
+        if !buff.is_empty() {
             let buff_freezed = buff.freeze();
-            let tex_len = self.rdm.vertex.len();
-
-            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
-            let buffer = json::Buffer {
-                byte_length: buffer_p.len,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                uri: Some(buffer_p.file_name),
-            };
-
-            let buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffer_p.idx),
-                byte_length: buffer.byte_length,
-                byte_offset: None,
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            self.buffers.push(buffer);
-            self.buffer_views.push(buffer_view);
-            let buffer_views_idx = (self.buffer_views.len() - 1) as u32;
-
-            let tangent_acc = json::Accessor {
-                buffer_view: Some(json::Index::new(buffer_views_idx)),
-                byte_offset: 0,
-                count: tex_len,
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Vec4),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-
-            self.accessors.push(tangent_acc);
-
-            let accessors_idx = (self.accessors.len() - 1) as u32;
-
-            self.attr_map.insert(
-                Valid(json::mesh::Semantic::Tangents),
-                json::Index::new(accessors_idx),
+            self.put_attr(
+                BufferContainer::Bytes(buff_freezed),
+                json::accessor::Type::Vec4,
+                json::accessor::ComponentType::F32,
+                None,
+                Some(json::mesh::Semantic::Tangents),
+                None,
+                None,
+                None,
             );
         }
     }
@@ -1216,7 +988,6 @@ impl RdGltfBuilder {
     }
 
     pub fn build(mut self) -> RdGltf {
-        let skins = self.get_skins_or_default();
         let animation = if self.anim_node.is_some() {
             vec![self.anim_node.unwrap()]
         } else {
@@ -1288,7 +1059,11 @@ impl RdGltfBuilder {
                 name: None,
                 nodes: vec![node_len],
             }],
-            skins,
+            skins: if self.skin.is_some() {
+                vec![self.skin.clone().unwrap()]
+            } else {
+                Default::default()
+            },
             animations: animation,
             materials: self.material_vec,
             textures: self.texture_vec,
@@ -1432,7 +1207,7 @@ impl BufferContainer {
         let bytes = self.get_bytes();
         let to_add = self.get_padded_added();
         writer.write_all(bytes)?;
-        if to_add < 4 {
+        if to_add < 4 && to_add != 0 {
             writer.write_all(&PAD[0..to_add])?;
         }
         Ok(())
@@ -1455,7 +1230,7 @@ impl RdGltf {
     }
 
     fn write_gltf(
-        mut self,
+        self,
         dir: Option<PathBuf>,
         optmat: Option<RdMaterial>,
         create_new: bool,
@@ -1513,12 +1288,9 @@ impl RdGltf {
                 file.pop();
                 let udir = file;
 
-                let mut idx = self.buffers.len() - 1;
-                while !self.buffers.is_empty() {
-                    let e = self.buffers.pop().unwrap();
-                    let bin = e;
+                for (i, bin) in self.buffers.into_iter().enumerate() {
                     let mut file_path = udir.clone();
-                    file_path.push(format!("buffer{}.bin", idx));
+                    file_path.push(format!("buffer{}.bin", i));
                     debug!("write_all {:?}", &file_path);
                     let mut writer = OpenOptions::new()
                         .write(true)
@@ -1528,7 +1300,6 @@ impl RdGltf {
                         .open(&file_path)
                         .expect("I/O error");
                     bin.to_writer(&mut writer).unwrap();
-                    idx = idx.saturating_sub(1);
                 }
 
                 if let Some(mat) = optmat.as_ref() {
