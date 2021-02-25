@@ -6,11 +6,11 @@ use std::{
     borrow::Cow,
     convert::TryInto,
     fs::{self, OpenOptions},
-    mem,
+    io,
     path::PathBuf,
 };
 
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use json::validation::Checked::Valid;
 
 use std::io::Write;
@@ -39,17 +39,6 @@ pub enum JointOption {
     ResolveAllRoot,
 }
 
-fn to_padded_byte_vector<T>(vec: Vec<T>) -> Vec<u8> {
-    let byte_length = vec.len() * mem::size_of::<T>();
-    let byte_capacity = vec.capacity() * mem::size_of::<T>();
-    let alloc = vec.into_boxed_slice();
-    let ptr = Box::<[T]>::into_raw(alloc) as *mut u8;
-    let mut new_vec = unsafe { Vec::from_raw_parts(ptr, byte_length, byte_capacity) };
-    while new_vec.len() % 4 != 0 {
-        new_vec.push(0); // pad to multiple of four bytes
-    }
-    new_vec
-}
 struct RDGltfBuilder {
     #[allow(dead_code)]
     name: Option<String>,
@@ -115,19 +104,9 @@ impl RDGltfBuilder {
         let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
         let mut t_anim_buf = BytesMut::with_capacity(t_size);
 
-        // alloc one buffer
-        // vec buffer_v
         let mut buffer_v_vec = Vec::new();
 
-        // vec acc
         let mut acc_vec = Vec::new();
-
-        // ** animations
-
-        //let buffv_idx = 7;
-        //let mut acc_idx = 8;
-
-        // anim node
         let time_f32_max = (anim.time_max as f32) / 1000.0;
 
         let mut rot_sampler_chanel = 0;
@@ -350,7 +329,7 @@ impl RDGltfBuilder {
 
         b1.append(&mut b2);
         b1.append(&mut b3);
-        let buffer_result = self.obj.push_buffer(b1);
+        let buffer_result = self.obj.push_buffer(BufferContainer::U8(b1));
         assert_eq!(buffv_idx, buffer_result.idx);
 
         let anim_buffer = json::Buffer {
@@ -442,10 +421,12 @@ impl RDGltfBuilder {
                 weight_ap_joint_buf.put_slice(&joint_buf);
                 weight_ap_joint_buf.put_u32_le(0);
 
-                let jw_buffer_p = self.obj.push_buffer(weight_ap_joint_buf.to_vec());
+                let jw_buffer_p = self
+                    .obj
+                    .push_buffer(BufferContainer::Bytes(weight_ap_joint_buf.freeze()));
 
                 let jw_buffer = json::Buffer {
-                    byte_length: weight_ap_joint_buf.len() as u32,
+                    byte_length: jw_buffer_p.len,
                     extensions: Default::default(),
                     extras: Default::default(),
                     name: None,
@@ -589,10 +570,12 @@ impl RDGltfBuilder {
                 assert_eq!(invbind_buf_written, 64);
             }
         }
-        let invbind_buf_p = self.obj.push_buffer(invbind_buf.to_vec());
+        let invbind_buf_p = self
+            .obj
+            .push_buffer(BufferContainer::Bytes(invbind_buf.freeze()));
 
         let mat_buffer = json::Buffer {
-            byte_length: invbind_buf.len() as u32,
+            byte_length: invbind_buf_p.len,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -601,7 +584,7 @@ impl RDGltfBuilder {
 
         let mat_buffer_view = json::buffer::View {
             buffer: json::Index::new(invbind_buf_p.idx),
-            byte_length: invbind_buf.len() as u32,
+            byte_length: invbind_buf_p.len,
             byte_offset: None,
             byte_stride: None,
             extensions: Default::default(),
@@ -838,7 +821,9 @@ impl RDGltfBuilder {
 
         // single vertex buffer
 
-        let buffer_p = self.obj.push_buffer(triangle_vertices);
+        let buffer_p = self
+            .obj
+            .push_buffer(BufferContainer::Vertex(triangle_vertices));
         let buffer_length = buffer_p.len as u32;
         let buffer = json::Buffer {
             byte_length: buffer_length,
@@ -898,13 +883,12 @@ impl RDGltfBuilder {
                 buff.put_f32_le(t2h.tex[1]);
             }
 
-            let vec = buff.to_vec(); //stupid
+            let buff_freezed = buff.freeze();
             let tex_len = self.rdm.vertex.len();
 
-            let buffer_p = self.obj.push_buffer(vec);
-            let buffer_length = buffer_p.len as u32;
+            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
             let buffer = json::Buffer {
-                byte_length: buffer_length,
+                byte_length: buffer_p.len,
                 extensions: Default::default(),
                 extras: Default::default(),
                 name: None,
@@ -1039,13 +1023,12 @@ impl RDGltfBuilder {
                 buff.put_f32_le(n[2]);
             }
 
-            let vec = buff.to_vec(); //stupid
+            let buff_freezed = buff.freeze();
             let tex_len = self.rdm.vertex.len();
 
-            let buffer_p = self.obj.push_buffer(vec);
-            let buffer_length = buffer_p.len as u32;
+            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
             let buffer = json::Buffer {
-                byte_length: buffer_length,
+                byte_length: buffer_p.len,
                 extensions: Default::default(),
                 extras: Default::default(),
                 name: None,
@@ -1113,14 +1096,12 @@ impl RDGltfBuilder {
                 }
             }
 
-            // TODO remove alloc. stupid copy.
-            let vec = buff.to_vec();
+            let buff_freezed = buff.freeze();
             let tex_len = self.rdm.vertex.len();
 
-            let buffer_p = self.obj.push_buffer(vec);
-            let buffer_length = buffer_p.len as u32;
+            let buffer_p = self.obj.push_buffer(BufferContainer::Bytes(buff_freezed));
             let buffer = json::Buffer {
-                byte_length: buffer_length,
+                byte_length: buffer_p.len,
                 extensions: Default::default(),
                 extras: Default::default(),
                 name: None,
@@ -1175,7 +1156,9 @@ impl RDGltfBuilder {
         let triangle_idx: Vec<Triangle> = self.rdm.triangle_indices.clone();
         trace!("triangle_idx.len: {}", triangle_idx.len());
 
-        let triangle_idx_p = self.obj.push_buffer(triangle_idx);
+        let triangle_idx_p = self
+            .obj
+            .push_buffer(BufferContainer::Triangle(triangle_idx));
         let triangle_idx_len_b = triangle_idx_p.len as u32;
 
         let buffer_idx = json::Buffer {
@@ -1228,7 +1211,7 @@ impl RDGltfBuilder {
             accessor_idx_meshes.push(accessors_idx);
             sum += submesh.index_count;
         }
-        assert_eq!((triangle_idx_p.num * 3), sum);
+        assert!((sum * 2..4 + sum * 2).contains(&triangle_idx_p.len));
         self.idx = Some(accessor_idx_meshes);
     }
 
@@ -1320,7 +1303,12 @@ impl RDGltfBuilder {
     }
 
     fn merge_buffers(&mut self) {
-        let size_merge_buffer = self.obj.buffers.iter().map(|x| x.len()).sum();
+        let size_merge_buffer = self
+            .obj
+            .buffers
+            .iter()
+            .map(|x| x.get_bytes_len_padded())
+            .sum();
 
         debug!("size_merge_buffer: {:#?}", size_merge_buffer);
         let mut combined_vec = vec![0; size_merge_buffer];
@@ -1328,9 +1316,10 @@ impl RDGltfBuilder {
         let mut view_off_mapping = Vec::new();
         let mut cnt = 0;
         for v in &self.obj.buffers {
-            combined_vec[cnt..cnt + v.len()].copy_from_slice(v);
+            v.to_writer(&mut combined_vec[cnt..cnt + v.get_bytes_len_padded()])
+                .unwrap();
             view_off_mapping.push(cnt as u32);
-            cnt += v.len();
+            cnt += v.get_bytes_len_padded();
         }
 
         for view in self.buffer_views.iter_mut() {
@@ -1340,8 +1329,11 @@ impl RDGltfBuilder {
         }
 
         self.buffers[0].byte_length = combined_vec.len().try_into().unwrap();
-        let padded_combined_vec = to_padded_byte_vector(combined_vec);
-        debug!("size_merge_buffer: {:#?}", padded_combined_vec.len());
+        let padded_combined_vec = BufferContainer::U8(combined_vec);
+        debug!(
+            "size_merge_buffer: {:#?}",
+            padded_combined_vec.get_bytes_len_padded()
+        );
         debug!("cnt: {:#?}", cnt);
 
         self.buffers.truncate(1);
@@ -1395,8 +1387,56 @@ pub fn build(rdm: RDModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
 }
 
 struct RDGltf {
-    buffers: Vec<Vec<u8>>,
+    buffers: Vec<BufferContainer>,
     root: Option<json::Root>,
+}
+enum BufferContainer {
+    U8(Vec<u8>),
+    Bytes(Bytes),
+    Vertex(Vec<Vertex>),
+    Triangle(Vec<Triangle>),
+}
+
+impl BufferContainer {
+    fn get_bytes_len_real(&self) -> usize {
+        self.get_bytes().len()
+    }
+
+    fn get_padded_added(&self) -> usize {
+        let real_len = self.get_bytes_len_real();
+        assert_ne!(real_len, 0);
+        if real_len % 4 == 0 {
+            0
+        } else {
+            4 - (real_len % 4)
+        }
+    }
+
+    fn get_bytes_len_padded(&self) -> usize {
+        self.get_bytes_len_real() + self.get_padded_added()
+    }
+
+    fn get_bytes(&self) -> &[u8] {
+        unsafe {
+            match self {
+                BufferContainer::U8(v) => v.align_to::<u8>().1,
+                BufferContainer::Vertex(vert) => vert.align_to::<u8>().1,
+                BufferContainer::Triangle(tri) => tri.align_to::<u8>().1,
+                BufferContainer::Bytes(b) => b,
+            }
+        }
+    }
+
+    fn to_writer(&self, mut writer: impl io::Write) -> std::io::Result<()> {
+        static PAD: &[u8] = &[0x0, 0x0, 0x0];
+        let bytes = self.get_bytes();
+        let to_add = self.get_padded_added();
+        writer.write_all(bytes)?;
+        if to_add < 4 {
+            writer.write_all(&PAD[0..to_add])?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1457,11 +1497,11 @@ impl RDGltf {
                 let glb = gltf::Glb {
                     header,
                     json: Cow::from(&j),
-                    bin: Some(Cow::from(&self.buffers[0])),
+                    bin: Some(Cow::from(self.buffers[0].get_bytes())),
                 };
                 glb.to_writer(writer).expect("I/O error");
                 debug!("json: {}", glb.json.len());
-                debug!("bin: {}", &self.buffers[0].len());
+                debug!("bin: {}", &self.buffers[0].get_bytes_len_padded());
             }
             _ => {
                 let vjson = json::serialize::to_vec_pretty(&self.root.unwrap())
@@ -1487,7 +1527,7 @@ impl RDGltf {
                         .create_new(create_new)
                         .open(&file_path)
                         .expect("I/O error");
-                    writer.write_all(&bin).expect("I/O error");
+                    bin.to_writer(&mut writer).unwrap();
                     idx = idx.saturating_sub(1);
                 }
 
@@ -1498,19 +1538,15 @@ impl RDGltf {
         }
     }
 
-    fn push_buffer<T>(&mut self, vec: Vec<T>) -> PushBufferResult {
+    fn push_buffer(&mut self, b: BufferContainer) -> PushBufferResult {
         let idx = self.buffers.len();
 
         let file_name = format!("buffer{}.bin", idx);
-        let num = vec.len();
-
-        let padded_byte_vector = to_padded_byte_vector(vec);
-        let len = padded_byte_vector.len();
-        self.buffers.push(padded_byte_vector);
+        let len = b.get_bytes_len_padded();
+        self.buffers.push(b);
 
         PushBufferResult {
             file_name,
-            num: num as u32,
             len: len as u32,
             idx: idx as u32,
         }
@@ -1519,7 +1555,6 @@ impl RDGltf {
 
 struct PushBufferResult {
     file_name: String,
-    num: u32,
     len: u32,
     idx: u32,
 }
