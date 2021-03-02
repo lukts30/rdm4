@@ -72,12 +72,12 @@ pub struct RdJoint {
 pub struct MeshInstance {
     start_index_location: u32,
     index_count: u32,
-    mesh: u32,
+    material: u32,
 }
 
 impl Ord for MeshInstance {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.mesh.cmp(&other.mesh)
+        self.material.cmp(&other.material)
     }
 }
 
@@ -89,7 +89,7 @@ impl PartialOrd for MeshInstance {
 
 impl PartialEq for MeshInstance {
     fn eq(&self, other: &Self) -> bool {
-        self.mesh == other.mesh
+        self.material == other.material
     }
 }
 
@@ -110,24 +110,10 @@ impl RdModell {
     }
 
     pub fn check_has_magic_byte(bytes: &[u8]) {
+        static MAGIC: &[u8] = &[0x52, 0x44, 0x4D, 0x01];
         assert_eq!(
-            bytes[0], 0x52,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
-        assert_eq!(
-            bytes[1], 0x44,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
-        assert_eq!(
-            bytes[2], 0x4D,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
-        assert_eq!(
-            bytes[3], 0x01,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
-        assert_eq!(
-            bytes[4], 0x14,
+            &bytes[0..4],
+            MAGIC,
             "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
         );
     }
@@ -149,7 +135,7 @@ impl RdModell {
             v.push(MeshInstance {
                 start_index_location: multi_buffer.get_u32_le(),
                 index_count: multi_buffer.get_u32_le(),
-                mesh: multi_buffer.get_u32_le(),
+                material: multi_buffer.get_u32_le(),
             });
             multi_buffer.advance(28 - 12);
         }

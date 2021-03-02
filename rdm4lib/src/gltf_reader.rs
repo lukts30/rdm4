@@ -726,7 +726,7 @@ fn read_mesh(
             mesh_info.push(MeshInstance {
                 start_index_location: merged_triangle_vec.len() as u32 * 3,
                 index_count: triangle_vec.len() as u32 * 3,
-                mesh: match overide_mesh_idx.as_ref() {
+                material: match overide_mesh_idx.as_ref() {
                     Some(j) => j[i],
                     None => i.try_into().unwrap(),
                 },

@@ -1,6 +1,4 @@
 use gltf::json;
-
-use gltf::json as gltf_json;
 use half::f16;
 use std::{
     borrow::Cow,
@@ -15,7 +13,7 @@ use json::validation::Checked::Valid;
 
 use std::io::Write;
 
-use crate::{rdm_material::RdMaterial, Triangle};
+use crate::rdm_material::RdMaterial;
 use crate::{vertex::Normalise, vertex::UniqueIdentifier, RdModell};
 use crate::{I4b, Normal, Position, Tangent, Texcoord};
 use crate::{RdJoint, W4b};
@@ -26,13 +24,13 @@ use std::collections::VecDeque;
 use gltf::mesh::Semantic;
 use std::collections::HashMap;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 #[repr(C)]
 struct Vertex {
     position: [f32; 3],
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 #[allow(dead_code)]
 pub enum JointOption {
     ResolveParentNode,
@@ -542,12 +540,12 @@ impl RdGltfBuilder {
 
         let mut child_list: VecDeque<_> = VecDeque::new();
         for z in 0..jlen {
-            let mut child: Vec<gltf_json::root::Index<_>> = Vec::new();
+            let mut child: Vec<gltf::json::root::Index<_>> = Vec::new();
             for j in 0..jlen {
                 if joints_vec[j].parent == z as u8 && joints_vec[z].locked && !joints_vec[j].locked
                 {
                     joints_vec[j].locked = true;
-                    child.push(gltf_json::Index::new(j as u32));
+                    child.push(gltf::json::Index::new(j as u32));
                     tb_rel.push_back((z, j));
                 }
             }
@@ -758,7 +756,7 @@ impl RdGltfBuilder {
                 };
                 self.texture_vec.push(texture);
 
-                info_vec.push(Some(gltf_json::texture::Info {
+                info_vec.push(Some(gltf::json::texture::Info {
                     index: json::Index::new(i as u32),
                     tex_coord: 0,
                     extensions: None,
@@ -770,7 +768,7 @@ impl RdGltfBuilder {
         //assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
         let mut max_mesh: usize = 0;
         for m in self.rdm.mesh_info.iter() {
-            max_mesh = max_mesh.max(m.mesh as usize);
+            max_mesh = max_mesh.max(m.material as usize);
         }
 
         while max_mesh + 1 > info_vec.len() {
@@ -924,66 +922,28 @@ impl RdGltfBuilder {
     }
 
     fn put_idx(&mut self) {
-        // Indexed triangle list
-        let triangle_idx: Vec<Triangle> = self.rdm.triangle_indices.clone();
-        trace!("triangle_idx.len: {}", triangle_idx.len());
-
-        let triangle_idx_p = self
-            .obj
-            .push_buffer(BufferContainer::Triangle(triangle_idx));
-        let triangle_idx_len_b = triangle_idx_p.len as u32;
-
-        let buffer_idx = json::Buffer {
-            byte_length: triangle_idx_len_b,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            uri: Some(triangle_idx_p.file_name),
-        };
-        self.buffers.push(buffer_idx);
-
-        let buffer_idx_view = json::buffer::View {
-            buffer: json::Index::new(triangle_idx_p.idx),
-            byte_length: triangle_idx_len_b,
-            byte_offset: None,
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target: Some(Valid(json::buffer::Target::ElementArrayBuffer)),
-        };
-
-        self.buffer_views.push(buffer_idx_view);
-
-        let buffer_idx_view_idx = (self.buffer_views.len() - 1) as u32;
-
-        let mut accessor_idx_meshes = Vec::new();
-        let mut sum = 0;
+        let mut bytes = Vec::with_capacity(self.rdm.mesh_info.len());
+        let mut accessor_idx_meshes = Vec::with_capacity(self.rdm.mesh_info.len());
         for submesh in self.rdm.mesh_info.iter() {
-            let idx = json::Accessor {
-                buffer_view: Some(json::Index::new(buffer_idx_view_idx)),
-                byte_offset: submesh.start_index_location * 2,
-                count: submesh.index_count,
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::U16,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Scalar),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-
-            self.accessors.push(idx);
-
-            let accessors_idx = (self.accessors.len() - 1) as u32;
-            accessor_idx_meshes.push(accessors_idx);
-            sum += submesh.index_count;
+            let mut buff = BytesMut::with_capacity(submesh.index_count as usize);
+            let r = (submesh.start_index_location as usize / 3) as usize
+                ..((submesh.start_index_location / 3) + submesh.index_count / 3) as usize;
+            unsafe { buff.put_slice(self.rdm.triangle_indices[r].align_to::<u8>().1) }
+            bytes.push((BufferContainer::Bytes(buff.freeze()), submesh.index_count));
         }
-        assert!((sum * 2..4 + sum * 2).contains(&triangle_idx_p.len));
+        for b in bytes.into_iter() {
+            let acc = self.put_attr(
+                b.0,
+                json::accessor::Type::Scalar,
+                json::accessor::ComponentType::U16,
+                Some(b.1),
+                None,
+                None,
+                None,
+                None,
+            );
+            accessor_idx_meshes.push(acc);
+        }
         self.idx = Some(accessor_idx_meshes);
     }
 
@@ -1009,7 +969,7 @@ impl RdGltfBuilder {
                 extensions: Default::default(),
                 extras: Default::default(),
                 indices: Some(json::Index::new(idx)),
-                material: Some(json::Index::new(submesh.mesh)),
+                material: Some(json::Index::new(submesh.material)),
                 mode: Valid(json::mesh::Mode::Triangles),
                 targets: None,
             };
@@ -1169,7 +1129,6 @@ enum BufferContainer {
     U8(Vec<u8>),
     Bytes(Bytes),
     Vertex(Vec<Vertex>),
-    Triangle(Vec<Triangle>),
 }
 
 impl BufferContainer {
@@ -1196,7 +1155,6 @@ impl BufferContainer {
             match self {
                 BufferContainer::U8(v) => v.align_to::<u8>().1,
                 BufferContainer::Vertex(vert) => vert.align_to::<u8>().1,
-                BufferContainer::Triangle(tri) => tri.align_to::<u8>().1,
                 BufferContainer::Bytes(b) => b,
             }
         }

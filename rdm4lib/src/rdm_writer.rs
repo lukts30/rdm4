@@ -241,7 +241,7 @@ impl RdWriter {
             for submesh in self.input.mesh_info.iter() {
                 self.buf.put_u32_le(submesh.start_index_location);
                 self.buf.put_u32_le(submesh.index_count);
-                self.buf.put_u32_le(submesh.mesh);
+                self.buf.put_u32_le(submesh.material);
                 static ZERO_16_OF_28: [u8; 16] = [
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                     0x00, 0x00, 0x00,
@@ -312,7 +312,7 @@ impl RdWriter {
 
         let mut max_mesh = 0;
         for m in self.input.mesh_info.iter() {
-            max_mesh = max_mesh.max(m.mesh);
+            max_mesh = max_mesh.max(m.material);
         }
         max_mesh += 1;
 
