@@ -108,13 +108,12 @@ impl<T: Default, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
                 // slow but safe
                 *elem = MaybeUninit::new(Default::default());
             }
-            unsafe { 
+            unsafe {
                 // TODO: proper way unstable MaybeUninit::array_assume_init(data)
                 let ptr = &mut data as *mut _ as *mut [T; N];
                 let res = ptr.read();
                 std::mem::forget(data);
                 res
-            
             }
         };
         Self { data }
@@ -330,7 +329,10 @@ impl VertexFormat2 {
         Self::new(vec, vertex_count, vertex_size, vertex_offset, vertex_buffer)
     }
 
-    pub fn find_component_offsets<'a>(&'a self, search_ident: UniqueIdentifier) -> impl Iterator<Item = usize> + 'a {
+    pub fn find_component_offsets<'a>(
+        &'a self,
+        search_ident: UniqueIdentifier,
+    ) -> impl Iterator<Item = usize> + 'a {
         self.identifiers
             .iter()
             .enumerate()
@@ -359,7 +361,9 @@ impl VertexFormat2 {
         &'a self,
         set: usize,
     ) -> Option<impl Iterator<Item = T> + 'a> {
-        let offset_idx: Vec<usize> = self.find_component_offsets(T::get_unique_identifier()).collect();
+        let offset_idx: Vec<usize> = self
+            .find_component_offsets(T::get_unique_identifier())
+            .collect();
         if offset_idx.is_empty() {
             return None;
         }

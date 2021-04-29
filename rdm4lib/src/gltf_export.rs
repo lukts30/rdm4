@@ -348,7 +348,11 @@ impl RdGltfBuilder {
         if normalise {
             self.rdm.vertex.set_weight_sum();
         }
-        let n = self.rdm.vertex.find_component_offsets(UniqueIdentifier::I4b).count();
+        let n = self
+            .rdm
+            .vertex
+            .find_component_offsets(UniqueIdentifier::I4b)
+            .count();
         let mut ibuffers = Vec::with_capacity(n);
         let mut wbuffers = Vec::with_capacity(n);
         for i in 0..n {
@@ -363,22 +367,21 @@ impl RdGltfBuilder {
                         Some(w) => {
                             a = w;
                             &mut a
-                        },
+                        }
                         None => {
                             b = self.rdm.vertex.w4b_default_iter();
-                            &mut b 
-                        },
+                            &mut b
+                        }
                     };
 
                 // TODO: fix weight_sum unwrap (normalise == false)
-                for ((vjoint, vweight), sum) in iter.zip(w4b_iter).zip(self.rdm.vertex.weight_sum.as_ref().unwrap()) {
+                for ((vjoint, vweight), sum) in iter
+                    .zip(w4b_iter)
+                    .zip(self.rdm.vertex.weight_sum.as_ref().unwrap())
+                {
                     if normalise {
                         // ACCESSOR_JOINTS_USED_ZERO_WEIGHT
-                        for (w, j) in vweight
-                            .data
-                            .iter()
-                            .zip(vjoint.data.iter())
-                        {
+                        for (w, j) in vweight.data.iter().zip(vjoint.data.iter()) {
                             if *w == 0 {
                                 joint_buf.put_u8(0);
                             } else {

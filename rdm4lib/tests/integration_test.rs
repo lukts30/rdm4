@@ -16,9 +16,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rdm4lib::{
-        gltf_export::GltfExportFormat, vertex::TargetVertexFormat,
-    };
+    use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::path::PathBuf;
 
     #[test]
