@@ -1,8 +1,8 @@
+use crate::vertex::*;
 use crate::{rdm_writer::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 use crate::{MeshInstance, RdModell};
 
-use crate::{Bitangent, I4b, Normal, Position, Tangent, Texcoord, W4b};
 use nalgebra::*;
 
 use half::f16;
@@ -407,8 +407,8 @@ fn read_mesh(
     no_transform: bool,
     overide_mesh_idx: Option<Vec<u32>>,
 ) -> ReadMeshOutput {
-    #[allow(clippy::never_loop)]
-    for mesh in gltf.meshes() {
+    // only the first mesh the file gets read
+    if let Some(mesh) = gltf.meshes().next() {
         info!("Mesh #{}", mesh.index());
 
         let mesh_instantiating_node =
@@ -545,8 +545,8 @@ fn read_mesh(
                     Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
                 let transformed_vertex = base.transform_point(&vertex);
 
-                let p4h = Position {
-                    pos: [
+                let p4h = P4h {
+                    data: [
                         f16::from_f32(1.0 * transformed_vertex[0]),
                         f16::from_f32(1.0 * transformed_vertex[1]),
                         f16::from_f32(1.0 * transformed_vertex[2]),
@@ -569,8 +569,8 @@ fn read_mesh(
                 ny /= len;
                 nz /= len;
 
-                let n4b = Normal {
-                    normals: [
+                let n4b = N4b {
+                    data: [
                         (((nx + 1.0) / 2.0) * 255.0).round() as u8,
                         (((ny + 1.0) / 2.0) * 255.0).round() as u8,
                         (((nz + 1.0) / 2.0) * 255.0).round() as u8,
@@ -601,8 +601,8 @@ fn read_mesh(
                 };
                 assert_relative_eq!(tw.abs(), 1.0);
 
-                let g4b = Tangent {
-                    tangent: [
+                let g4b = G4b {
+                    data: [
                         (((tx + 1.0) / 2.0) * 255.0).round() as u8,
                         (((ty + 1.0) / 2.0) * 255.0).round() as u8,
                         (((tz + 1.0) / 2.0) * 255.0).round() as u8,
@@ -616,8 +616,8 @@ fn read_mesh(
 
                 let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
-                let b4b = Bitangent {
-                    binormal: [
+                let b4b = B4b {
+                    data: [
                         (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
                         (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
                         (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
@@ -629,15 +629,15 @@ fn read_mesh(
 
                 let tex = tex_iter.next().unwrap();
                 //let tex = [0.0, 0.0];
-                let t2h = Texcoord {
-                    tex: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
+                let t2h = T2h {
+                    data: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
                 };
 
-                verts_vec.put_p4h(&p4h);
-                verts_vec.put_n4b(&n4b);
-                verts_vec.put_g4b(&g4b);
-                verts_vec.put_b4b(&b4b);
-                verts_vec.put_t2h(&t2h);
+                verts_vec.put_vertex_data(&p4h);
+                verts_vec.put_vertex_data(&n4b);
+                verts_vec.put_vertex_data(&g4b);
+                verts_vec.put_vertex_data(&b4b);
+                verts_vec.put_vertex_data(&t2h);
                 // TODO clean up checks
                 if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b
                     || dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b
@@ -646,27 +646,27 @@ fn read_mesh(
                     let joint = joints_iter.next().unwrap();
 
                     let i4b = I4b {
-                        blend_idx: [
+                        data: [
                             joint[0] as u8,
                             joint[1] as u8,
                             joint[2] as u8,
                             joint[3] as u8,
                         ],
                     };
-                    verts_vec.put_i4b(&i4b);
+                    verts_vec.put_vertex_data(&i4b);
                 }
 
                 if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b {
                     let weight = weights_iter.next().unwrap();
                     let w4b = W4b {
-                        blend_weight: [
+                        data: [
                             (weight[0] * 255.0).round() as u8,
                             (weight[1] * 255.0).round() as u8,
                             (weight[2] * 255.0).round() as u8,
                             (weight[3] * 255.0).round() as u8,
                         ],
                     };
-                    verts_vec.put_w4b(&w4b);
+                    verts_vec.put_vertex_data(&w4b);
                 }
 
                 count -= 1;

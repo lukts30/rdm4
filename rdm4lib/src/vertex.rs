@@ -1,6 +1,6 @@
 use bytes::{Buf, Bytes};
-use half::prelude::HalfFloatSliceExt;
 
+use std::mem::*;
 use std::{fmt, str::FromStr};
 
 use crate::*;
@@ -39,50 +39,11 @@ pub enum UniqueIdentifier {
     C4c = 0x5,
     I4b = 0x7,
     W4b = 0x6,
+    Invalid = 0x128,
 }
 
-pub trait GetUniqueIdentifier {
-    fn get_unique_identifier() -> UniqueIdentifier;
-}
-
-impl<T> GetUniqueIdentifier for Position<T> {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::Position
-    }
-}
-
-impl<T> GetUniqueIdentifier for Normal<T> {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::Normal
-    }
-}
-
-impl<T> GetUniqueIdentifier for Tangent<T> {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::GTangent
-    }
-}
-
-impl<T> GetUniqueIdentifier for Texcoord<T> {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::Texcoord
-    }
-}
-
-impl GetUniqueIdentifier for I4b {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::I4b
-    }
-}
-
-impl GetUniqueIdentifier for W4b {
-    fn get_unique_identifier() -> UniqueIdentifier {
-        UniqueIdentifier::W4b
-    }
-}
-
-impl From<u32> for UniqueIdentifier {
-    fn from(i: u32) -> Self {
+impl UniqueIdentifier {
+    const fn from(i: u32) -> Self {
         match i {
             0x0 => UniqueIdentifier::Position,
             0x1 => UniqueIdentifier::Normal,
@@ -92,8 +53,147 @@ impl From<u32> for UniqueIdentifier {
             0x5 => UniqueIdentifier::C4c,
             0x7 => UniqueIdentifier::I4b,
             0x6 => UniqueIdentifier::W4b,
-            _ => todo!(),
+            _ => UniqueIdentifier::Invalid,
         }
+    }
+}
+
+pub trait GetUniqueIdentifier {
+    fn get_unique_identifier() -> UniqueIdentifier;
+}
+
+impl<T, const I: u32, const N: usize> GetUniqueIdentifier for AnnoData<T, I, N> {
+    fn get_unique_identifier() -> UniqueIdentifier {
+        AnnoData::<T, I, N>::TYPE
+    }
+}
+
+impl From<u32> for UniqueIdentifier {
+    fn from(i: u32) -> Self {
+        UniqueIdentifier::from(i)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AnnoData<T, const I: u32, const N: usize> {
+    pub data: [T; N],
+}
+
+impl<T, const I: u32, const N: usize> AnnoData<T, I, N> {
+    const TYPE: UniqueIdentifier = UniqueIdentifier::from(I);
+}
+
+// rust const generics enum are unstable
+pub(crate) type P3f = AnnoData<f32, { UniqueIdentifier::Position as u32 }, 3>;
+pub(crate) type P4h = AnnoData<f16, { UniqueIdentifier::Position as u32 }, 4>;
+pub(crate) type N3f = AnnoData<f32, { UniqueIdentifier::Normal as u32 }, 3>;
+pub(crate) type N4b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 4>;
+pub(crate) type G3f = AnnoData<f32, { UniqueIdentifier::GTangent as u32 }, 3>;
+pub(crate) type G4b = AnnoData<u8, { UniqueIdentifier::GTangent as u32 }, 4>;
+#[allow(dead_code)]
+pub(crate) type B3f = AnnoData<f32, { UniqueIdentifier::Bitangent as u32 }, 3>;
+pub(crate) type B4b = AnnoData<u8, { UniqueIdentifier::Bitangent as u32 }, 4>;
+pub(crate) type T2f = AnnoData<f32, { UniqueIdentifier::Texcoord as u32 }, 2>;
+pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
+pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::I4b as u32 }, 4>;
+pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::W4b as u32 }, 4>;
+
+impl<T: Default, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
+    fn default() -> Self {
+        let data = {
+            // Array Default is limited to N <= 32 and const generic allow arbitrary N. Using unsafe to workaround.
+            let mut data: [MaybeUninit<T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+
+            for elem in &mut data[..].iter_mut() {
+                // slow but safe
+                *elem = MaybeUninit::new(Default::default());
+            }
+            unsafe { 
+                // TODO: proper way unstable MaybeUninit::array_assume_init(data)
+                let ptr = &mut data as *mut _ as *mut [T; N];
+                let res = ptr.read();
+                std::mem::forget(data);
+                res
+            
+            }
+        };
+        Self { data }
+    }
+}
+
+impl<const I: u32, const N: usize, const M: usize> From<AnnoData<f16, I, N>>
+    for AnnoData<f32, I, M>
+{
+    fn from(input: AnnoData<f16, I, N>) -> Self {
+        let mut data = Self::default().data;
+        for (elem, k) in &mut data[..].iter_mut().zip(input.data.iter()) {
+            *elem = f32::from(*k);
+        }
+        Self { data }
+    }
+}
+
+impl<const I: u32, const M: usize> From<AnnoData<u8, I, 4>> for AnnoData<f32, I, M> {
+    fn from(input: AnnoData<u8, I, 4>) -> Self {
+        let mut data = Self::default().data;
+        for (elem, k) in &mut data[..].iter_mut().zip(input.data.iter()) {
+            *elem = ((2.0f32 * *k as f32) / 255.0f32) - 1.0f32;
+        }
+        Self { data }
+    }
+}
+
+pub trait GetVertex {
+    fn get_unit(b: &mut Bytes) -> Self;
+}
+
+impl<const I: u32, const N: usize> GetVertex for AnnoData<u8, I, N> {
+    fn get_unit(b: &mut Bytes) -> Self {
+        let mut o = Self::default();
+        for n in o.data.iter_mut() {
+            *n = b.get_u8();
+        }
+        o
+    }
+}
+
+impl<const I: u32, const N: usize> GetVertex for AnnoData<f16, I, N> {
+    fn get_unit(b: &mut Bytes) -> Self {
+        let mut o = Self::default();
+        for n in o.data.iter_mut() {
+            *n = f16::from_bits(b.get_u16_le());
+        }
+        o
+    }
+}
+
+impl<const I: u32, const N: usize> GetVertex for AnnoData<f32, I, N> {
+    fn get_unit(b: &mut Bytes) -> Self {
+        let mut o = Self::default();
+        for n in o.data.iter_mut() {
+            *n = b.get_f32_le();
+        }
+        o
+    }
+}
+
+pub trait Normalise {
+    /// calculate unit vector from self
+    fn normalise(&self) -> Self;
+}
+
+impl<const I: u32, const N: usize> Normalise for AnnoData<f32, I, N> {
+    fn normalise(&self) -> Self {
+        let mut o = Self::default();
+        let mut sq = 0f32;
+        for e in self.data.iter() {
+            sq += e * e;
+        }
+        sq = sq.sqrt();
+        for (n, inp) in o.data.iter_mut().zip(self.data.iter()) {
+            *n = inp / sq;
+        }
+        o
     }
 }
 
@@ -130,21 +230,15 @@ impl VertexFormat2 {
 
     // TODO FIX THIS IS **totally inefficient**
     pub fn set_weight_sum(&mut self) {
-        let n = self.find(UniqueIdentifier::W4b).len();
+        let n = self.find_component_offsets(UniqueIdentifier::W4b).count();
         if n == 0 {
             self.weight_sum = Some(vec![255; self.len() as usize]);
         } else {
             let mut vec: Vec<u32> = vec![0; self.len() as usize];
             for i in 0..n {
                 if let Some(iter) = self.iter::<W4b, W4b>(i) {
-                    for (e, dst) in iter.zip(vec.iter_mut()) {
-                        let n = e.blend_weight[0] as u32
-                            + e.blend_weight[1] as u32
-                            + e.blend_weight[2] as u32
-                            + e.blend_weight[3] as u32;
-
-                        *dst += n;
-                    }
+                    iter.zip(vec.iter_mut())
+                        .for_each(|(e, dst)| *dst += e.data.iter().map(|&w| w as u32).sum::<u32>());
                 }
             }
             self.weight_sum = Some(vec);
@@ -236,28 +330,17 @@ impl VertexFormat2 {
         Self::new(vec, vertex_count, vertex_size, vertex_offset, vertex_buffer)
     }
 
-    pub fn find(&self, uniq: UniqueIdentifier) -> Vec<usize> {
-        let mut v = Vec::new();
-        let mut last = 0;
-        let end = self.identifiers.len();
-        loop {
-            let p = self.identifiers[last..end]
-                .iter()
-                .position(|e| e.uniq == uniq);
-            match p {
-                Some(pos) => {
-                    v.push(last + pos);
-                    last = last + pos + 1;
-                    if last >= end {
-                        break;
-                    }
+    pub fn find_component_offsets<'a>(&'a self, search_ident: UniqueIdentifier) -> impl Iterator<Item = usize> + 'a {
+        self.identifiers
+            .iter()
+            .enumerate()
+            .filter_map(move |(index, value)| {
+                if value.uniq == search_ident {
+                    Some(index)
+                } else {
+                    None
                 }
-                None => {
-                    break;
-                }
-            }
-        }
-        v
+            })
     }
 
     pub fn len(&self) -> u32 {
@@ -276,7 +359,7 @@ impl VertexFormat2 {
         &'a self,
         set: usize,
     ) -> Option<impl Iterator<Item = T> + 'a> {
-        let offset_idx = self.find(T::get_unique_identifier());
+        let offset_idx: Vec<usize> = self.find_component_offsets(T::get_unique_identifier()).collect();
         if offset_idx.is_empty() {
             return None;
         }
@@ -284,9 +367,10 @@ impl VertexFormat2 {
         let offset = self.offsets[offset_idx[set]];
 
         let unit_size = self.identifiers[offset_idx[set]].get_size() as usize;
-        let mem_size = std::mem::size_of::<Z>();
-        // TODO with min_const_generics assert size_of eq.
-        trace!("{} : {}", unit_size, mem_size);
+        let mem_size_small = std::mem::size_of::<Z>();
+        let mem_size_target = std::mem::size_of::<T>();
+        assert!(mem_size_small == unit_size || mem_size_target == unit_size);
+
         let unit = &self.identifiers[offset_idx[set]];
         // TODO: this needs far better checking!
         let need_convert = unit.unit_size == IdentifierSize::U16
@@ -322,7 +406,7 @@ impl VertexFormat2 {
     pub fn w4b_default_iter(&self) -> impl Iterator<Item = W4b> + '_ {
         std::iter::from_fn(|| {
             Some(W4b {
-                blend_weight: [255, 0, 0, 0],
+                data: [255, 0, 0, 0],
             })
         })
     }
@@ -343,185 +427,6 @@ impl From<u32> for IdentifierSize {
             0x6 => IdentifierSize::U16,
             0x7 => IdentifierSize::F32,
             _ => todo!(),
-        }
-    }
-}
-
-pub trait GetVertex {
-    fn get_unit(b: &mut Bytes) -> Self;
-}
-
-impl GetVertex for Position<f16> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Position {
-            pos: [
-                f16::from_bits(b.get_u16_le()),
-                f16::from_bits(b.get_u16_le()),
-                f16::from_bits(b.get_u16_le()),
-                f16::from_bits(b.get_u16_le()),
-            ],
-        }
-    }
-}
-
-impl GetVertex for Position<f32> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Position {
-            pos: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
-        }
-    }
-}
-
-impl From<Position<f16>> for Position<f32> {
-    #[inline]
-    fn from(p4h: Position<f16>) -> Self {
-        let mut buffer = [0f32; 4];
-        p4h.pos.convert_to_f32_slice(&mut buffer);
-        Position { pos: buffer }
-    }
-}
-
-pub trait Normalise {
-    /// calculate unit vector from self
-    fn normalise(&self) -> Self;
-}
-
-impl Normalise for Normal<f32> {
-    #[inline]
-    fn normalise(&self) -> Self {
-        let n = self.normals;
-        let len = ((n[0] * n[0]) + (n[1] * n[1]) + (n[2] * n[2])).sqrt();
-        let unx = n[0] / len;
-        let uny = n[1] / len;
-        let unz = n[2] / len;
-        Normal {
-            normals: [unx, uny, unz, n[3]],
-        }
-    }
-}
-
-impl Normalise for Tangent<f32> {
-    #[inline]
-    fn normalise(&self) -> Self {
-        let n = self.tangent;
-        let len = ((n[0] * n[0]) + (n[1] * n[1]) + (n[2] * n[2])).sqrt();
-        let unx = n[0] / len;
-        let uny = n[1] / len;
-        let unz = n[2] / len;
-        Tangent {
-            tangent: [unx, uny, unz, n[3]],
-        }
-    }
-}
-
-impl GetVertex for Normal<u8> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Normal {
-            normals: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
-        }
-    }
-}
-
-impl GetVertex for Normal<f32> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Normal {
-            normals: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
-        }
-    }
-}
-
-impl GetVertex for Tangent<f32> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Tangent {
-            tangent: [b.get_f32_le(), b.get_f32_le(), b.get_f32_le(), f32::NAN],
-        }
-    }
-}
-
-impl From<Tangent<u8>> for Tangent<f32> {
-    #[inline]
-    fn from(g4b: Tangent<u8>) -> Self {
-        let buffer: [f32; 4] = [
-            -(((2.0f32 * g4b.tangent[0] as f32) / 255.0f32) - 1.0f32),
-            -(((2.0f32 * g4b.tangent[1] as f32) / 255.0f32) - 1.0f32),
-            -(((2.0f32 * g4b.tangent[2] as f32) / 255.0f32) - 1.0f32),
-            g4b.tangent[3] as f32,
-        ];
-        Tangent { tangent: buffer }
-    }
-}
-
-impl From<Normal<u8>> for Normal<f32> {
-    #[inline]
-    fn from(n4b: Normal<u8>) -> Self {
-        let buffer: [f32; 4] = [
-            ((2.0f32 * n4b.normals[0] as f32) / 255.0f32) - 1.0f32,
-            ((2.0f32 * n4b.normals[1] as f32) / 255.0f32) - 1.0f32,
-            ((2.0f32 * n4b.normals[2] as f32) / 255.0f32) - 1.0f32,
-            ((2.0f32 * n4b.normals[3] as f32) / 255.0f32) - 1.0f32,
-        ];
-        Normal { normals: buffer }
-    }
-}
-
-impl GetVertex for Tangent<u8> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Tangent {
-            tangent: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
-        }
-    }
-}
-
-impl GetVertex for Texcoord<f16> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Texcoord {
-            tex: [
-                f16::from_bits(b.get_u16_le()),
-                f16::from_bits(b.get_u16_le()),
-            ],
-        }
-    }
-}
-
-impl GetVertex for Texcoord<f32> {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        Texcoord {
-            tex: [b.get_f32_le(), b.get_f32_le()],
-        }
-    }
-}
-
-impl From<Texcoord<f16>> for Texcoord<f32> {
-    #[inline]
-    fn from(t2h: Texcoord<f16>) -> Self {
-        Texcoord {
-            tex: [t2h.tex[0].to_f32(), t2h.tex[1].to_f32()],
-        }
-    }
-}
-
-impl GetVertex for I4b {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        I4b {
-            blend_idx: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
-        }
-    }
-}
-
-impl GetVertex for W4b {
-    #[inline]
-    fn get_unit(b: &mut Bytes) -> Self {
-        W4b {
-            blend_weight: [b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8()],
         }
     }
 }

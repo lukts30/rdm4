@@ -17,9 +17,9 @@ use std::str;
 mod tests {
     use super::*;
     use rdm4lib::{
-        gltf_export::GltfExportFormat, rdm_material::RdMaterial, vertex::TargetVertexFormat,
+        gltf_export::GltfExportFormat, vertex::TargetVertexFormat,
     };
-    use std::{fs, path::PathBuf};
+    use std::path::PathBuf;
 
     #[test]
     #[cfg_attr(miri, ignore)]

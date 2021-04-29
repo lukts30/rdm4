@@ -1,9 +1,11 @@
 use bytes::{BufMut, BytesMut};
+use half::f16;
+use nalgebra::*;
 
 use std::{convert::TryInto, fs, path::PathBuf};
 use std::{fs::OpenOptions, io::Write};
 
-use crate::*;
+use crate::{vertex::AnnoData, RdModell};
 use byteorder::ByteOrder;
 
 pub struct RdWriter {
@@ -506,44 +508,20 @@ impl From<RdModell> for RdWriter {
     }
 }
 
-pub trait PutVertex {
-    fn put_p4h(&mut self, p4h: &Position<f16>);
-    fn put_n4b(&mut self, n4b: &Normal<u8>);
-    fn put_g4b(&mut self, g4b: &Tangent<u8>);
-    fn put_b4b(&mut self, b4b: &Bitangent);
-    fn put_t2h(&mut self, t2h: &Texcoord<f16>);
-    fn put_i4b(&mut self, i4b: &I4b);
-    fn put_w4b(&mut self, w4b: &W4b);
-    fn put_c4c(&mut self, c4c: &C4c);
+pub trait PutVertex<T, const I: u32, const N: usize> {
+    fn put_vertex_data(&mut self, input: &AnnoData<T, I, N>);
 }
 
-impl PutVertex for BytesMut {
-    fn put_p4h(&mut self, p4h: &Position<f16>) {
-        self.put_u16_le(p4h.pos[0].to_bits());
-        self.put_u16_le(p4h.pos[1].to_bits());
-        self.put_u16_le(p4h.pos[2].to_bits());
-        self.put_u16_le(p4h.pos[3].to_bits());
+impl<const I: u32, const N: usize> PutVertex<u8, I, N> for BytesMut {
+    fn put_vertex_data(&mut self, input: &AnnoData<u8, I, N>) {
+        self.put_slice(&input.data);
     }
-    fn put_n4b(&mut self, n4b: &Normal<u8>) {
-        self.put_slice(&n4b.normals);
-    }
-    fn put_g4b(&mut self, g4b: &Tangent<u8>) {
-        self.put_slice(&g4b.tangent);
-    }
-    fn put_b4b(&mut self, b4b: &Bitangent) {
-        self.put_slice(&b4b.binormal);
-    }
-    fn put_t2h(&mut self, t2h: &Texcoord<f16>) {
-        self.put_u16_le(t2h.tex[0].to_bits());
-        self.put_u16_le(t2h.tex[1].to_bits());
-    }
-    fn put_i4b(&mut self, i4b: &I4b) {
-        self.put_slice(&i4b.blend_idx);
-    }
-    fn put_w4b(&mut self, w4b: &W4b) {
-        self.put_slice(&w4b.blend_weight);
-    }
-    fn put_c4c(&mut self, c4c: &C4c) {
-        self.put_slice(&c4c.unknown);
+}
+
+impl<const I: u32, const N: usize> PutVertex<f16, I, N> for BytesMut {
+    fn put_vertex_data(&mut self, input: &AnnoData<f16, I, N>) {
+        for e in input.data.iter() {
+            self.put_u16_le(e.to_bits());
+        }
     }
 }

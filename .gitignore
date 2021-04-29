@@ -8,3 +8,5 @@
 *.glb
 *.exe
 !/rdm4lib/rdm/*.rdm
+gltf_validator
+.vscode/

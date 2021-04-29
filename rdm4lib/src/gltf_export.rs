@@ -1,5 +1,6 @@
+use crate::vertex::I4b;
+use crate::vertex::*;
 use gltf::json;
-use half::f16;
 use std::{
     borrow::Cow,
     convert::TryInto,
@@ -14,9 +15,8 @@ use json::validation::Checked::Valid;
 use std::io::Write;
 
 use crate::rdm_material::RdMaterial;
-use crate::{vertex::Normalise, vertex::UniqueIdentifier, RdModell};
-use crate::{I4b, Normal, Position, Tangent, Texcoord};
-use crate::{RdJoint, W4b};
+use crate::RdJoint;
+use crate::RdModell;
 
 use nalgebra::*;
 use std::collections::VecDeque;
@@ -348,7 +348,7 @@ impl RdGltfBuilder {
         if normalise {
             self.rdm.vertex.set_weight_sum();
         }
-        let n = self.rdm.vertex.find(UniqueIdentifier::I4b).len();
+        let n = self.rdm.vertex.find_component_offsets(UniqueIdentifier::I4b).count();
         let mut ibuffers = Vec::with_capacity(n);
         let mut wbuffers = Vec::with_capacity(n);
         for i in 0..n {
@@ -357,56 +357,42 @@ impl RdGltfBuilder {
                     BytesMut::with_capacity((4 + 4 * 4) * self.rdm.vertex.len() as usize);
                 let mut joint_buf = BytesMut::with_capacity(4 * self.rdm.vertex.len() as usize);
 
-                let w4b_iter: Box<dyn Iterator<Item = W4b> + '_> =
+                let (mut a, mut b);
+                let w4b_iter: &mut dyn Iterator<Item = W4b> =
                     match self.rdm.vertex.iter::<W4b, W4b>(i) {
-                        Some(i) => Box::new(i),
-                        None => Box::new(self.rdm.vertex.w4b_default_iter()),
+                        Some(w) => {
+                            a = w;
+                            &mut a
+                        },
+                        None => {
+                            b = self.rdm.vertex.w4b_default_iter();
+                            &mut b 
+                        },
                     };
 
-                for ((e, w), sum) in iter
-                    .zip(w4b_iter)
-                    .zip(self.rdm.vertex.weight_sum.as_ref().unwrap())
-                {
+                // TODO: fix weight_sum unwrap (normalise == false)
+                for ((vjoint, vweight), sum) in iter.zip(w4b_iter).zip(self.rdm.vertex.weight_sum.as_ref().unwrap()) {
                     if normalise {
                         // ACCESSOR_JOINTS_USED_ZERO_WEIGHT
-                        if w.blend_weight[0] != 0 {
-                            joint_buf.put_u8(e.blend_idx[0]);
-                        } else {
-                            joint_buf.put_u8(0);
+                        for (w, j) in vweight
+                            .data
+                            .iter()
+                            .zip(vjoint.data.iter())
+                        {
+                            if *w == 0 {
+                                joint_buf.put_u8(0);
+                            } else {
+                                joint_buf.put_u8(*j);
+                            }
+                            // ACCESSOR_WEIGHTS_NON_NORMALIZED
+                            let sum_float: f32 = 255.0f32 / *sum as f32;
+                            weight_buf.put_f32_le(*w as f32 / 255.0 * sum_float);
                         }
-                        if w.blend_weight[1] != 0 {
-                            joint_buf.put_u8(e.blend_idx[1]);
-                        } else {
-                            joint_buf.put_u8(0);
-                        }
-                        if w.blend_weight[2] != 0 {
-                            joint_buf.put_u8(e.blend_idx[2]);
-                        } else {
-                            joint_buf.put_u8(0);
-                        }
-                        if w.blend_weight[3] != 0 {
-                            joint_buf.put_u8(e.blend_idx[3]);
-                        } else {
-                            joint_buf.put_u8(0);
-                        }
-
-                        // ACCESSOR_WEIGHTS_NON_NORMALIZED
-                        let sum_float: f32 = 255.0f32 / *sum as f32;
-
-                        weight_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0 * sum_float); // > 0.0
-                        weight_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0 * sum_float); // 0.0
-                        weight_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0 * sum_float); // 0.0
-                        weight_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0 * sum_float);
                     } else {
-                        joint_buf.put_u8(e.blend_idx[0]);
-                        joint_buf.put_u8(e.blend_idx[1]);
-                        joint_buf.put_u8(e.blend_idx[2]);
-                        joint_buf.put_u8(e.blend_idx[3]);
-
-                        weight_buf.put_f32_le(w.blend_weight[0] as f32 / 255.0); // > 0.0
-                        weight_buf.put_f32_le(w.blend_weight[1] as f32 / 255.0); // 0.0
-                        weight_buf.put_f32_le(w.blend_weight[2] as f32 / 255.0); // 0.0
-                        weight_buf.put_f32_le(w.blend_weight[3] as f32 / 255.0);
+                        for (w, j) in vweight.data.iter().zip(vjoint.data.iter()) {
+                            joint_buf.put_u8(*j);
+                            weight_buf.put_f32_le(*w as f32 / 255.0);
+                        }
                     }
                 }
                 wbuffers.push(BufferContainer::Bytes(weight_buf.freeze()));
@@ -663,15 +649,10 @@ impl RdGltfBuilder {
         let mut min: Vec<f32> = vec![f32::MAX, f32::MAX, f32::MAX];
         let mut max: Vec<f32> = vec![f32::MIN, f32::MIN, f32::MIN];
 
-        for p4h in self
-            .rdm
-            .vertex
-            .iter::<Position<f16>, Position<f32>>(0)
-            .unwrap()
-        {
-            let x = p4h.pos[0];
-            let y = p4h.pos[1];
-            let z = p4h.pos[2];
+        for p4h in self.rdm.vertex.iter::<P4h, P3f>(0).unwrap() {
+            let x = p4h.data[0];
+            let y = p4h.data[1];
+            let z = p4h.data[2];
 
             min[0] = x.min(min[0]);
             min[1] = y.min(min[1]);
@@ -703,12 +684,12 @@ impl RdGltfBuilder {
 
     fn put_tex(&mut self) {
         let mut tbuffers = Vec::new();
-        if let Some(iter) = self.rdm.vertex.iter::<Texcoord<f16>, Texcoord<f32>>(0) {
+        if let Some(iter) = self.rdm.vertex.iter::<T2h, T2f>(0) {
             let mut buff = BytesMut::with_capacity(2 * 4 * self.rdm.vertex.vertex_count as usize);
 
             for t2h in iter {
-                buff.put_f32_le(t2h.tex[0]);
-                buff.put_f32_le(t2h.tex[1]);
+                buff.put_f32_le(t2h.data[0]);
+                buff.put_f32_le(t2h.data[1]);
             }
             tbuffers.push(BufferContainer::Bytes(buff.freeze()));
         }
@@ -865,9 +846,9 @@ impl RdGltfBuilder {
 
     fn put_normal(&mut self) {
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
-        if let Some(iter) = self.rdm.vertex.iter::<Normal<u8>, Normal<f32>>(0) {
+        if let Some(iter) = self.rdm.vertex.iter::<N4b, N3f>(0) {
             for n4b in iter {
-                let n = n4b.normalise().normals;
+                let n = n4b.normalise().data;
                 buff.put_f32_le(n[0]);
                 buff.put_f32_le(n[1]);
                 buff.put_f32_le(n[2]);
@@ -891,19 +872,21 @@ impl RdGltfBuilder {
     fn put_tangent(&mut self) {
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
 
-        if let Some(iter) = self.rdm.vertex.iter::<Tangent<u8>, Tangent<f32>>(0) {
-            for g4b in iter {
-                let t = g4b.normalise().tangent;
+        if let Some(iter) = self.rdm.vertex.iter::<G4b, G3f>(0) {
+            for g3f in iter {
+                let t = g3f.normalise().data;
                 buff.put_f32_le(t[0]);
                 buff.put_f32_le(t[1]);
                 buff.put_f32_le(t[2]);
 
-                // TODO is this right ?
-                if relative_eq!(g4b.tangent[3], 1.0f32) {
+                buff.put_f32_le(1.0);
+                /* TODO is this right ?
+                if relative_eq!(g4b.data[3], 1.0f32) {
                     buff.put_f32_le(1.0);
                 } else {
                     buff.put_f32_le(-1.0);
                 }
+                */
             }
         }
         if !buff.is_empty() {
