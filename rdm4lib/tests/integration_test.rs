@@ -20,10 +20,10 @@ mod tests {
     use std::path::PathBuf;
 
     #[cfg(target_os = "windows")]
-    use rdm4::librdm_material::RdMaterial;
+    use rdm4lib::rdm_material::RdMaterial;
     #[cfg(target_os = "windows")]
     use std::fs;
-    
+
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
