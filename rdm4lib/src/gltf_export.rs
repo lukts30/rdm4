@@ -721,7 +721,7 @@ impl RdGltfBuilder {
 
                 let fname = mat.file_stem().unwrap().to_str().unwrap();
                 let image = json::Image {
-                    uri: Some(format!("{}{}", fname, ".png")),
+                    uri: Some(format!("{}{}", fname, ".PNG")),
                     buffer_view: None,
                     mime_type: None,
                     extensions: None,
