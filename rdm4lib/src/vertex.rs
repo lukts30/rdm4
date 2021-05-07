@@ -329,6 +329,7 @@ impl VertexFormat2 {
         Self::new(vec, vertex_count, vertex_size, vertex_offset, vertex_buffer)
     }
 
+    #[allow(clippy::needless_lifetimes)]
     pub fn find_component_offsets<'a>(
         &'a self,
         search_ident: UniqueIdentifier,
