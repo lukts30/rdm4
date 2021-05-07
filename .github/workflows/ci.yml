@@ -36,27 +36,47 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        name: [windows, linux]
+
+        include:
+          - name: linux
+            os: ubuntu-latest
+            artifact_name: rdm4-bin
+            asset_name: rdm4-bin-linux-amd64
+          - name: windows
+            os: windows-latest
+            artifact_name: rdm4-bin.exe
+            asset_name: rdm4-bin-windows-amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      - name: get glTF Validator
-        run: wget -qO- https://github.com/KhronosGroup/glTF-Validator/releases/download/2.0.0-dev.3.2/gltf_validator-2.0.0-dev.3.2-linux64.tar.xz | tar xvfJ -
       - name: cargo fetch
         uses: actions-rs/cargo@v1
         with:
           command: fetch
+          args: --locked
       - name: cargo test build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --tests --release --workspace
+          args: --tests --release --workspace --locked
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --workspace
+          args: --release --workspace --locked
+      - name: cargo build release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --workspace --locked
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/release/${{ matrix.artifact_name }}
