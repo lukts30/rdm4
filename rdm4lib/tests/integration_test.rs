@@ -19,6 +19,11 @@ mod tests {
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::path::PathBuf;
 
+    #[cfg(target_os = "windows")]
+    use rdm4::librdm_material::RdMaterial;
+    #[cfg(target_os = "windows")]
+    use std::fs;
+    
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
