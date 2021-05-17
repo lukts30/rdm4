@@ -3,13 +3,17 @@ use std::process::Command;
 
 #[derive(Clone, Debug)]
 pub struct RdMaterial {
-    pub c_model_diff_tex: Vec<PathBuf>,
+    c_model_diff_tex: Vec<PathBuf>,
 }
 
 impl RdMaterial {
-    pub fn new(path: &Path) -> Self {
+    pub fn new<P: AsRef<Path> + Into<PathBuf>>(paths: Vec<P>) -> Self {
+        let mut v = Vec::with_capacity(paths.len());
+        for p in paths {
+            v.push(p.into());
+        }
         RdMaterial {
-            c_model_diff_tex: vec![PathBuf::from(path)],
+            c_model_diff_tex: v,
         }
     }
 
@@ -38,5 +42,23 @@ impl RdMaterial {
             trace!("{:?}", &ab_dst.to_str().unwrap()[4..]);
             trace!("{:?}", output);
         }
+    }
+}
+
+impl<P: AsRef<Path>> From<P> for RdMaterial
+where
+    PathBuf: From<P>,
+{
+    fn from(path: P) -> Self {
+        RdMaterial::new(vec![PathBuf::from(path)])
+    }
+}
+
+impl<'a> IntoIterator for &'a RdMaterial {
+    type Item = &'a PathBuf;
+    type IntoIter = std::slice::Iter<'a, PathBuf>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.c_model_diff_tex.iter()
     }
 }

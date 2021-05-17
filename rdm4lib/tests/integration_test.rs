@@ -19,9 +19,8 @@ mod tests {
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::path::PathBuf;
 
-    #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
-    #[cfg(target_os = "windows")]
+
     use std::fs;
 
     #[test]
@@ -136,9 +135,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     fn excavator_tycoons_lod1() {
         let mut rdm = RdModell::from("rdm/excavator_tycoons_lod1.rdm");
-        rdm.mat = Some(RdMaterial::new(Path::new(
-            r"rdm/excavator_tycoons_diff_0.dds",
-        )));
+        rdm.mat = Some(RdMaterial::from(r"rdm/excavator_tycoons_diff_0.dds"));
         assert_eq!(rdm.vertex.len(), 5225);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.mesh_info.len(), 1);
@@ -161,16 +158,14 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    #[cfg(target_os = "windows")]
+
     fn residence_tier02_estate02() {
         let mut rdm = RdModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
-        rdm.mat = Some(RdMaterial {
-            c_model_diff_tex: vec![
-                PathBuf::from("rdm/residence_tier02_04_diff_0.dds"),
-                PathBuf::from("rdm/residence_02_05_diff_0.dds"),
-                PathBuf::from("rdm/brick_wall_white_estate_01_diff_0.dds"),
-            ],
-        });
+        rdm.mat = Some(RdMaterial::new(vec![
+            "rdm/residence_tier02_04_diff_0.dds",
+            "rdm/residence_02_05_diff_0.dds",
+            "rdm/brick_wall_white_estate_01_diff_0.dds",
+        ]));
         assert_eq!(rdm.vertex.len(), 1965);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.mesh_info.len(), 3);

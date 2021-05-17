@@ -204,9 +204,7 @@ fn entry_do_work(mut opts: Opts) {
         }
 
         if let Some(diffusetexture) = opts.diffusetexture {
-            rdm.mat = Some(RdMaterial {
-                c_model_diff_tex: diffusetexture,
-            });
+            rdm.mat = Some(RdMaterial::new(diffusetexture));
         }
         info!("running gltf_export ...");
         let gltf_export_format = if opts.gltf_separate {

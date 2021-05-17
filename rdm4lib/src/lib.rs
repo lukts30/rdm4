@@ -306,31 +306,20 @@ pub struct Triangle {
     indices: [u16; 3],
 }
 
-impl From<&Path> for RdModell {
-    fn from(f_path: &Path) -> Self {
-        let mut f = File::open(f_path).unwrap();
+impl<P: AsRef<Path>> From<P> for RdModell {
+    fn from(f_path: P) -> Self {
+        let mut f = File::open(&f_path).unwrap();
         let metadata = f.metadata().unwrap();
         let len = metadata.len() as usize;
         let mut buffer = vec![0; len];
         std::io::Read::read_exact(&mut f, &mut buffer).expect("I/O ERROR");
 
         let buffer_len = buffer.len();
-        info!("loaded {:?} into buffer", f_path.to_str().unwrap());
+
+        info!("loaded {:?} into buffer", f_path.as_ref().to_str().unwrap());
 
         info!("buffer size: {}", buffer_len);
         RdModell::new(buffer)
-    }
-}
-
-impl From<&str> for RdModell {
-    fn from(str_path: &str) -> Self {
-        RdModell::from(Path::new(str_path))
-    }
-}
-
-impl From<&String> for RdModell {
-    fn from(string_path: &String) -> Self {
-        RdModell::from(Path::new(string_path))
     }
 }
 

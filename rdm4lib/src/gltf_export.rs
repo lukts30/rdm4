@@ -713,7 +713,8 @@ impl RdGltfBuilder {
     fn put_material(&mut self) {
         let mut info_vec = Vec::new();
         if let Some(mats) = self.rdm.mat.as_ref() {
-            for (i, mat) in mats.c_model_diff_tex.iter().enumerate() {
+            //for (i, mat) in mats.c_model_diff_tex.iter().enumerate() {
+            for (i, mat) in mats.into_iter().enumerate() {
                 let sampler = json::texture::Sampler {
                     ..Default::default()
                 };

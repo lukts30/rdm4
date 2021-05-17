@@ -128,32 +128,20 @@ impl RdAnim {
     }
 }
 
-impl From<&Path> for RdAnim {
-    fn from(f_path: &Path) -> Self {
-        let mut f = File::open(f_path).unwrap();
+impl<P: AsRef<Path>> From<P> for RdAnim {
+    fn from(f_path: P) -> Self {
+        let mut f = File::open(&f_path).unwrap();
         let mut buffer = Vec::new();
         std::io::Read::read_to_end(&mut f, &mut buffer).ok();
 
         let buffer_len = buffer.len();
-        info!("loaded {:?} into buffer", f_path.to_str().unwrap());
+        info!("loaded {:?} into buffer", f_path.as_ref().to_str().unwrap());
         info!("buffer size: {}", buffer_len);
         RdModell::check_has_magic_byte(&buffer);
 
         RdAnim::new(
             buffer,
-            String::from(f_path.file_stem().unwrap().to_str().unwrap()),
+            String::from(f_path.as_ref().file_stem().unwrap().to_str().unwrap()),
         )
-    }
-}
-
-impl From<&str> for RdAnim {
-    fn from(str_path: &str) -> Self {
-        RdAnim::from(Path::new(str_path))
-    }
-}
-
-impl From<&String> for RdAnim {
-    fn from(string_path: &String) -> Self {
-        RdAnim::from(Path::new(string_path))
     }
 }
