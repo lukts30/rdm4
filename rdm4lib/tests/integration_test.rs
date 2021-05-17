@@ -19,8 +19,9 @@ mod tests {
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::path::PathBuf;
 
+    #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
-
+    #[cfg(target_os = "windows")]
     use std::fs;
 
     #[test]
@@ -158,7 +159,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-
+    #[cfg(target_os = "windows")]
     fn residence_tier02_estate02() {
         let mut rdm = RdModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
         rdm.mat = Some(RdMaterial::new(vec![
