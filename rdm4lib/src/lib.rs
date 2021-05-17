@@ -1,5 +1,5 @@
 use bytes::{Buf, Bytes};
-use std::{cmp::Ordering, path::Path};
+use std::path::Path;
 
 use std::fs::File;
 
@@ -68,28 +68,17 @@ pub struct RdJoint {
     locked: bool,
 }
 
-#[derive(Debug, Eq)]
+#[derive(Debug)]
 pub struct MeshInstance {
     start_index_location: u32,
     index_count: u32,
     material: u32,
 }
 
-impl Ord for MeshInstance {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.material.cmp(&other.material)
-    }
-}
-
-impl PartialOrd for MeshInstance {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for MeshInstance {
-    fn eq(&self, other: &Self) -> bool {
-        self.material == other.material
+impl MeshInstance {
+    pub fn get_max_material(instances: &[MeshInstance]) -> u32 {
+        let max = instances.iter().map(|e| e.material).max();
+        max.unwrap()
     }
 }
 
@@ -141,7 +130,6 @@ impl RdModell {
         }
         warn!("meshes: {:?}", v);
         assert_eq!(v.is_empty(), false);
-        v.sort();
         v
     }
 

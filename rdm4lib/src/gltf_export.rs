@@ -1,4 +1,3 @@
-use crate::vertex::I4b;
 use crate::vertex::*;
 use gltf::json;
 use std::{
@@ -942,21 +941,17 @@ impl RdGltfBuilder {
         };
 
         let mut triangle_vec = Vec::new();
-        for (_i, ((submesh, idx), _mesh_idx)) in self
-            .rdm
-            .mesh_info
-            .iter()
-            .zip(self.idx.unwrap())
-            .zip(self.material_idx.unwrap())
-            .enumerate()
-        {
-            //assert_eq!(i as u32, submesh.mesh);
+
+        let mats = self.material_idx.unwrap();
+        let indices_vec = self.idx.unwrap();
+        assert_eq!(indices_vec.len(), self.rdm.mesh_info.len());
+        for (i, mesh) in self.rdm.mesh_info.iter().enumerate() {
             let primitive = json::mesh::Primitive {
                 attributes: self.attr_map.clone(),
                 extensions: Default::default(),
                 extras: Default::default(),
-                indices: Some(json::Index::new(idx)),
-                material: Some(json::Index::new(submesh.material)),
+                indices: Some(json::Index::new(indices_vec[i])),
+                material: Some(json::Index::new(mats[mesh.material as usize])),
                 mode: Valid(json::mesh::Mode::Triangles),
                 targets: None,
             };
