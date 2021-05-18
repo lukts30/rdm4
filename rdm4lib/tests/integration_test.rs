@@ -82,11 +82,7 @@ mod tests {
             .collect();
 
         assert_eq!(r#"Errors: 0"#, info[0]);
-        // assert_eq!(r#"Warnings: 0"#, info[1]);
-        assert_eq!(
-            true,
-            r#"Warnings: 0"# == info[1] || r#"Warnings: 1"# == info[1]
-        );
+        assert_eq!(r#"Warnings: 0"#, info[1]);
 
         let mut f = File::open("gltf_out/out.gltf.report.json").unwrap();
         let mut buffer = Vec::new();
@@ -117,17 +113,11 @@ mod tests {
         );
 
         assert_eq!(
-            true,
+            0,
             v["issues"]["numWarnings"]
                 .to_string()
                 .parse::<u32>()
                 .unwrap()
-                == 0
-                || v["issues"]["numWarnings"]
-                    .to_string()
-                    .parse::<u32>()
-                    .unwrap()
-                    == 1
         );
     }
 

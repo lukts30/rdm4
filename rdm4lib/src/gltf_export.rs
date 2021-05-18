@@ -771,7 +771,7 @@ impl RdGltfBuilder {
                 // FALSE WARNING
                 // MATERIAL_ALPHA_CUTOFF_INVALID_MODE
                 // This value is ignored for other modes.
-                alpha_cutoff: json::material::AlphaCutoff(0.0f32),
+                alpha_cutoff: None,
                 alpha_mode: Valid(json::material::AlphaMode::Opaque),
                 pbr_metallic_roughness: pbr,
                 ..Default::default()
