@@ -1,5 +1,8 @@
-use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Clone, Debug)]
 pub struct RdMaterial {
@@ -30,6 +33,20 @@ impl RdMaterial {
         for p in self.c_model_diff_tex.iter() {
             let ab_path = p.canonicalize().unwrap();
             let ab_dst = dst.canonicalize().unwrap();
+
+            let mut file_dst = ab_dst.join(ab_path.file_stem().unwrap());
+            file_dst.set_extension("PNG");
+            if file_dst.is_file() {
+                match fs::remove_file(&file_dst) {
+                    Ok(_) => {
+                        debug!("removed: {:?}", &file_dst)
+                    }
+                    Err(e) => {
+                        debug!("failed to remove: {:?}, {:?}", &file_dst, e)
+                    }
+                }
+            }
+
             let output = Command::new("texconv.exe")
                 .arg(&ab_path.as_os_str())
                 .arg(r"-o")

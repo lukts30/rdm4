@@ -3,8 +3,9 @@ use gltf::json;
 use std::{
     borrow::Cow,
     convert::TryInto,
-    fs::{self, OpenOptions},
-    io,
+    env,
+    fs::{self, File, OpenOptions},
+    io::{self, Read},
     path::PathBuf,
 };
 
@@ -774,21 +775,45 @@ impl RdGltfBuilder {
         self.material_idx = Some(material_idx_vec);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn put_attr(
-        &mut self,
+    fn run_dds(&mut self, embed_image_buffer: bool) {
+        if let Some(mats) = self.rdm.mat.as_ref() {
+            let dir = env::temp_dir();
+            mats.run_dds_converter(&dir);
+
+            if embed_image_buffer {
+                let tmp_dir = env::temp_dir();
+                for e in self.image_vec.iter_mut() {
+                    let src_dds_file = tmp_dir.join(e.uri.as_ref().unwrap());
+                    let mut f = File::open(src_dds_file).unwrap();
+                    // prealloc 10 mebibytes for the png
+                    let mut buffer = Vec::with_capacity(10 * 1024 * 1024);
+
+                    // read the whole file
+                    f.read_to_end(&mut buffer).unwrap();
+
+                    e.uri = None;
+                    e.mime_type = Some(json::image::MimeType("image/png".to_string()));
+                    let buffer_view_idx = RdGltfBuilder::put_buffer_and_view(
+                        &mut self.obj,
+                        BufferContainer::U8(buffer),
+                        &mut self.buffers,
+                        &mut self.buffer_views,
+                        None,
+                    );
+                    e.buffer_view = Some(json::Index::new(buffer_view_idx));
+                }
+            }
+        }
+    }
+
+    fn put_buffer_and_view(
+        inner: &mut RdGltf,
         buffer: BufferContainer,
-        acctype: json::accessor::Type,
-        component_type: json::accessor::ComponentType,
-        count: Option<u32>,
-        semantic: Option<json::mesh::Semantic>,
-        amin: Option<json::Value>,
-        amax: Option<json::Value>,
+        buffers: &mut Vec<json::Buffer>,
+        buffer_views: &mut Vec<json::buffer::View>,
         target: Option<json::validation::Checked<gltf::buffer::Target>>,
     ) -> u32 {
-        let vattr_len = self.rdm.vertex.len();
-
-        let buffer_p = self.obj.push_buffer(buffer);
+        let buffer_p = inner.push_buffer(buffer);
         let buffer = json::Buffer {
             byte_length: buffer_p.len,
             extensions: Default::default(),
@@ -808,9 +833,34 @@ impl RdGltfBuilder {
             target,
         };
 
-        self.buffers.push(buffer);
-        let buffer_views_idx = self.buffer_views.len() as u32;
-        self.buffer_views.push(buffer_view);
+        buffers.push(buffer);
+        let buffer_view_idx = buffer_views.len() as u32;
+        buffer_views.push(buffer_view);
+
+        buffer_view_idx
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn put_attr(
+        &mut self,
+        buffer: BufferContainer,
+        acctype: json::accessor::Type,
+        component_type: json::accessor::ComponentType,
+        count: Option<u32>,
+        semantic: Option<json::mesh::Semantic>,
+        amin: Option<json::Value>,
+        amax: Option<json::Value>,
+        target: Option<json::validation::Checked<gltf::buffer::Target>>,
+    ) -> u32 {
+        let vattr_len = self.rdm.vertex.len();
+
+        let buffer_views_idx = RdGltfBuilder::put_buffer_and_view(
+            &mut self.obj,
+            buffer,
+            &mut self.buffers,
+            &mut self.buffer_views,
+            target,
+        );
 
         let normals_acc = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_views_idx)),
@@ -1076,6 +1126,7 @@ impl From<RdModell> for RdGltfBuilder {
 pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: GltfExportFormat) {
     let mat_opt = rdm.mat.clone();
     let mut b = RdGltfBuilder::from(rdm);
+    b.run_dds(config == GltfExportFormat::Glb);
     if config == GltfExportFormat::Glb || config == GltfExportFormat::GltfSeparateMinimise {
         b.merge_buffers();
         if config == GltfExportFormat::Glb {
@@ -1228,8 +1279,17 @@ impl RdGltf {
                     bin.to_writer(&mut writer).unwrap();
                 }
 
+                // copy converted png from tmp to dest
                 if let Some(mat) = optmat.as_ref() {
-                    mat.run_dds_converter(&udir);
+                    let tmp_dir = env::temp_dir();
+                    for e in mat.into_iter() {
+                        let mut src = tmp_dir.join(e.file_stem().unwrap());
+                        src.set_extension("PNG");
+                        let mut dst_file = udir.join(e.file_stem().unwrap());
+                        dst_file.set_extension("PNG");
+                        debug!("copy: {:?} to {:?}", &src, &dst_file);
+                        fs::copy(src, &dst_file).unwrap();
+                    }
                 }
             }
         }
