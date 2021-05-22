@@ -77,8 +77,7 @@ pub struct MeshInstance {
 
 impl MeshInstance {
     pub fn get_max_material(instances: &[MeshInstance]) -> u32 {
-        let max = instances.iter().map(|e| e.material).max();
-        max.unwrap()
+        instances.iter().map(|e| e.material).max().unwrap()
     }
 }
 

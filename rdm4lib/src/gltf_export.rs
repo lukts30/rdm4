@@ -1,4 +1,4 @@
-use crate::vertex::*;
+use crate::{vertex::*, MeshInstance};
 use gltf::json;
 use std::{
     borrow::Cow,
@@ -710,16 +710,19 @@ impl RdGltfBuilder {
     }
 
     fn put_material(&mut self) {
-        let mut info_vec = Vec::new();
+        let material_len = MeshInstance::get_max_material(&self.rdm.mesh_info) as usize + 1;
+        // get_max_material returns the max value used to index the material vec
+        let mut texture_info_descriptors = vec![None; material_len];
         if let Some(mats) = self.rdm.mat.as_ref() {
-            //for (i, mat) in mats.c_model_diff_tex.iter().enumerate() {
-            for (i, mat) in mats.into_iter().enumerate() {
-                let sampler = json::texture::Sampler {
-                    ..Default::default()
-                };
+            for (i, (image_path, dst)) in mats
+                .into_iter()
+                .zip(texture_info_descriptors.iter_mut())
+                .enumerate()
+            {
+                let sampler = Default::default();
                 self.sampler_vec.push(sampler);
 
-                let fname = mat.file_stem().unwrap().to_str().unwrap();
+                let fname = image_path.file_stem().unwrap().to_str().unwrap();
                 let image = json::Image {
                     uri: Some(format!("{}{}", fname, ".PNG")),
                     buffer_view: None,
@@ -730,7 +733,6 @@ impl RdGltfBuilder {
                 };
                 self.image_vec.push(image);
 
-                // TODO DO NOT USE i
                 let texture = json::Texture {
                     sampler: Some(json::Index::new(i as u32)),
                     source: json::Index::new(i as u32),
@@ -740,37 +742,24 @@ impl RdGltfBuilder {
                 };
                 self.texture_vec.push(texture);
 
-                info_vec.push(Some(gltf::json::texture::Info {
+                *dst = Some(gltf::json::texture::Info {
                     index: json::Index::new(i as u32),
                     tex_coord: 0,
                     extensions: None,
                     extras: None,
-                }));
+                });
             }
         }
 
-        //assert_eq!(self.rdm.mesh_info.len(), info_vec.len());
-        let mut max_mesh: usize = 0;
-        for m in self.rdm.mesh_info.iter() {
-            max_mesh = max_mesh.max(m.material as usize);
-        }
-
-        while max_mesh + 1 > info_vec.len() {
-            info_vec.push(None);
-        }
-        debug!("{:#?} {:#?}", max_mesh, info_vec.len());
-
-        let mut material_idx_vec = Vec::new();
-        for itex in info_vec {
+        let mut material_idx_vec = Vec::with_capacity(material_len);
+        assert!(self.material_vec.is_empty());
+        for itex in texture_info_descriptors {
             let pbr = json::material::PbrMetallicRoughness {
                 base_color_texture: itex,
                 ..Default::default()
             };
 
             let map = json::Material {
-                // FALSE WARNING
-                // MATERIAL_ALPHA_CUTOFF_INVALID_MODE
-                // This value is ignored for other modes.
                 alpha_cutoff: None,
                 alpha_mode: Valid(json::material::AlphaMode::Opaque),
                 pbr_metallic_roughness: pbr,
@@ -781,6 +770,7 @@ impl RdGltfBuilder {
 
             self.material_vec.push(map);
         }
+        assert_eq!(material_idx_vec.len(), material_len);
         self.material_idx = Some(material_idx_vec);
     }
 
@@ -934,23 +924,20 @@ impl RdGltfBuilder {
     }
 
     pub fn build(mut self) -> RdGltf {
-        let animation = if self.anim_node.is_some() {
-            vec![self.anim_node.unwrap()]
-        } else {
-            Default::default()
-        };
+        let animation = self.anim_node.map_or(Default::default(), |n| vec![n]);
 
-        let mut triangle_vec = Vec::new();
-
+        // put_material must already have been run otherwise this panics!
         let mats = self.material_idx.unwrap();
         let indices_vec = self.idx.unwrap();
         assert_eq!(indices_vec.len(), self.rdm.mesh_info.len());
-        for (i, mesh) in self.rdm.mesh_info.iter().enumerate() {
+
+        let mut triangle_vec = Vec::with_capacity(indices_vec.len());
+        for (mesh, idx) in self.rdm.mesh_info.iter().zip(indices_vec.iter()) {
             let primitive = json::mesh::Primitive {
                 attributes: self.attr_map.clone(),
                 extensions: Default::default(),
                 extras: Default::default(),
-                indices: Some(json::Index::new(indices_vec[i])),
+                indices: Some(json::Index::new(*idx)),
                 material: Some(json::Index::new(mats[mesh.material as usize])),
                 mode: Valid(json::mesh::Mode::Triangles),
                 targets: None,
@@ -966,28 +953,27 @@ impl RdGltfBuilder {
             weights: None,
         };
 
-        let node_def = json::Node {
-            camera: None,
-            children: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            matrix: None,
-            mesh: Some(json::Index::new(0)),
-            name: None,
-            rotation: None,
-            scale: None,
-            translation: None,
-            skin: None,
-            weights: None,
-        };
-
-        //TODO better check
+        // if nodes vec is non empty than put_joint_nodes already added a scene root node to the end
         if self.nodes.is_empty() {
-            self.nodes.push(node_def);
+            let scene_root_node = json::Node {
+                camera: None,
+                children: None,
+                extensions: Default::default(),
+                extras: Default::default(),
+                matrix: None,
+                mesh: Some(json::Index::new(0)),
+                name: None,
+                rotation: None,
+                scale: None,
+                translation: None,
+                skin: None,
+                weights: None,
+            };
+            self.nodes.push(scene_root_node);
         }
 
-        //TODO : must be root node
-        let node_len = json::Index::new((self.nodes.len() - 1) as u32);
+        // get index of last node (scene root node)
+        let root_node_idx = json::Index::new((self.nodes.len() - 1) as u32);
 
         let root = json::Root {
             accessors: self.accessors,
@@ -999,7 +985,7 @@ impl RdGltfBuilder {
                 extensions: Default::default(),
                 extras: Default::default(),
                 name: None,
-                nodes: vec![node_len],
+                nodes: vec![root_node_idx],
             }],
             skins: if self.skin.is_some() {
                 vec![self.skin.clone().unwrap()]
