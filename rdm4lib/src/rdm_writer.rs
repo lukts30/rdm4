@@ -63,7 +63,7 @@ impl RdWriter {
 
         self.buf.put_slice(&RAW_DATA);
 
-        let export_name = br"\\rds.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
+        let export_name = br"\\050.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
 
         // len str + u32:1
         self.buf.put_u32_le(export_name.len() as u32);
