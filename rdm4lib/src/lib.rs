@@ -169,32 +169,27 @@ impl RdModell {
             let ty = skin_buffer.get_f32_le();
             let tz = skin_buffer.get_f32_le();
 
-            let rx = -skin_buffer.get_f32_le();
-            let ry = -skin_buffer.get_f32_le();
-            let rz = -skin_buffer.get_f32_le();
-            let rw = -skin_buffer.get_f32_le();
+            let rx = skin_buffer.get_f32_le();
+            let ry = skin_buffer.get_f32_le();
+            let rz = skin_buffer.get_f32_le();
+            let rw = skin_buffer.get_f32_le();
 
             let quaternion = Quaternion::new(rw, rx, ry, rz);
             let unit_quaternion = UnitQuaternion::from_quaternion(quaternion);
 
             let quaternion_mat4 = unit_quaternion.quaternion().coords;
 
-            let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
-
-            let inv_bindmat =
-                (unit_quaternion.to_homogeneous()) * (joint_translatio.to_homogeneous());
-            let iv_x = inv_bindmat.m14;
-            let iv_y = inv_bindmat.m24;
-            let iv_z = inv_bindmat.m34;
-
-            let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
+            // apply rotation and negate vector
+            // aka -1 * (UnitQuaternion*Vector)
+            let v: Vector3<f32> = Vector3::new(tx, ty, tz);
+            let v_transformed = unit_quaternion.transform_vector(&v).scale(-1.0);
 
             let parent_id = skin_buffer.get_u8();
 
             let joint = RdJoint {
                 name: joint_name,
                 nameptr,
-                transition: [trans_point.x, trans_point.y, trans_point.z],
+                transition: [v_transformed.x, v_transformed.y, v_transformed.z],
                 quaternion: [
                     quaternion_mat4.x,
                     quaternion_mat4.y,

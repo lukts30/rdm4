@@ -17,12 +17,11 @@ use std::str;
 mod tests {
     use super::*;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
+    use std::fs;
     use std::path::PathBuf;
 
     #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
-    #[cfg(target_os = "windows")]
-    use std::fs;
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -220,6 +219,43 @@ mod tests {
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn read_gltf_skin_round_trip() {
+        let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
+        let mut rdm = gltf_reader::load_gltf(
+            &f_path,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
+            true,
+            false,
+            true,
+            None,
+        );
+        assert_eq!(rdm.vertex.len(), 5184);
+        assert_eq!(
+            rdm.triangles_idx_count as usize,
+            rdm.triangle_indices.len() * 3
+        );
+
+        let jj = rdm.joints.clone().unwrap();
+        let mut anims = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
+
+        assert_eq!(anims.len(), 1);
+        let anim = anims.pop().unwrap();
+
+        rdm.add_anim(anim);
+
+        if !Path::new("gltf_out3").exists() {
+            fs::create_dir("gltf_out3").unwrap();
+        }
+        gltf_export::build(
+            rdm,
+            Some(Path::new("gltf_out3").into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
     }
 
     #[test]

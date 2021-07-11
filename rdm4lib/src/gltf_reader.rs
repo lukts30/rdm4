@@ -318,62 +318,25 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
 
         let reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
 
-        let mut mats_iter = reader.read_inverse_bind_matrices().unwrap();
-        let mut count = mats_iter.len();
+        let mats_iter = reader.read_inverse_bind_matrices().unwrap();
+        for (z, mat) in mats_iter.enumerate() {
+            let inverse_bind_matrix: Matrix4<f32> =
+                Matrix4::from_fn_generic(U4, U4, |i, j| mat[j][i]);
+            // inverseBindMatrix^-1 = BindMatrix
+            // BindMatrix: global transform of the respective joint
+            let mut mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
 
-        while count > 0 {
-            let mut mat4: Matrix4<f32> = Matrix4::identity();
+            // may perform expensive checks ...
+            debug!("{} mat4_init: {}", z, mat4_init);
+            mat4_init.m44 = 1.0;
+            let similarity: Similarity3<f32> = nalgebra::try_convert(mat4_init).unwrap();
+            debug!("similarity.scaling: {}", similarity.scaling());
 
-            let mat = mats_iter.next().unwrap();
+            let isometry: Isometry3<f32> = similarity.isometry;
+            let unit_quaternion = isometry.rotation;
+            let quaternion_raw = unit_quaternion.quaternion().coords;
 
-            mat4.m11 = mat[0][0];
-            mat4.m21 = mat[0][1];
-            mat4.m31 = mat[0][2];
-            mat4.m41 = mat[0][3];
-
-            mat4.m12 = mat[1][0];
-            mat4.m22 = mat[1][1];
-            mat4.m32 = mat[1][2];
-            mat4.m42 = mat[1][3];
-
-            mat4.m13 = mat[2][0];
-            mat4.m23 = mat[2][1];
-            mat4.m33 = mat[2][2];
-            mat4.m43 = mat[2][3];
-
-            mat4.m14 = mat[3][0];
-            mat4.m24 = mat[3][1];
-            mat4.m34 = mat[3][2];
-            mat4.m44 = mat[3][3];
-
-            let mat3 = Matrix3::new(
-                mat4.m11, mat4.m12, mat4.m13, mat4.m21, mat4.m22, mat4.m23, mat4.m31, mat4.m32,
-                mat4.m33,
-            );
-            let rot = Rotation3::from_matrix(&mat3);
-            let q = UnitQuaternion::from_rotation_matrix(&rot).inverse().coords;
-
-            let qq = Quaternion::new(q.w, q.x, q.y, q.z);
-            let uq = UnitQuaternion::from_quaternion(qq);
-
-            trace!("pq {:?}", uq);
-
-            let tx = mat4.m14;
-            let ty = mat4.m24;
-            let tz = mat4.m34;
-
-            let joint_translatio: Translation3<f32> = Translation3::new(tx, ty, tz);
-
-            let inv_bindmat = (uq.to_homogeneous()) * (joint_translatio.to_homogeneous());
-            let iv_x = inv_bindmat.m14;
-            let iv_y = inv_bindmat.m24;
-            let iv_z = inv_bindmat.m34;
-
-            let trans_point = Translation3::new(iv_x, iv_y, iv_z).inverse();
-
-            trace!("trans : {:#?}", trans_point);
-
-            let quaternion_mat4 = uq.quaternion().coords;
+            let translation: Translation3<f32> = isometry.translation;
 
             let rdjoint = RdJoint {
                 nameptr: 0,
@@ -381,16 +344,14 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
                 locked: false,
                 parent: *node_vec_iter.next().unwrap(),
                 quaternion: [
-                    quaternion_mat4.x,
-                    quaternion_mat4.y,
-                    quaternion_mat4.z,
-                    quaternion_mat4.w,
+                    quaternion_raw.x,
+                    quaternion_raw.y,
+                    quaternion_raw.z,
+                    quaternion_raw.w,
                 ],
-                transition: [trans_point.x, trans_point.y, trans_point.z],
+                transition: [translation.x, translation.y, translation.z],
             };
             out_joints_vec.push(rdjoint);
-
-            count -= 1;
         }
     }
     out_joints_vec

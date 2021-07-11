@@ -405,37 +405,33 @@ impl RdWriter {
             self.buf.put_u32_le(0xAAAAAAAA);
 
             {
-                let child_quaternion = joint.quaternion;
+                let joint_quaternion = joint.quaternion;
 
-                let rx = -child_quaternion[0];
-                let ry = -child_quaternion[1];
-                let rz = -child_quaternion[2];
-                let rw = -child_quaternion[3];
+                let rx = joint_quaternion[0];
+                let ry = joint_quaternion[1];
+                let rz = joint_quaternion[2];
+                let rw = joint_quaternion[3];
 
                 let q = Quaternion::new(rw, rx, ry, rz);
-                let uq = UnitQuaternion::from_quaternion(q);
+                let unit_quaternion = UnitQuaternion::from_quaternion(q);
 
                 let trans = joint.transition;
                 let tx = trans[0];
                 let ty = trans[1];
                 let tz = trans[2];
-                let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
+                let v: Vector3<f32> = Vector3::new(tx, ty, tz);
 
-                trace!("ct : {:#?}", ct);
-
-                let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
-
-                let inv_bindmat = bindmat.try_inverse().unwrap();
-
-                trace!("{}", uq.quaternion().coords);
+                // undo rotation since it will be applied on load
+                // rdm -> internal representation -> rdm: v vector in add_skin should be equal to v_init
+                let v_init = unit_quaternion.inverse_transform_vector(&v).scale(-1.0);
 
                 // write Translation
-                self.buf.put_f32_le(inv_bindmat.m14);
-                self.buf.put_f32_le(inv_bindmat.m24);
-                self.buf.put_f32_le(inv_bindmat.m34);
+                self.buf.put_f32_le(v_init.x);
+                self.buf.put_f32_le(v_init.y);
+                self.buf.put_f32_le(v_init.z);
 
                 // write rotation
-                let rot = uq.quaternion().coords;
+                let rot = unit_quaternion.quaternion().coords;
                 self.buf.put_f32_le(rot.x);
                 self.buf.put_f32_le(rot.y);
                 self.buf.put_f32_le(rot.z);
