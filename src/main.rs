@@ -161,17 +161,15 @@ fn main() {
 }
 
 fn entry_do_work(mut opts: Opts) {
-    assert_eq!(
+    assert!(
         opts.input.is_file(),
-        true,
         "Input must be a file! Missing --batch / -b ?"
     );
     if let Some(ref mut out) = opts.out {
         if opts.in_is_out_filename {
             let k = opts.input.file_stem().unwrap();
-            assert_eq!(
+            assert!(
                 out.is_dir(),
-                true,
                 "in_is_out_filename: output must not be a file!"
             );
             out.push(k);
@@ -274,11 +272,11 @@ fn test_batch() {
 
 fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
     let input = defopt.input;
-    assert_eq!(input.is_dir(), true, "Batch: input must be a folder!");
+    assert!(input.is_dir(), "Batch: input must be a folder!");
 
     let mut dst = defopt.out.unwrap();
     let dst_clone = dst.clone();
-    assert_eq!(dst.is_dir(), true, "Batch: dst must be a folder!");
+    assert!(dst.is_dir(), "Batch: dst must be a folder!");
 
     let rext = if defopt.gltf.is_some() {
         OsStr::new("gltf")

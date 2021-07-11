@@ -368,7 +368,7 @@ impl VertexFormat2 {
         if offset_idx.is_empty() {
             return None;
         }
-        assert_eq!(offset_idx.len() < 5, true);
+        assert!(offset_idx.len() < 5);
         let offset = self.offsets[offset_idx[set]];
 
         let unit_size = self.identifiers[offset_idx[set]].get_size() as usize;

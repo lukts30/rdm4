@@ -165,13 +165,12 @@ impl RdAnimWriter {
         });
         if file.is_dir() {
             file.push(self.input.name);
-            file.set_extension("rdm");
         } else {
             let n = file.file_stem().unwrap();
             let anim_name = format!("{}_anim", n.to_string_lossy());
             file.set_file_name(anim_name);
-            file.set_extension("rdm");
         }
+        file.set_extension("rdm");
 
         let mut writer = OpenOptions::new()
             .write(true)

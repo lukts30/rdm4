@@ -128,7 +128,7 @@ impl RdModell {
             multi_buffer.advance(28 - 12);
         }
         warn!("meshes: {:?}", v);
-        assert_eq!(v.is_empty(), false);
+        assert!(!v.is_empty());
         v
     }
 
@@ -136,7 +136,7 @@ impl RdModell {
         let mut skin_buffer = self.buffer.clone();
         skin_buffer.advance(40);
         let skin_offset = skin_buffer.get_u32_le();
-        assert_eq!(skin_offset != 0, true, "File does not contain a skin !");
+        assert!(skin_offset != 0, "File does not contain a skin !");
 
         skin_buffer.seek(skin_offset, self.size);
 

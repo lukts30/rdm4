@@ -47,7 +47,7 @@ impl RdAnim {
         buffer.seek(model_str_ptr - RdModell::META_COUNT, size);
 
         let model_str_len = buffer.get_u32_le() as usize;
-        assert_eq!(model_str_len > 1, true);
+        assert!(model_str_len > 1);
         assert_eq!(buffer.get_u32_le(), 1);
 
         let model_str = str::from_utf8(&buffer[..model_str_len]).unwrap();
@@ -77,7 +77,7 @@ impl RdAnim {
             trace!("buffer.remaining(): {}", buffer.remaining());
             buffer.seek(ent.0 - RdModell::META_COUNT, size);
             let ent_str_len = buffer.get_u32_le() as usize;
-            assert_eq!(ent_str_len > 1, true);
+            assert!(ent_str_len > 1);
             assert_eq!(buffer.get_u32_le(), 1);
 
             let ent_model_str = str::from_utf8(&buffer[..ent_str_len]).unwrap();

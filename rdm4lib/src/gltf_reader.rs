@@ -742,7 +742,7 @@ fn build_transform2(gltf: &gltf::Document, mesh_node: usize) -> Matrix4<f32> {
     //let mesh_node = 1;
     let mut find_node: usize = mesh_node;
     let mut tree: Vec<usize> = Vec::new();
-    assert_eq!(find_node < child_list.len(), true);
+    assert!(find_node < child_list.len());
     loop {
         let idx = find_parent(find_node, &child_list);
         match idx {
