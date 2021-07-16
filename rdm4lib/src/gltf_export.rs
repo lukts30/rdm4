@@ -1,28 +1,18 @@
-use crate::{vertex::*, MeshInstance};
-use gltf::json;
+use crate::{rdm_material::RdMaterial, vertex::*, MeshInstance, RdJoint, RdModell};
+use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
+    collections::HashMap,
     convert::TryInto,
     env,
     fs::{self, File, OpenOptions},
+    io::Write,
     io::{self, Read},
     path::PathBuf,
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
-use json::validation::Checked::Valid;
-
-use std::io::Write;
-
-use crate::rdm_material::RdMaterial;
-use crate::RdJoint;
-use crate::RdModell;
-
 use nalgebra::*;
-use std::collections::VecDeque;
-
-use gltf::mesh::Semantic;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -102,7 +92,7 @@ impl RdGltfBuilder {
         let mut buffer_v_vec = Vec::new();
 
         let mut acc_vec = Vec::new();
-        let time_f32_max = (anim.time_max as f32) / 1000.0;
+        let time_1000_f32_max = (anim.time_max as f32) / 1000.0;
 
         let mut rot_sampler_chanel = 0;
         let mut trans_sampler_chanel = 1;
@@ -134,6 +124,8 @@ impl RdGltfBuilder {
             let trans_start = trans_anim_buf.len();
             let t_start = t_anim_buf.len();
 
+            let mut time_real_f32_max = 0.0f32;
+
             for f in &janim.frames {
                 rot_anim_buf.put_f32_le(f.rotation[0]);
                 rot_anim_buf.put_f32_le(f.rotation[1]);
@@ -145,7 +137,11 @@ impl RdGltfBuilder {
                 trans_anim_buf.put_f32_le(f.translation[2]);
 
                 t_anim_buf.put_f32_le(f.time);
+                time_real_f32_max = time_real_f32_max.max(f.time);
             }
+            debug!("time_real_f32_max: {}", time_real_f32_max);
+            debug!("time_1000_f32_max: {}", time_1000_f32_max);
+
             let rot_end = rot_anim_buf.len();
             trace!("{}", rot_start);
             trace!("{}", rot_end);
@@ -244,7 +240,7 @@ impl RdGltfBuilder {
                 extras: Default::default(),
                 type_: Valid(json::accessor::Type::Scalar),
                 min: Some(json::Value::from(vec![0.0])),
-                max: Some(json::Value::from(vec![time_f32_max])),
+                max: Some(json::Value::from(vec![time_real_f32_max])),
                 name: None,
                 normalized: false,
                 sparse: None,
@@ -433,7 +429,10 @@ impl RdGltfBuilder {
         let mut joints_vec: Vec<RdJoint> = self.rdm.joints.clone().unwrap();
         let mut invbind_buf = BytesMut::with_capacity(64 * joints_vec.len());
 
-        // inverseBindMatrices
+        let mut global_bind_matrices = Vec::with_capacity(joints_vec.len());
+        let mut global_inverse_bind_matrices = Vec::with_capacity(joints_vec.len());
+
+        // Build the inverseBindMatrices
         {
             for joint in &joints_vec {
                 let child_quaternion = joint.quaternion;
@@ -453,35 +452,21 @@ impl RdGltfBuilder {
 
                 let ct: Translation3<f32> = Translation3::new(tx, ty, tz);
 
-                // global transform matrix = T * R * S
-                let bindmat = (ct.to_homogeneous()) * (uq.to_homogeneous()) * Matrix4::identity();
+                // global transform matrix = T * R * S // S = Identity
+                let bindmat: Matrix4<f32> = (ct.to_homogeneous()) * (uq.to_homogeneous());
+                global_bind_matrices.push(bindmat);
 
-                // matrix is the inverse of the global transform of the respective joint, in its initial configuration.
-                let inv_bindmat = bindmat.try_inverse().unwrap();
-
-                //column-major order
-                invbind_buf.put_f32_le(inv_bindmat.m11);
-                invbind_buf.put_f32_le(inv_bindmat.m21);
-                invbind_buf.put_f32_le(inv_bindmat.m31);
-                invbind_buf.put_f32_le(inv_bindmat.m41);
-
-                invbind_buf.put_f32_le(inv_bindmat.m12);
-                invbind_buf.put_f32_le(inv_bindmat.m22);
-                invbind_buf.put_f32_le(inv_bindmat.m32);
-                invbind_buf.put_f32_le(inv_bindmat.m42);
-
-                invbind_buf.put_f32_le(inv_bindmat.m13);
-                invbind_buf.put_f32_le(inv_bindmat.m23);
-                invbind_buf.put_f32_le(inv_bindmat.m33);
-                invbind_buf.put_f32_le(inv_bindmat.m43);
-
-                invbind_buf.put_f32_le(inv_bindmat.m14);
-                invbind_buf.put_f32_le(inv_bindmat.m24);
-                invbind_buf.put_f32_le(inv_bindmat.m34);
-                invbind_buf.put_f32_le(1.0f32);
-
+                // this matrix is the inverse of the global transform of the respective joint, in its initial configuration.
+                let mut inv_bindmat: Matrix4<f32> = bindmat.try_inverse().unwrap();
                 // why is inv_bindmat.m44 not always 1.0 ?
-                // ACCESSOR_INVALID_IBM	Matrix element at index 143 (component index 15) contains invalid value: 0.9999998807907104.
+                // ACCESSOR_INVALID_IBM	Matrix element at index ... (component index 15) contains invalid value: 0.9999998807907104.
+                inv_bindmat.m44 = 1.0;
+                global_inverse_bind_matrices.push(inv_bindmat);
+
+                // Write the values by iterating through this matrix in column-major order.
+                for value in inv_bindmat.iter() {
+                    invbind_buf.put_f32_le(*value);
+                }
             }
         }
 
@@ -497,121 +482,63 @@ impl RdGltfBuilder {
             None,
         );
 
-        let mut skin_nodes: Vec<json::Node> = Vec::new();
-
-        let mut arm: Vec<json::root::Index<_>> = Vec::new();
-
-        for (i, joint) in joints_vec.iter_mut().enumerate() {
-            if joint.parent == 255 || cfg == JointOption::ResolveAllRoot {
-                joint.locked = true;
-                arm.push(json::Index::new(i as u32));
-            }
-        }
-
-        let main_node = json::Node {
-            camera: None,
-            children: Some(arm),
-            extensions: None,
-            extras: None,
-            matrix: None,
-            mesh: Some(json::Index::new(0)),
-            name: Some(String::from("armature")),
-            rotation: None,
-            scale: None,
-            translation: None,
-            skin: Some(json::Index::new(0)),
-            weights: None,
-        };
-
-        let jlen = joints_vec.len();
-
-        let mut tb_rel: VecDeque<(usize, usize)> = VecDeque::new();
-
-        let mut child_list: VecDeque<_> = VecDeque::new();
-        for z in 0..jlen {
-            let mut child: Vec<gltf::json::root::Index<_>> = Vec::new();
-            for j in 0..jlen {
-                if joints_vec[j].parent == z as u8 && joints_vec[z].locked && !joints_vec[j].locked
-                {
-                    joints_vec[j].locked = true;
-                    child.push(gltf::json::Index::new(j as u32));
-                    tb_rel.push_back((z, j));
-                }
-            }
-
-            if !child.is_empty() && cfg == JointOption::ResolveParentNode {
-                child_list.push_back(Some(child))
-            } else {
-                child_list.push_back(None);
-            }
-        }
+        // Convert from
+        // rdm: a child joint knows their parent to
+        // gltf parents know all their children
+        let mut child_list: Vec<Option<Vec<_>>> = vec![None; joints_vec.len()];
 
         // the rdm model file stores global space transforms.
         // in gltf all transforms are relative to there parent nodes
-        while !tb_rel.is_empty() && cfg == JointOption::ResolveParentNode {
-            let target = tb_rel.pop_back().unwrap();
+        let children_of_root_node: Vec<json::root::Index<_>> = match cfg {
+            JointOption::ResolveAllRoot => {
+                // ResolveParentNode is for debugging purposes
+                // no hierarchy ->  every joint will be set as a child of the root node
+                (0..joints_vec.len() as u32).map(json::Index::new).collect()
+            }
+            JointOption::ResolveParentNode => {
+                let mut children_of_root_node: Vec<json::root::Index<_>> = Vec::new();
+                for (i, (joint, c_bindmat)) in joints_vec
+                    .iter_mut()
+                    .zip(global_bind_matrices.iter())
+                    .enumerate()
+                {
+                    if joint.parent == 255 || joint.locked {
+                        children_of_root_node.push(json::Index::new(i as u32));
+                        // Skip to the next iteration because without a parent: global transform == local transform
+                        continue;
+                    } else {
+                        let parent = &mut child_list[joint.parent as usize];
+                        match parent {
+                            Some(v) => v.push(gltf::json::Index::new(i as u32)),
+                            None => *parent = Some(vec![gltf::json::Index::new(i as u32)]),
+                        }
+                    }
+                    let p_inverse_bindmat = &global_inverse_bind_matrices[joint.parent as usize];
+                    // "subtract" the parent transform from the current joint's global transform to get the joint's local transform
+                    // apply the inverse of the parent's global transform to current joint's global transform. right to left.
+                    let mut local = p_inverse_bindmat * c_bindmat;
+                    local.m44 = 1.0;
+                    let similarity: Similarity3<f32> = nalgebra::try_convert(local).unwrap();
+                    debug!("similarity.scaling: {}", similarity.scaling());
 
-            let master_idx = target.0;
-            let child_idx = target.1;
+                    let isometry: Isometry3<f32> = similarity.isometry;
 
-            let master_trans = joints_vec[master_idx].transition;
-            let mx = master_trans[0];
-            let my = master_trans[1];
-            let mz = master_trans[2];
+                    let uqc = isometry.rotation.coords;
 
-            let master_quaternion = joints_vec[master_idx].quaternion;
+                    joint.quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
 
-            let mqx = master_quaternion[0];
-            let mqy = master_quaternion[1];
-            let mqz = master_quaternion[2];
-            let mqw = master_quaternion[3];
+                    let trans_point = isometry.translation;
+                    joint.transition = [trans_point.x, trans_point.y, trans_point.z];
+                }
+                children_of_root_node
+            }
+        };
 
-            let mq = Quaternion::new(mqw, mqx, mqy, mqz);
-            let muq = UnitQuaternion::from_quaternion(mq);
-
-            let child_quaternion = joints_vec[child_idx].quaternion;
-
-            let rx = child_quaternion[0];
-            let ry = child_quaternion[1];
-            let rz = child_quaternion[2];
-            let rw = child_quaternion[3];
-
-            let q = Quaternion::new(rw, rx, ry, rz);
-            let uq = UnitQuaternion::from_quaternion(q);
-
-            let rel_uq = (muq.inverse()) * uq;
-            let uqc = rel_uq.quaternion().coords;
-
-            joints_vec[child_idx].quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
-
-            let child_trans = joints_vec[child_idx].transition;
-            let tx = child_trans[0];
-            let ty = child_trans[1];
-            let tz = child_trans[2];
-
-            let mt: Translation3<f32> = Translation3::new(mx, my, mz).inverse();
-            let ct: Translation3<f32> = Translation3::new(tx, ty, tz).inverse();
-
-            let nx = ct.x - mt.x;
-            let ny = ct.y - mt.y;
-            let nz = ct.z - mt.z;
-
-            let trans_inter_point = Point3::new(nx, ny, nz);
-
-            let uik = muq.inverse_transform_point(&trans_inter_point);
-
-            let uik_x = uik.x;
-            let uik_y = uik.y;
-            let uik_z = uik.z;
-
-            let trans_point = Translation3::new(uik_x, uik_y, uik_z).inverse();
-            joints_vec[child_idx].transition = [trans_point.x, trans_point.y, trans_point.z];
-        }
-
-        for joint in &joints_vec {
+        let mut skin_nodes: Vec<json::Node> = Vec::new();
+        for (joint, children) in joints_vec.iter().zip(child_list) {
             let ijoint = json::Node {
                 camera: None,
-                children: { child_list.pop_front().unwrap() },
+                children,
                 extensions: None,
                 extras: None,
                 matrix: None,
@@ -626,24 +553,38 @@ impl RdGltfBuilder {
             skin_nodes.push(ijoint);
         }
 
-        skin_nodes.push(main_node);
-        let nodes_count = skin_nodes.len() - 1;
-        self.nodes.append(&mut skin_nodes);
-
-        // skin root node
-        let mut joint_indi_vec: Vec<json::root::Index<_>> = Vec::new();
-        for i in 0..nodes_count {
-            joint_indi_vec.push(json::Index::new(i as u32));
-        }
-
         self.skin = Some(json::Skin {
-            joints: joint_indi_vec,
+            joints: {
+                // includes all nodes except the mesh root node
+                let nodes_count_excluding_root_node = skin_nodes.len() as u32;
+                (0..nodes_count_excluding_root_node)
+                    .map(json::Index::new)
+                    .collect()
+            },
             extensions: None,
             inverse_bind_matrices: Some(json::Index::new(mat_accessor_idx)),
             skeleton: None,
             extras: None,
             name: None,
         });
+
+        let root_node = json::Node {
+            camera: None,
+            children: Some(children_of_root_node),
+            extensions: None,
+            extras: None,
+            matrix: None,
+            mesh: Some(json::Index::new(0)),
+            name: Some(String::from("armature")),
+            rotation: None,
+            scale: None,
+            translation: None,
+            skin: Some(json::Index::new(0)),
+            weights: None,
+        };
+        skin_nodes.push(root_node);
+
+        self.nodes = skin_nodes;
     }
 
     fn put_vertex(&mut self) {

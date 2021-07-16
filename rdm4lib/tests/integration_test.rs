@@ -358,4 +358,19 @@ mod tests {
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    #[ignore]
+    fn matrix_rel_calc() {
+        use nalgebra::*;
+        let global_parent_translation = Translation3::new(-1.0, 2.0, 0.0);
+        let global_child_translation = Translation3::new(1.0, 2.0, 3.0);
+
+        let c: Matrix4<f32> = global_child_translation.to_homogeneous();
+        let p: Matrix4<f32> = global_parent_translation.to_homogeneous();
+
+        let local: Matrix4<f32> = p.try_inverse().unwrap() * c;
+        println!("{}", local);
+    }
 }
