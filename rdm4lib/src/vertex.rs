@@ -1,6 +1,4 @@
 use bytes::{Buf, Bytes};
-
-use std::mem::*;
 use std::{fmt, str::FromStr};
 
 use crate::*;
@@ -62,7 +60,7 @@ pub trait GetUniqueIdentifier {
     fn get_unique_identifier() -> UniqueIdentifier;
 }
 
-impl<T, const I: u32, const N: usize> GetUniqueIdentifier for AnnoData<T, I, N> {
+impl<T: Default + Copy, const I: u32, const N: usize> GetUniqueIdentifier for AnnoData<T, I, N> {
     fn get_unique_identifier() -> UniqueIdentifier {
         AnnoData::<T, I, N>::TYPE
     }
@@ -79,8 +77,21 @@ pub struct AnnoData<T, const I: u32, const N: usize> {
     pub data: [T; N],
 }
 
-impl<T, const I: u32, const N: usize> AnnoData<T, I, N> {
+impl<T: Default + Copy, const I: u32, const N: usize> AnnoData<T, I, N> {
     const TYPE: UniqueIdentifier = UniqueIdentifier::from(I);
+
+    #[inline]
+    /// Will call f N times to fill the struct's data array.
+    fn from_fn_generic<F>(mut f: F) -> AnnoData<T, I, N>
+    where
+        F: FnMut(usize) -> T,
+    {
+        let mut data = Self::default();
+        for (i, dst) in data.data.iter_mut().enumerate() {
+            *dst = f(i);
+        }
+        data
+    }
 }
 
 // rust const generics enum are unstable
@@ -98,25 +109,11 @@ pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
 pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::I4b as u32 }, 4>;
 pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::W4b as u32 }, 4>;
 
-impl<T: Default, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
+impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
-        let data = {
-            // Array Default is limited to N <= 32 and const generic allow arbitrary N. Using unsafe to workaround.
-            let mut data: [MaybeUninit<T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
-
-            for elem in &mut data[..].iter_mut() {
-                // slow but safe
-                *elem = MaybeUninit::new(Default::default());
-            }
-            unsafe {
-                // TODO: proper way unstable MaybeUninit::array_assume_init(data)
-                let ptr = &mut data as *mut _ as *mut [T; N];
-                let res = ptr.read();
-                std::mem::forget(data);
-                res
-            }
-        };
-        Self { data }
+        Self {
+            data: [Default::default(); N],
+        }
     }
 }
 
@@ -124,21 +121,15 @@ impl<const I: u32, const N: usize, const M: usize> From<AnnoData<f16, I, N>>
     for AnnoData<f32, I, M>
 {
     fn from(input: AnnoData<f16, I, N>) -> Self {
-        let mut data = Self::default().data;
-        for (elem, k) in &mut data[..].iter_mut().zip(input.data.iter()) {
-            *elem = f32::from(*k);
-        }
-        Self { data }
+        // This may panick if M > N
+        Self::from_fn_generic(|i| f32::from(input.data[i]))
     }
 }
 
 impl<const I: u32, const M: usize> From<AnnoData<u8, I, 4>> for AnnoData<f32, I, M> {
     fn from(input: AnnoData<u8, I, 4>) -> Self {
-        let mut data = Self::default().data;
-        for (elem, k) in &mut data[..].iter_mut().zip(input.data.iter()) {
-            *elem = ((2.0f32 * *k as f32) / 255.0f32) - 1.0f32;
-        }
-        Self { data }
+        // This may panick if M > 4
+        Self::from_fn_generic(|i| ((2.0f32 * input.data[i] as f32) / 255.0f32) - 1.0f32)
     }
 }
 
@@ -148,31 +139,19 @@ pub trait GetVertex {
 
 impl<const I: u32, const N: usize> GetVertex for AnnoData<u8, I, N> {
     fn get_unit(b: &mut Bytes) -> Self {
-        let mut o = Self::default();
-        for n in o.data.iter_mut() {
-            *n = b.get_u8();
-        }
-        o
+        Self::from_fn_generic(|_| b.get_u8())
     }
 }
 
 impl<const I: u32, const N: usize> GetVertex for AnnoData<f16, I, N> {
     fn get_unit(b: &mut Bytes) -> Self {
-        let mut o = Self::default();
-        for n in o.data.iter_mut() {
-            *n = f16::from_bits(b.get_u16_le());
-        }
-        o
+        Self::from_fn_generic(|_| f16::from_bits(b.get_u16_le()))
     }
 }
 
 impl<const I: u32, const N: usize> GetVertex for AnnoData<f32, I, N> {
     fn get_unit(b: &mut Bytes) -> Self {
-        let mut o = Self::default();
-        for n in o.data.iter_mut() {
-            *n = b.get_f32_le();
-        }
-        o
+        Self::from_fn_generic(|_| b.get_f32_le())
     }
 }
 
@@ -183,23 +162,15 @@ pub trait Normalise {
 
 impl<const I: u32, const N: usize> Normalise for AnnoData<f32, I, N> {
     fn normalise(&self) -> Self {
-        let mut o = Self::default();
-        let mut sq = 0f32;
-        for e in self.data.iter() {
-            sq += e * e;
-        }
-        sq = sq.sqrt();
-        for (n, inp) in o.data.iter_mut().zip(self.data.iter()) {
-            *n = inp / sq;
-        }
-        o
+        let vlen = self.data.iter().map(|v| v * v).sum::<f32>().sqrt();
+        Self::from_fn_generic(|i| self.data[i] / vlen)
     }
 }
 
 #[derive(Debug)]
 pub struct VertexFormat2 {
-    identifiers: Vec<VertexIdentifier>,
-    offsets: Vec<usize>,
+    identifiers: Box<[VertexIdentifier]>,
+    offsets: Box<[usize]>,
     text: String,
     vertex_offset: u32,
     pub vertex_count: u32,
@@ -227,7 +198,7 @@ impl VertexFormat2 {
         self.identifiers.len() as u32
     }
 
-    // TODO FIX THIS IS **totally inefficient**
+    // TODO: remove for_each?
     pub fn set_weight_sum(&mut self) {
         let n = self.find_component_offsets(UniqueIdentifier::W4b).count();
         if n == 0 {
@@ -251,7 +222,7 @@ impl VertexFormat2 {
     }
 
     pub fn new(
-        identifiers: Vec<VertexIdentifier>,
+        identifiers: Box<[VertexIdentifier]>,
         vertex_count: u32,
         vertex_size: u32,
         vertex_offset: u32,
@@ -275,7 +246,7 @@ impl VertexFormat2 {
 
         VertexFormat2 {
             identifiers,
-            offsets,
+            offsets: offsets.into_boxed_slice(),
             text,
             vertex_count,
             size: off as u32,
@@ -326,7 +297,13 @@ impl VertexFormat2 {
         let vertex_size = buf.get_u32_le();
         let mut vertex_buffer = buf;
         vertex_buffer.truncate((vertex_size * vertex_count) as usize);
-        Self::new(vec, vertex_count, vertex_size, vertex_offset, vertex_buffer)
+        Self::new(
+            vec.into_boxed_slice(),
+            vertex_count,
+            vertex_size,
+            vertex_offset,
+            vertex_buffer,
+        )
     }
 
     #[allow(clippy::needless_lifetimes)]

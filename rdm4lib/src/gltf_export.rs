@@ -6,8 +6,7 @@ use std::{
     convert::TryInto,
     env,
     fs::{self, File, OpenOptions},
-    io::Write,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::PathBuf,
 };
 

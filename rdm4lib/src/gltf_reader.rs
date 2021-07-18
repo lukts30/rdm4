@@ -698,7 +698,13 @@ fn read_mesh(
             warn!("{:?}", &mesh_info);
             //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
         }
-        let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
+        let verts = VertexFormat2::new(
+            ident.into_boxed_slice(),
+            vertices_count,
+            vertsize,
+            0,
+            verts_vec.freeze(),
+        );
         return Some((
             vertsize,
             verts,
