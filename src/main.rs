@@ -225,7 +225,7 @@ fn entry_do_work(mut opts: Opts) {
         if opts.skeleton && opts.animation {
             let jj = rdm.joints.as_ref().unwrap();
 
-            match gltf_reader::read_animation(&f_path, &jj, 6, 0.33333) {
+            match gltf_reader::read_animation(f_path, jj, 6, 0.33333) {
                 Some(mut anims) => {
                     for anim in anims.drain(..) {
                         let exp_rdm = RdAnimWriter::from(anim);

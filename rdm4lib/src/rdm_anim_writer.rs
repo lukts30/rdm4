@@ -137,7 +137,7 @@ impl RdAnimWriter {
                     joint_target_data,
                 );
             }
-            self.buf.put_slice(&collection.name.as_bytes());
+            self.buf.put_slice(collection.name.as_bytes());
 
             self.buf.put_u32_le(collection.len);
             self.buf.put_u32_le(32);

@@ -53,7 +53,7 @@ pub fn read_animation(
     let mut rd_animations = Vec::new();
 
     let mut real_joints: Vec<_> = joints.iter().map(|e| e.name.as_str()).collect();
-    real_joints.sort();
+    real_joints.sort_unstable();
 
     let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
 
@@ -342,7 +342,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
 
             let rdjoint = RdJoint {
                 nameptr: 0,
-                name: name,
+                name,
                 locked: false,
                 parent,
                 quaternion: [
@@ -375,13 +375,13 @@ fn read_mesh(
         info!("Mesh #{}", mesh.index());
 
         let mesh_instantiating_node =
-            find_first_mesh_instantiating_node(&gltf, mesh.index()).unwrap();
+            find_first_mesh_instantiating_node(gltf, mesh.index()).unwrap();
         debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
 
         let mut base: Matrix4<f32> = if no_transform {
             Matrix4::identity()
         } else {
-            build_transform2(&gltf, mesh_instantiating_node)
+            build_transform2(gltf, mesh_instantiating_node)
         };
 
         if negative_x_and_v0v2v1 {
