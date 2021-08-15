@@ -3,6 +3,7 @@ use crate::{rdm_writer::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 use crate::{MeshInstance, RdModell};
 
+use gltf::Node;
 use nalgebra::*;
 
 use half::f16;
@@ -16,10 +17,30 @@ use crate::VertexFormat2;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::u16;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
 };
+
+fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
+    let target_mat = target_node.transform().matrix();
+    let mut mat = Matrix4::from_fn_generic(U4, U4, |i, j| target_mat[j][i]);
+    mat.m44 = 1.0;
+    let similarity: Similarity3<f32> = nalgebra::try_convert(mat).unwrap();
+    debug!("similarity.scaling: {}", similarity.scaling());
+
+    let mut isometry: Isometry3<f32> = similarity.isometry;
+    isometry.rotation = isometry.rotation.inverse();
+    isometry
+}
+
+fn node_get_name(target_node: &Node) -> String {
+    match target_node.name() {
+        Some(name) => name.to_owned(),
+        None => format!("UnnamedGltfNode{}", target_node.index()),
+    }
+}
 
 pub fn read_animation(
     f_path: &Path,
@@ -28,27 +49,28 @@ pub fn read_animation(
     tmax: f32,
 ) -> Option<Vec<RdAnim>> {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
+    let mut translation_map: HashMap<String, Vec<Frame>> = HashMap::new();
+    let mut rd_animations = Vec::new();
 
-    let mut rotation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
-    let mut translation_map: HashMap<&str, Vec<Frame>> = HashMap::new();
-    let mut animvec = Vec::new();
+    let mut real_joints: Vec<_> = joints.iter().map(|e| e.name.as_str()).collect();
+    real_joints.sort();
 
-    // s1
+    let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
+
     for (anim_idx, animation) in gltf.animations().enumerate() {
-        let mut anim_vec: Vec<FrameCollection> = Vec::new();
-        debug!("animations #{}", animation.name().unwrap_or("default"));
         let mut t_max = 0.0;
-
+        debug!("animation: {}", animation.name().unwrap_or("default"));
         for (_, channel) in animation.channels().enumerate() {
             let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
             let time = reader.read_inputs().unwrap();
             let output = reader.read_outputs().unwrap();
 
-            let target_node_name = channel.target().node().name().unwrap();
+            let target_node_name_v2 = node_get_name(&channel.target().node());
+
             debug!("{}", time.len());
             info!(
-                "channel #{} |  {:?} ",
-                target_node_name,
+                "channel: {} | {:?} ",
+                target_node_name_v2,
                 channel.target().property()
             );
 
@@ -67,159 +89,136 @@ pub fn read_animation(
                     .unwrap(),
             );
 
-            match output {
-                Rotations(rot) => {
-                    let mut frames_rot: Vec<Frame> = Vec::new();
-                    let mut rot_iter = rot.into_f32();
-                    for t in time {
-                        let r = rot_iter.next().unwrap();
-                        let f = Frame {
-                            time: t,
-                            rotation: [r[0], r[1], r[2], -r[3]],
-                            translation: [0.0, 0.0, 0.0],
-                        };
-                        frames_rot.push(f);
-                    }
-                    rotation_map.insert(target_node_name, frames_rot);
-                }
-                Translations(mut trans) => {
-                    let mut frames_trans: Vec<Frame> = Vec::new();
-                    for t in time {
-                        let f = Frame {
-                            time: t,
-                            rotation: [0.0, 0.0, 0.0, 0.0],
-                            translation: trans.next().unwrap(),
-                        };
-                        frames_trans.push(f);
-                    }
-                    translation_map.insert(target_node_name, frames_trans);
-                }
-                _ => {
-                    warn!(
-                        "output sampler not supported: '{:?}'",
-                        channel.target().property()
-                    );
-                    continue;
-                }
-            };
-        }
-        // s2
-        for joint in joints {
-            // add idle animation where neighter rot or trans
-            if !rotation_map.contains_key(&joint.name.as_str())
-                && !translation_map.contains_key(&joint.name.as_str())
-            {
-                warn!("idle_anim adding idle for joint:{}", joint.name);
-                let mut frame_vec = Vec::with_capacity(frames);
-                let intervall = tmax / (frames as f32 - 1.0);
-                for i in 0..frames {
-                    let kframe = Frame {
-                        rotation: [
-                            joint.quaternion[0],
-                            joint.quaternion[1],
-                            joint.quaternion[2],
-                            joint.quaternion[3],
-                        ],
-                        translation: [
-                            joint.transition[0],
-                            joint.transition[1],
-                            joint.transition[2],
-                        ],
-                        time: i as f32 * intervall,
-                    };
-                    frame_vec.push(kframe);
-                }
-                let ent = FrameCollection {
-                    name: joint.name.clone(),
-                    len: frames as u32,
-                    frames: frame_vec,
-                };
-                anim_vec.push(ent);
-            }
-        }
+            let origin = node_get_local_transform(&channel.target().node());
+            let origin_translation = [
+                origin.translation.x,
+                origin.translation.y,
+                origin.translation.z,
+            ];
+            let origin_quaternio_raw = origin.rotation.quaternion().coords;
+            let origin_rotation = [
+                origin_quaternio_raw.x,
+                origin_quaternio_raw.y,
+                origin_quaternio_raw.z,
+                origin_quaternio_raw.w,
+            ];
 
-        // s3
-        for rot in rotation_map.iter_mut() {
-            match translation_map.get(rot.0) {
-                None => {
-                    let rd_joint = joints.iter().find(|&r| r.name.as_str() == *rot.0).unwrap();
-
-                    for f in rot.1.iter_mut() {
-                        f.translation = [
-                            rd_joint.transition[0],
-                            rd_joint.transition[1],
-                            rd_joint.transition[2],
-                        ];
-                    }
-                }
-                Some(trans_vec) => {
-                    let namet = rot.0;
-                    // TODO: !!! fix trans_vec.len() == rot.1.len()
-                    if trans_vec.len() == rot.1.len() {
-                        assert_eq!(trans_vec.len(), rot.1.len());
-                        let z = rot.1.len();
-
-                        for (k, f) in rot.1.iter_mut().enumerate() {
-                            assert_relative_eq!(f.time, trans_vec[k].time);
-                            if min(trans_vec.len(), z) == k {
-                                break;
+            if real_joints.iter().any(|&x| x == target_node_name_v2) {
+                match output {
+                    Rotations(rot) => {
+                        let mut rot_iter = rot.into_f32();
+                        if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
+                            for (frame, t) in frames.iter_mut().zip(time) {
+                                assert!(
+                                    relative_eq!(t, frame.time),
+                                    "{}",
+                                    interpolate_error_message
+                                );
+                                let r = rot_iter.next().unwrap();
+                                frame.rotation = [r[0], r[1], r[2], -r[3]];
                             }
-                            f.translation = trans_vec[k].translation;
+                        } else {
+                            let mut frames_rot: Vec<Frame> = Vec::new();
+                            for t in time {
+                                let r = rot_iter.next().unwrap();
+                                let f = Frame {
+                                    time: t,
+                                    rotation: [r[0], r[1], r[2], -r[3]],
+                                    translation: origin_translation,
+                                };
+                                frames_rot.push(f);
+                            }
+                            translation_map.insert(target_node_name_v2, frames_rot);
                         }
-                    } else {
-                        panic!("Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again");
                     }
-                    translation_map.remove(namet);
+                    Translations(mut trans) => {
+                        if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
+                            for (frame, t) in frames.iter_mut().zip(time) {
+                                assert!(
+                                    relative_eq!(t, frame.time),
+                                    "{}",
+                                    interpolate_error_message
+                                );
+                                frame.translation = trans.next().unwrap();
+                            }
+                        } else {
+                            let mut frames: Vec<Frame> = Vec::new();
+                            for t in time {
+                                let f = Frame {
+                                    time: t,
+                                    rotation: origin_rotation,
+                                    translation: trans.next().unwrap(),
+                                };
+                                frames.push(f);
+                            }
+                            translation_map.insert(target_node_name_v2, frames);
+                        };
+                    }
+                    _ => {
+                        warn!(
+                            "output sampler not supported: '{:?}'",
+                            channel.target().property()
+                        );
+                        continue;
+                    }
                 }
-            };
-        }
-
-        // s4
-        for trans in translation_map.iter_mut() {
-            let rd_joint = joints.iter().find(|&r| r.name == *trans.0).unwrap();
-
-            for f in trans.1.iter_mut() {
-                f.translation = [
-                    rd_joint.transition[0],
-                    rd_joint.transition[1],
-                    rd_joint.transition[2],
-                ];
+            } else {
+                error!("Node: {:?} is referenced by an animation channel but the node is not part of the skinned mesh inverseBindMatrices!",target_node_name_v2)
             }
         }
 
-        // s5 add both maps to anim_vec
-        for entry in rotation_map.drain() {
-            let ent = FrameCollection {
-                name: entry.0.to_string(),
-                len: entry.1.len() as u32,
-                frames: entry.1,
-            };
-            anim_vec.push(ent);
+        for joint in joints {
+            if !translation_map.contains_key(&joint.name) {
+                let node_idx = gltf
+                    .nodes()
+                    .find(|n| node_get_name(n) == joint.name)
+                    .unwrap();
+                let origin = node_get_local_transform(&node_idx);
+                let origin_translation = [
+                    origin.translation.x,
+                    origin.translation.y,
+                    origin.translation.z,
+                ];
+                let origin_quaternio_raw = origin.rotation.quaternion().coords;
+                let origin_rotation = [
+                    origin_quaternio_raw.x,
+                    origin_quaternio_raw.y,
+                    origin_quaternio_raw.z,
+                    origin_quaternio_raw.w,
+                ];
+                let intervall = tmax / (frames as f32 - 1.0);
+                let mut v = Vec::with_capacity(frames);
+                for i in 0..frames {
+                    v.push(Frame {
+                        rotation: origin_rotation,
+                        translation: origin_translation,
+                        time: i as f32 * intervall,
+                    });
+                }
+                warn!("idle_anim: adding idle for joint: {:?}", joint.name);
+                translation_map.insert(joint.name.clone(), v);
+            }
         }
 
-        //SHOULD NEVER ACTUALLY RUN SINCE translation_map.remove
-        assert_eq!(translation_map.len(), 0);
-        for entry in translation_map.drain() {
-            let ent = FrameCollection {
-                name: entry.0.to_string(),
-                len: entry.1.len() as u32,
-                frames: entry.1,
-            };
-            anim_vec.push(ent);
+        let mut frame_collections: Vec<FrameCollection> = Vec::new();
+        for (node_str, frames) in translation_map.drain() {
+            frame_collections.push(FrameCollection {
+                len: frames.len() as u32,
+                frames,
+                name: node_str.to_string(),
+            })
         }
+
+        assert_eq!(joints.len() - frame_collections.len(), 0);
 
         let name = format!("anim_{}", anim_idx);
-        animvec.push(RdAnim {
+        rd_animations.push(RdAnim {
             time_max: (t_max * 1000.0) as u32,
-            anim_vec,
+            anim_vec: frame_collections,
             name,
         });
     }
-    if animvec.is_empty() {
-        None
-    } else {
-        Some(animvec)
-    }
+    Some(rd_animations)
 }
 
 pub fn load_gltf(
@@ -287,13 +286,13 @@ pub fn load_gltf(
 fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoint> {
     let mut out_joints_vec = Vec::new();
 
-    let mut node_names_vec = Vec::new();
-
     for skin in gltf.skins() {
+        let mut node_names_vec: Vec<String> = Vec::new();
+
         info!("skin #{}", skin.index());
 
-        for node in skin.joints().into_iter() {
-            node_names_vec.push(node.name().unwrap());
+        for node in skin.joints() {
+            node_names_vec.push(node_get_name(&node));
         }
 
         debug!("{:?}", node_names_vec);
@@ -303,23 +302,26 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
         for (i, node) in skin.joints().enumerate() {
             for child in node.children() {
                 //rdm: children know their parent VS glTF parents know their children
-                let child_idx = node_names_vec
-                    .iter()
-                    .position(|&r| r == child.name().unwrap())
-                    .unwrap();
+                let c_name = node_get_name(&child);
+
+                let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
                 node_vec[child_idx] = i as u8;
-                debug!("{}: {} -> {}", child.name().unwrap(), i, node_names_vec[i]);
+                debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
             }
         }
 
         debug!("node_vec: {:?}", node_vec);
-        let mut node_vec_iter = node_vec.iter();
-        let mut node_names_vec_iter = node_names_vec.iter();
+        let node_vec_iter = node_vec.into_iter();
+        let node_names_vec_iter = node_names_vec.into_iter();
 
         let reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
 
         let mats_iter = reader.read_inverse_bind_matrices().unwrap();
-        for (z, mat) in mats_iter.enumerate() {
+        for (z, ((mat, parent), name)) in mats_iter
+            .zip(node_vec_iter)
+            .zip(node_names_vec_iter)
+            .enumerate()
+        {
             let inverse_bind_matrix: Matrix4<f32> =
                 Matrix4::from_fn_generic(U4, U4, |i, j| mat[j][i]);
             // inverseBindMatrix^-1 = BindMatrix
@@ -340,9 +342,9 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
 
             let rdjoint = RdJoint {
                 nameptr: 0,
-                name: String::from(*node_names_vec_iter.next().unwrap()),
+                name: name,
                 locked: false,
-                parent: *node_vec_iter.next().unwrap(),
+                parent,
                 quaternion: [
                     quaternion_raw.x,
                     quaternion_raw.y,
@@ -416,7 +418,7 @@ fn read_mesh(
 
         let mut mesh_info: Vec<MeshInstance> = Vec::new();
         let mut merged_triangle_vec = Vec::new();
-        let mut vertices_count = 0;
+        let mut vertices_count: u32 = 0;
         let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
 
         let mut kown_vbuffers = HashMap::new();
@@ -430,14 +432,19 @@ fn read_mesh(
 
             let mut position_iter = reader.read_positions().unwrap();
             let mut count = position_iter.len();
-            let mut normal_iter = reader.read_normals().unwrap();
+            let normal_it = match reader.read_normals() {
+                Some(iter) => iter.collect(),
+                None => {
+                    error!("Model has no normals! Enable normal export in Blender! Non existing tangents will cause garbage values!");
+                    vec![[0.0f32, 0.0f32, 1.0f32]]
+                }
+            };
+            let mut normal_iter = normal_it.into_iter().cycle();
 
             let tangent_it = match reader.read_tangents() {
                 Some(iter) => iter.collect(),
                 None => {
-                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
-                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
-                    error!("Model has no tangents! Enable tangents export in Blender! Non existing tangents will cause garbage values!");
+                    error!("Model has no tangents! Enable tangent export in Blender! Non existing tangents will cause garbage values!");
                     vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
                 }
             };
@@ -491,7 +498,7 @@ fn read_mesh(
 
             let mut weights_iter = wvecarr.into_iter().cycle();
 
-            warn!("dst_format: {:?}", dst_format);
+            info!("dst_format: {:?}", dst_format);
             //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
             trace!("vertex read loop");
@@ -560,7 +567,7 @@ fn read_mesh(
                 } else {
                     -tangents[3]
                 };
-                assert_relative_eq!(tw.abs(), 1.0);
+                //assert_relative_eq!(tw.abs(), 1.0);
 
                 let g4b = G4b {
                     data: [
@@ -636,7 +643,7 @@ fn read_mesh(
             let mut hasher = DefaultHasher::new();
             Hash::hash_slice(&verts_vec[pre_vertices_added..verts_vec.len()], &mut hasher);
             let hash_v = hasher.finish();
-            info!("Primivive {} hash is {:x}.", i, &hash_v);
+            debug!("Primivive {} hash is {:x}.", i, &hash_v);
             match kown_vbuffers.get(&hash_v) {
                 Some(found_start_vertices_count) => {
                     info!("found hash {:x}! Buffer already written.", &hash_v);
@@ -649,7 +656,13 @@ fn read_mesh(
             }
 
             vertices_count = verts_vec.len() as u32 / vertsize;
-            info!("vertices_count {}", vertices_count);
+            info!("Vertex count: {}", vertices_count);
+            if vertices_count > (u16::MAX - 1).into() {
+                error!("Mesh consists of too many vertices ({})!", vertices_count);
+                error!("Mesh vertices count must stay below 65535!");
+                error!("The vertex count that Max/Maya/Blender show may not reflect the reality of the glTF.");
+                error!("E.g. during Blender's glTF export, shared vertices may need to be unshared (duplicated again) if not all vertex attributes (normals, tangents, UV) are exactly the same!")
+            }
 
             //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
 
@@ -695,7 +708,7 @@ fn read_mesh(
 
             merged_triangle_vec.append(&mut triangle_vec);
 
-            warn!("{:?}", &mesh_info);
+            info!("{:?}", &mesh_info);
             //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
         }
         let verts = VertexFormat2::new(

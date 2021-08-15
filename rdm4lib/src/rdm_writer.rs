@@ -302,7 +302,7 @@ impl RdWriter {
             p = p.max(triangle.indices[1]);
             p = p.max(triangle.indices[2]);
         }
-        warn!("max triangle index is: {}", p);
+        info!("Max Triangle List Index: {}", p);
     }
 
     fn put_blob(&mut self) {

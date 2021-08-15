@@ -117,7 +117,7 @@ impl RdModell {
         multi_buffer.seek(first_instance - RdModell::META_COUNT, size);
         let mesh_count = multi_buffer.get_u32_le();
         assert_eq!(multi_buffer.get_u32_le(), 28);
-        warn!("mesh_count: {}", mesh_count);
+        info!("mesh_count: {}", mesh_count);
         let mut v = Vec::with_capacity(mesh_count as usize);
         for _ in 0..mesh_count {
             v.push(MeshInstance {
@@ -127,7 +127,7 @@ impl RdModell {
             });
             multi_buffer.advance(28 - 12);
         }
-        warn!("meshes: {:?}", v);
+        info!("meshes: {:?}", v);
         assert!(!v.is_empty());
         v
     }
