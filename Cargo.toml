@@ -13,9 +13,9 @@ members = [
 
 [dependencies]
 rdm4lib = { path = "rdm4lib" }
-log = "0.4"
+log = { version = "0.4", features = [] }
 env_logger = "0.9.0"
-clap = "3.0.0-beta.2"
+clap = "3.0.0-beta.4"
 walkdir = "2"
 
 

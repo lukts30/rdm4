@@ -373,4 +373,45 @@ mod tests {
         let local: Matrix4<f32> = p.try_inverse().unwrap() * c;
         println!("{}", local);
     }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    #[ignore]
+    fn interpolation_test() {
+        use nalgebra::Vector3;
+
+        let input_time = vec![0.0f32, 0.8, 1.6, 2.4, 3.2];
+        let output_values = vec![
+            Vector3::new(10.0f32, 5.0, -5.0),
+            Vector3::new(14.0f32, 3.0, -2.0),
+            Vector3::new(18.0f32, 1.0, 1.0),
+            Vector3::new(24.0f32, -1.0, 4.0),
+            Vector3::new(31.0f32, -3.0, 7.0),
+        ];
+
+        assert_eq!(input_time.len(), output_values.len());
+
+        fn interpolate(
+            current_time: f32,
+            input_time: &[f32],
+            output_values: &[Vector3<f32>],
+        ) -> Vector3<f32> {
+            let next_idx = input_time.iter().position(|t| t > &current_time).unwrap();
+            let previous_idx = next_idx - 1;
+
+            let previous_time = input_time[previous_idx];
+            let next_time = input_time[next_idx];
+
+            let previous_translation = output_values[previous_idx];
+            let next_translation = output_values[next_idx];
+
+            let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
+
+            let current_translation = previous_translation
+                + interpolation_value * (next_translation - previous_translation);
+            current_translation
+        }
+
+        dbg!(interpolate(1.2f32, &&input_time, &output_values));
+    }
 }

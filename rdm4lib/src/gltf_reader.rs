@@ -3,6 +3,7 @@ use crate::{rdm_writer::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 use crate::{MeshInstance, RdModell};
 
+use gltf::animation::Channel;
 use gltf::Node;
 use nalgebra::*;
 
@@ -15,6 +16,7 @@ use gltf::animation::util::ReadOutputs::*;
 
 use crate::VertexFormat2;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::u16;
@@ -25,7 +27,7 @@ use std::{
 
 fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
     let target_mat = target_node.transform().matrix();
-    let mut mat = Matrix4::from_fn_generic(U4, U4, |i, j| target_mat[j][i]);
+    let mut mat = Matrix4::from_fn(|i, j| target_mat[j][i]);
     mat.m44 = 1.0;
     let similarity: Similarity3<f32> = nalgebra::try_convert(mat).unwrap();
     debug!("similarity.scaling: {}", similarity.scaling());
@@ -42,23 +44,108 @@ fn node_get_name(target_node: &Node) -> String {
     }
 }
 
+fn extract_rotations(
+    time: impl Iterator<Item = f32>,
+    origin_translation: [f32; 3],
+    mut rot_iter: impl Iterator<Item = [f32; 4]>,
+) -> Vec<Frame> {
+    let mut frames_rot: Vec<Frame> = Vec::new();
+    for t in time {
+        let r = rot_iter.next().unwrap();
+        frames_rot.push(Frame {
+            time: t,
+            rotation: [r[0], r[1], r[2], -r[3]],
+            translation: origin_translation,
+        });
+    }
+    frames_rot
+}
+
+fn extract_translations(
+    time: impl Iterator<Item = f32>,
+    origin_rotation: [f32; 4],
+    mut trans: impl Iterator<Item = [f32; 3]>,
+) -> Vec<Frame> {
+    let mut frames: Vec<Frame> = Vec::new();
+    for t in time {
+        frames.push(Frame {
+            time: t,
+            rotation: origin_rotation,
+            translation: trans.next().unwrap(),
+        });
+    }
+    frames
+}
+
+fn read_animation_channel(buffers: &[gltf::buffer::Data], channel: Channel) -> Vec<Frame> {
+    let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+    let time = reader.read_inputs().unwrap();
+    let output = reader.read_outputs().unwrap();
+
+    match output {
+        Rotations(rot) => {
+            let rot_iter = rot.into_f32();
+            extract_rotations(time, Default::default(), rot_iter)
+        }
+        Translations(trans) => extract_translations(time, Default::default(), trans),
+        _ => unreachable!(),
+    }
+}
+
+fn interpolate_translation_on_rotation(translation: &[Frame], rotation: &mut [Frame]) {
+    fn interpolate(
+        current_time: f32,
+        input_time: &[f32],
+        output_values: &[Vector3<f32>],
+    ) -> Vector3<f32> {
+        let next_idx = input_time
+            .iter()
+            .position(|t| t > &current_time)
+            .unwrap_or(input_time.len() - 1);
+        let previous_idx = next_idx - 1;
+
+        let previous_time = input_time[previous_idx];
+        let next_time = input_time[next_idx];
+
+        let previous_translation = output_values[previous_idx];
+        let next_translation = output_values[next_idx];
+
+        let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
+
+        previous_translation + interpolation_value * (next_translation - previous_translation)
+    }
+    assert!(translation.len() <= rotation.len());
+
+    let input_time: Vec<f32> = translation.iter().map(|t| t.time).collect();
+    let output_values: Vec<Vector3<f32>> = translation
+        .iter()
+        .map(|t| Vector3::from(t.translation))
+        .collect();
+
+    for rot in rotation {
+        let raw = interpolate(rot.time, &input_time, &output_values);
+        rot.translation = [raw.x, raw.y, raw.z];
+    }
+}
+
 pub fn read_animation(
     f_path: &Path,
     joints: &[RdJoint],
     frames: usize,
-    tmax: f32,
+    _tmax: f32,
 ) -> Option<Vec<RdAnim>> {
     let (gltf, buffers, _) = gltf::import(f_path).unwrap();
     let mut translation_map: HashMap<String, Vec<Frame>> = HashMap::new();
     let mut rd_animations = Vec::new();
 
-    let mut real_joints: Vec<_> = joints.iter().map(|e| e.name.as_str()).collect();
-    real_joints.sort_unstable();
+    let real_joints: HashSet<_> = joints.iter().map(|e| e.name.as_str()).collect();
 
-    let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
+    //let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
 
     for (anim_idx, animation) in gltf.animations().enumerate() {
         let mut t_max = 0.0;
+        let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
+
         debug!("animation: {}", animation.name().unwrap_or("default"));
         for (_, channel) in animation.channels().enumerate() {
             let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -73,7 +160,6 @@ pub fn read_animation(
                 target_node_name_v2,
                 channel.target().property()
             );
-
             // ugly as hell
             t_max = t_max.max(
                 channel
@@ -103,55 +189,46 @@ pub fn read_animation(
                 origin_quaternio_raw.w,
             ];
 
-            if real_joints.iter().any(|&x| x == target_node_name_v2) {
+            if real_joints.contains(target_node_name_v2.as_str()) {
                 match output {
                     Rotations(rot) => {
                         let mut rot_iter = rot.into_f32();
                         if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
                             for (frame, t) in frames.iter_mut().zip(time) {
-                                assert!(
-                                    relative_eq!(t, frame.time),
-                                    "{}",
-                                    interpolate_error_message
-                                );
+                                if !relative_eq!(t, frame.time) {
+                                    interpolate_channel.insert(
+                                        target_node_name_v2,
+                                        (frames.clone(), read_animation_channel(&buffers, channel)),
+                                    );
+                                    break;
+                                }
                                 let r = rot_iter.next().unwrap();
                                 frame.rotation = [r[0], r[1], r[2], -r[3]];
                             }
                         } else {
-                            let mut frames_rot: Vec<Frame> = Vec::new();
-                            for t in time {
-                                let r = rot_iter.next().unwrap();
-                                let f = Frame {
-                                    time: t,
-                                    rotation: [r[0], r[1], r[2], -r[3]],
-                                    translation: origin_translation,
-                                };
-                                frames_rot.push(f);
-                            }
-                            translation_map.insert(target_node_name_v2, frames_rot);
+                            translation_map.insert(
+                                target_node_name_v2,
+                                extract_rotations(time, origin_translation, rot_iter),
+                            );
                         }
                     }
                     Translations(mut trans) => {
                         if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
                             for (frame, t) in frames.iter_mut().zip(time) {
-                                assert!(
-                                    relative_eq!(t, frame.time),
-                                    "{}",
-                                    interpolate_error_message
-                                );
+                                if !relative_eq!(t, frame.time) {
+                                    interpolate_channel.insert(
+                                        target_node_name_v2,
+                                        (read_animation_channel(&buffers, channel), frames.clone()),
+                                    );
+                                    break;
+                                }
                                 frame.translation = trans.next().unwrap();
                             }
                         } else {
-                            let mut frames: Vec<Frame> = Vec::new();
-                            for t in time {
-                                let f = Frame {
-                                    time: t,
-                                    rotation: origin_rotation,
-                                    translation: trans.next().unwrap(),
-                                };
-                                frames.push(f);
-                            }
-                            translation_map.insert(target_node_name_v2, frames);
+                            translation_map.insert(
+                                target_node_name_v2,
+                                extract_translations(time, origin_rotation, trans),
+                            );
                         };
                     }
                     _ => {
@@ -165,6 +242,17 @@ pub fn read_animation(
             } else {
                 error!("Node: {:?} is referenced by an animation channel but the node is not part of the skinned mesh inverseBindMatrices!",target_node_name_v2)
             }
+        }
+
+        // TODO: finish interpolate
+        for (name, (t, mut r)) in interpolate_channel.drain() {
+            let max_time_t = t.iter().map(|f| f.time).reduce(f32::max).unwrap();
+            let max_time_r = r.iter().map(|f| f.time).reduce(f32::max).unwrap();
+            assert_relative_eq!(max_time_t, max_time_r);
+            error!("{} {} {}", name, max_time_t, max_time_r);
+            warn!("{} {} {}", name, t.len(), r.len());
+            interpolate_translation_on_rotation(&t, &mut r);
+            translation_map.insert(name, r);
         }
 
         for joint in joints {
@@ -186,9 +274,9 @@ pub fn read_animation(
                     origin_quaternio_raw.z,
                     origin_quaternio_raw.w,
                 ];
-                let intervall = tmax / (frames as f32 - 1.0);
+                let intervall = t_max as f32 / frames as f32;
                 let mut v = Vec::with_capacity(frames);
-                for i in 0..frames {
+                for i in 0..=frames {
                     v.push(Frame {
                         rotation: origin_rotation,
                         translation: origin_translation,
@@ -322,8 +410,7 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
             .zip(node_names_vec_iter)
             .enumerate()
         {
-            let inverse_bind_matrix: Matrix4<f32> =
-                Matrix4::from_fn_generic(U4, U4, |i, j| mat[j][i]);
+            let inverse_bind_matrix: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
             // inverseBindMatrix^-1 = BindMatrix
             // BindMatrix: global transform of the respective joint
             let mut mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
@@ -399,7 +486,7 @@ fn read_mesh(
             negative_x_and_v0v2v1 = true;
         }
 
-        let mat3 = base.resize(3, 3, 0.0);
+        let mat3 = base.fixed_resize::<3, 3>(0.0);
         let inv_transform_mat3 = mat3.try_inverse().unwrap();
         let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
 
@@ -523,8 +610,8 @@ fn read_mesh(
                 };
 
                 let normals = normal_iter.next().unwrap();
-                let normv = Vector3::new(normals[0], normals[1], normals[2]);
-                let transformed_normals = &transpose_inv_transform_mat3 * normv;
+                let normv: Vector3<f32> = Vector3::new(normals[0], normals[1], normals[2]);
+                let transformed_normals: Vector3<f32> = transpose_inv_transform_mat3 * normv;
 
                 let mut nx = transformed_normals[0];
                 let mut ny = transformed_normals[1];
@@ -548,7 +635,7 @@ fn read_mesh(
 
                 let tangents = tangent_iter.next().unwrap();
                 let tangv = Vector3::new(tangents[0], tangents[1], tangents[2]);
-                let transformed_tangents = &transpose_inv_transform_mat3 * tangv;
+                let transformed_tangents = transpose_inv_transform_mat3 * tangv;
 
                 let mut tx = transformed_tangents[0];
                 let mut ty = transformed_tangents[1];
@@ -790,53 +877,13 @@ fn calculate_global_transform(
     let nodes: Vec<gltf::scene::Node> = doc.nodes().collect();
     debug!("target_node: {} ", target_node);
     let rel_transform_data = nodes[target_node].transform().matrix();
-    let mut mat4rel_transform = Matrix4::identity();
-    mat4rel_transform.m11 = rel_transform_data[0][0];
-    mat4rel_transform.m21 = rel_transform_data[0][1];
-    mat4rel_transform.m31 = rel_transform_data[0][2];
-    mat4rel_transform.m41 = rel_transform_data[0][3];
-
-    mat4rel_transform.m12 = rel_transform_data[1][0];
-    mat4rel_transform.m22 = rel_transform_data[1][1];
-    mat4rel_transform.m32 = rel_transform_data[1][2];
-    mat4rel_transform.m42 = rel_transform_data[1][3];
-
-    mat4rel_transform.m13 = rel_transform_data[2][0];
-    mat4rel_transform.m23 = rel_transform_data[2][1];
-    mat4rel_transform.m33 = rel_transform_data[2][2];
-    mat4rel_transform.m43 = rel_transform_data[2][3];
-
-    mat4rel_transform.m14 = rel_transform_data[3][0];
-    mat4rel_transform.m24 = rel_transform_data[3][1];
-    mat4rel_transform.m34 = rel_transform_data[3][2];
-    mat4rel_transform.m44 = rel_transform_data[3][3];
+    let mut mat4rel_transform = Matrix4::from_fn(|i, j| rel_transform_data[j][i]);
 
     let mut bmat4: Matrix4<f32> = Matrix4::identity();
-    //dbg!(&rel_transform);
     if !tree.is_empty() {
         for p in tree.iter().rev() {
             let mat = nodes[*p].transform().matrix();
-            let mut mat4: Matrix4<f32> = Matrix4::identity();
-            mat4.m11 = mat[0][0];
-            mat4.m21 = mat[0][1];
-            mat4.m31 = mat[0][2];
-            mat4.m41 = mat[0][3];
-
-            mat4.m12 = mat[1][0];
-            mat4.m22 = mat[1][1];
-            mat4.m32 = mat[1][2];
-            mat4.m42 = mat[1][3];
-
-            mat4.m13 = mat[2][0];
-            mat4.m23 = mat[2][1];
-            mat4.m33 = mat[2][2];
-            mat4.m43 = mat[2][3];
-
-            mat4.m14 = mat[3][0];
-            mat4.m24 = mat[3][1];
-            mat4.m34 = mat[3][2];
-            mat4.m44 = mat[3][3];
-
+            let mat4: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
             bmat4 *= mat4;
         }
     }
