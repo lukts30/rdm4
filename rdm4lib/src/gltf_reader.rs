@@ -38,8 +38,9 @@ fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
 }
 
 fn node_get_name(target_node: &Node) -> String {
+    // TODO:
     match target_node.name() {
-        Some(name) => name.to_owned(),
+        Some(_name) => format!("UnnamedGltfNode{}", target_node.index()),
         None => format!("UnnamedGltfNode{}", target_node.index()),
     }
 }
@@ -413,37 +414,68 @@ fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoi
             let inverse_bind_matrix: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
             // inverseBindMatrix^-1 = BindMatrix
             // BindMatrix: global transform of the respective joint
-            let mut mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
-
-            // may perform expensive checks ...
+            let mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
             debug!("{} mat4_init: {}", z, mat4_init);
-            mat4_init.m44 = 1.0;
-            let similarity: Similarity3<f32> = nalgebra::try_convert(mat4_init).unwrap();
-            debug!("similarity.scaling: {}", similarity.scaling());
-
-            let isometry: Isometry3<f32> = similarity.isometry;
-            let unit_quaternion = isometry.rotation;
-            let quaternion_raw = unit_quaternion.quaternion().coords;
-
-            let translation: Translation3<f32> = isometry.translation;
-
-            let rdjoint = RdJoint {
-                nameptr: 0,
-                name,
-                locked: false,
-                parent,
-                quaternion: [
-                    quaternion_raw.x,
-                    quaternion_raw.y,
-                    quaternion_raw.z,
-                    quaternion_raw.w,
-                ],
-                transition: [translation.x, translation.y, translation.z],
-            };
-            out_joints_vec.push(rdjoint);
+            out_joints_vec.push(create_joint(mat4_init, name, parent));
         }
     }
+    let mut check = true;
+    while check {
+        check = create_joints_from_non_skin_nodes(gltf, &mut out_joints_vec);
+    }
     out_joints_vec
+}
+
+fn create_joints_from_non_skin_nodes(gltf: &gltf::Document, rdjoint: &mut Vec<RdJoint>) -> bool {
+    // If a joint has a parent that is not a joint itself convert the parent
+    let mut l = rdjoint.len().try_into().unwrap();
+    let mut node_converted_to_joints = Vec::new();
+    let mut has_converted = false;
+    debug!("check_all_node_in_skin");
+    for j in rdjoint.iter_mut().filter(|k| k.parent == 255) {
+        for n in gltf.nodes() {
+            if n.children().any(|n| node_get_name(&n) == j.name) {
+                warn!("oops parent is: {}", n.index());
+                j.parent = l;
+                l = l.checked_add(1).unwrap();
+                has_converted = true;
+                let mat4_init: Matrix4<f32> = build_transform2(gltf, n.index());
+                node_converted_to_joints.push(create_joint(mat4_init, node_get_name(&n), 255));
+                break;
+            }
+        }
+    }
+    rdjoint.append(&mut node_converted_to_joints);
+    has_converted
+}
+
+#[inline]
+fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoint {
+    // may perform expensive checks ...
+    debug!("node_to_joint mat4_init: {}", mat4_init);
+    mat4_init.m44 = 1.0;
+    let similarity: Similarity3<f32> = nalgebra::try_convert(mat4_init).unwrap();
+    debug!("similarity.scaling: {}", similarity.scaling());
+
+    let isometry: Isometry3<f32> = similarity.isometry;
+    let unit_quaternion = isometry.rotation;
+    let quaternion_raw = unit_quaternion.quaternion().coords;
+
+    let translation: Translation3<f32> = isometry.translation;
+
+    RdJoint {
+        nameptr: 0,
+        name,
+        locked: false,
+        parent,
+        quaternion: [
+            quaternion_raw.x,
+            quaternion_raw.y,
+            quaternion_raw.z,
+            quaternion_raw.w,
+        ],
+        transition: [translation.x, translation.y, translation.z],
+    }
 }
 
 type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)>;

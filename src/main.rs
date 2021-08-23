@@ -40,7 +40,7 @@ fn cli_in_is_file_or_dir(v: &OsStr) -> Result<(), String> {
 
 #[derive(Clap)]
 #[clap(
-    version = "v0.5-alpha",
+    version = env!("CARGO_PKG_VERSION"),
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
