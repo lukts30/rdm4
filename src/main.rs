@@ -15,6 +15,7 @@ extern crate log;
 
 use clap::Clap;
 use env_logger::Env;
+use std::convert::TryFrom;
 use std::{ffi::OsStr, panic};
 use walkdir::WalkDir;
 
@@ -213,8 +214,9 @@ fn entry_do_work(mut opts: Opts) {
         gltf_export::build(rdm, opts.out, !opts.force, gltf_export_format);
     } else {
         let f_path = opts.input.as_path();
-        let rdm = gltf_reader::load_gltf(
-            f_path,
+        let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &i_gltf,
             opts.gltf.unwrap(),
             opts.skeleton,
             opts.negative_x_and_v0v2v1,
@@ -225,7 +227,7 @@ fn entry_do_work(mut opts: Opts) {
         if opts.skeleton && opts.animation {
             let jj = rdm.joints.as_ref().unwrap();
 
-            match gltf_reader::read_animation(f_path, jj, 6, 0.33333) {
+            match gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333) {
                 Some(mut anims) => {
                     for anim in anims.drain(..) {
                         let exp_rdm = RdAnimWriter::from(anim);
