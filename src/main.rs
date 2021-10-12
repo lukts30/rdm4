@@ -1,5 +1,6 @@
 extern crate rdm4lib;
 
+use rdm4lib::gltf_reader::ResolveNodeName;
 use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RdModell};
 
 use rdm4lib::gltf_export;
@@ -15,6 +16,7 @@ extern crate log;
 
 use clap::Clap;
 use env_logger::Env;
+use std::convert::TryFrom;
 use std::{ffi::OsStr, panic};
 use walkdir::WalkDir;
 
@@ -40,7 +42,7 @@ fn cli_in_is_file_or_dir(v: &OsStr) -> Result<(), String> {
 
 #[derive(Clap)]
 #[clap(
-    version = "v0.5-alpha",
+    version = env!("CARGO_PKG_VERSION"),
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
@@ -132,9 +134,17 @@ struct Opts {
     #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
 
-    /// glTF Separate (.gltf + .bin + textures), Exports multiple files, with separate JSON, binary and texture data. Easiest to edit later.
+    /// Depreacted option use option gltf_export_format instead.
     #[clap(long)]
     gltf_separate: bool,
+
+    /// Export format to use for rdm to gltf: "glb", "gltf", "gltfmin"
+    #[clap(short = 'e', long, default_value = "glb")]
+    gltf_export_format: GltfExportFormat,
+
+    /// use glTF node index instead of name for rdm bone
+    #[clap(long, short = 'u')]
+    gltf_unstable_index: bool,
 
     /// Override existing files
     #[clap(long)]
@@ -161,6 +171,9 @@ fn main() {
 }
 
 fn entry_do_work(mut opts: Opts) {
+    opts.gltf_separate.then(|| {
+        error!("Depreacted option gltf_separate: use option --gltf_export_format instead!")
+    });
     assert!(
         opts.input.is_file(),
         "Input must be a file! Missing --batch / -b ?"
@@ -205,16 +218,21 @@ fn entry_do_work(mut opts: Opts) {
             rdm.mat = Some(RdMaterial::new(diffusetexture));
         }
         info!("running gltf_export ...");
-        let gltf_export_format = if opts.gltf_separate {
-            GltfExportFormat::GltfSeparate
-        } else {
-            GltfExportFormat::Glb
-        };
-        gltf_export::build(rdm, opts.out, !opts.force, gltf_export_format);
+
+        gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
     } else {
         let f_path = opts.input.as_path();
-        let rdm = gltf_reader::load_gltf(
-            f_path,
+        let i_gltf = {
+            let mut interm = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
+            interm.name_setting = match opts.gltf_unstable_index {
+                true => ResolveNodeName::UnstableIndex,
+                false => ResolveNodeName::UniqueName,
+            };
+            interm
+        };
+
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &i_gltf,
             opts.gltf.unwrap(),
             opts.skeleton,
             opts.negative_x_and_v0v2v1,
@@ -225,7 +243,7 @@ fn entry_do_work(mut opts: Opts) {
         if opts.skeleton && opts.animation {
             let jj = rdm.joints.as_ref().unwrap();
 
-            match gltf_reader::read_animation(f_path, jj, 6, 0.33333) {
+            match gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333) {
                 Some(mut anims) => {
                     for anim in anims.drain(..) {
                         let exp_rdm = RdAnimWriter::from(anim);
@@ -266,6 +284,8 @@ fn test_batch() {
         overide_mesh_idx: None,
         force: false,
         gltf_separate: true,
+        gltf_unstable_index: false,
+        gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
     };
     batch(opt).expect("msg");
 }
@@ -333,6 +353,8 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             overide_mesh_idx: None,
                             force: defopt.force,
                             gltf_separate: true,
+                            gltf_unstable_index: false,
+                            gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
                         };
                         let result = panic::catch_unwind(|| {
                             entry_do_work(opt);

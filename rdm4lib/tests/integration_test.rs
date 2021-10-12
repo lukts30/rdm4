@@ -17,6 +17,7 @@ use std::str;
 mod tests {
     use super::*;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
+    use std::convert::TryFrom;
     use std::fs;
     use std::path::PathBuf;
 
@@ -225,8 +226,9 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf_skin_round_trip() {
         let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
-        let mut rdm = gltf_reader::load_gltf(
-            &f_path,
+        let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
+        let mut rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &i_gltf,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
@@ -240,7 +242,8 @@ mod tests {
         );
 
         let jj = rdm.joints.clone().unwrap();
-        let mut anims = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
+        let mut anims =
+            gltf_reader::ImportedGltf::read_animation(&i_gltf, &jj, 6, 0.33333).unwrap();
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
@@ -261,8 +264,11 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf() {
-        let rdm = gltf_reader::load_gltf(
-            Path::new("rdm/gltf/stormtrooper_with_tangent.gltf"),
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &gltf_reader::ImportedGltf::try_from(Path::new(
+                "rdm/gltf/stormtrooper_with_tangent.gltf",
+            ))
+            .unwrap(),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
@@ -285,8 +291,9 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn read_gltf_anim() {
         let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
-        let rdm = gltf_reader::load_gltf(
-            &f_path,
+        let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &i_gltf,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
             true,
             false,
@@ -300,7 +307,8 @@ mod tests {
         );
 
         let jj = &rdm.joints.unwrap();
-        let mut anims = gltf_reader::read_animation(&f_path, &jj, 6, 0.33333).unwrap();
+        let mut anims =
+            gltf_reader::ImportedGltf::read_animation(&i_gltf, &jj, 6, 0.33333).unwrap();
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
@@ -313,8 +321,8 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn read_gltf_no_skin() {
-        let rdm = gltf_reader::load_gltf(
-            Path::new("rdm/gltf/stormtrooper.gltf"),
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf")).unwrap(),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
             false,
             false,
@@ -338,8 +346,8 @@ mod tests {
     #[ignore]
     fn read_gltf_no_skin2() {
         // no normals so ignore it !
-        let rdm = gltf_reader::load_gltf(
-            Path::new("rdm/gltf/triangle.gltf"),
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf")).unwrap(),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
             false,
             false,

@@ -8,6 +8,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     path::PathBuf,
+    str::FromStr,
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -1136,6 +1137,22 @@ pub enum GltfExportFormat {
     GltfSeparate,
     GltfSeparateMinimise,
     Glb,
+}
+
+impl FromStr for GltfExportFormat {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_ascii_lowercase().as_str() {
+            "gltf" => Ok(GltfExportFormat::GltfSeparate),
+            "gltfm" | "gltfmi" | "gltfmin" => Ok(GltfExportFormat::GltfSeparateMinimise),
+            "glb" => Ok(GltfExportFormat::Glb),
+            _ => Err(format!(
+                "Invalid value for GltfExportFormat: {}, Only gltf/gltfmin/glb are allowed value",
+                input
+            )),
+        }
+    }
 }
 
 impl RdGltf {
