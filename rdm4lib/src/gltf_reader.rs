@@ -25,9 +25,16 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
+#[derive(Debug, PartialEq)]
+pub enum ResolveNodeName {
+    UnstableIndex,
+    UniqueName,
+}
+
 pub struct ImportedGltf {
     gltf: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
+    pub name_setting: ResolveNodeName,
 }
 
 impl<'a> TryFrom<&'a Path> for ImportedGltf {
@@ -35,7 +42,11 @@ impl<'a> TryFrom<&'a Path> for ImportedGltf {
     fn try_from(f_path: &'a Path) -> Result<ImportedGltf, gltf::Error> {
         info!("gltf::import start!");
         let (gltf, buffers, _) = gltf::import(f_path)?;
-        let res = Ok(Self { gltf, buffers });
+        let res = Ok(Self {
+            gltf,
+            buffers,
+            name_setting: ResolveNodeName::UniqueName,
+        });
         info!("gltf::import end!");
         res
     }
@@ -51,14 +62,6 @@ fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
     let mut isometry: Isometry3<f32> = similarity.isometry;
     isometry.rotation = isometry.rotation.inverse();
     isometry
-}
-
-fn node_get_name(target_node: &Node) -> String {
-    // TODO:
-    match target_node.name() {
-        Some(_name) => format!("UnnamedGltfNode{}", target_node.index()),
-        None => format!("UnnamedGltfNode{}", target_node.index()),
-    }
 }
 
 fn extract_rotations(
@@ -147,31 +150,43 @@ fn interpolate_translation_on_rotation(translation: &[Frame], rotation: &mut [Fr
 
 impl ImportedGltf {
     fn check_node_name_uniqueness(&self) {
-        let error_msg = "This converter matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique.";
-        let len = self.gltf.nodes().len();
-        let no_dupes: HashSet<&str> = self
-            .gltf
-            .nodes()
-            .map(|e| {
-                e.name()
-                    .unwrap_or_else(|| panic!("node.name property unset! {}", error_msg))
-            })
-            .collect();
-        assert_eq!(
-            len,
-            no_dupes.len(),
-            "node.name property is not unique! Same value for node.name is used multiple times! {}",
-            error_msg
-        );
+        if self.name_setting == ResolveNodeName::UniqueName {
+            let error_msg = "
+            This converter by default matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique. 
+            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-unsable-index`";
+            let len = self.gltf.nodes().len();
+            let no_dupes: HashSet<&str> = self
+                .gltf
+                .nodes()
+                .map(|e| {
+                    e.name()
+                        .unwrap_or_else(|| panic!("node.name property unset! {}", error_msg))
+                })
+                .collect();
+            assert_eq!(
+                len,
+                no_dupes.len(),
+                "node.name property is not unique! Same value for node.name is used multiple times! {}",
+                error_msg
+            );
+        }
+    }
+
+    fn node_get_name(&self, target_node: &Node) -> String {
+        // TODO: improve
+        match self.name_setting {
+            ResolveNodeName::UnstableIndex => format!("UnnamedGltfNode{}", target_node.index()),
+            ResolveNodeName::UniqueName => target_node.name().unwrap().to_owned(),
+        }
     }
 
     pub fn read_animation(
-        i_gltf: &Self,
+        &self,
         joints: &[RdJoint],
         frames: usize,
         _tmax: f32,
     ) -> Option<Vec<RdAnim>> {
-        let (gltf, buffers) = (&i_gltf.gltf, &i_gltf.buffers);
+        let (gltf, buffers) = (&self.gltf, &self.buffers);
 
         let mut translation_map: HashMap<String, Vec<Frame>> = HashMap::new();
         let mut rd_animations = Vec::new();
@@ -190,7 +205,7 @@ impl ImportedGltf {
                 let time = reader.read_inputs().unwrap();
                 let output = reader.read_outputs().unwrap();
 
-                let target_node_name_v2 = node_get_name(&channel.target().node());
+                let target_node_name_v2 = self.node_get_name(&channel.target().node());
 
                 debug!("{}", time.len());
                 info!(
@@ -304,7 +319,7 @@ impl ImportedGltf {
                 if !translation_map.contains_key(&joint.name) {
                     let node_idx = gltf
                         .nodes()
-                        .find(|n| node_get_name(n) == joint.name)
+                        .find(|n| self.node_get_name(n) == joint.name)
                         .unwrap();
                     let origin = node_get_local_transform(&node_idx);
                     let origin_translation = [
@@ -355,14 +370,14 @@ impl ImportedGltf {
     }
 
     pub fn gltf_to_rdm(
-        i_gltf: &Self,
+        &self,
         dst_format: TargetVertexFormat,
         load_skin: bool,
         negative_x_and_v0v2v1: bool,
         no_transform: bool,
         overide_mesh_idx: Option<Vec<u32>>,
     ) -> RdModell {
-        let (gltf, buffers) = (&i_gltf.gltf, &i_gltf.buffers);
+        let (gltf, buffers) = (&self.gltf, &self.buffers);
 
         if negative_x_and_v0v2v1 {
             warn!("negative_x_and_v0v2v1: {}", negative_x_and_v0v2v1);
@@ -390,8 +405,8 @@ impl ImportedGltf {
         let triangles_idx_size = 2;
 
         let joints_vec = if load_skin {
-            i_gltf.check_node_name_uniqueness();
-            Some(read_skin(gltf, buffers))
+            self.check_node_name_uniqueness();
+            Some(self.read_skin())
         } else {
             None
         };
@@ -415,97 +430,97 @@ impl ImportedGltf {
             mat: None,
         }
     }
-}
 
-fn read_skin(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<RdJoint> {
-    let mut out_joints_vec = Vec::new();
+    fn read_skin(&self) -> Vec<RdJoint> {
+        let mut out_joints_vec = Vec::new();
 
-    for skin in gltf.skins() {
-        let mut node_names_vec: Vec<String> = Vec::new();
+        for skin in self.gltf.skins() {
+            let mut node_names_vec: Vec<String> = Vec::new();
 
-        info!("skin #{}", skin.index());
+            info!("skin #{}", skin.index());
 
-        for node in skin.joints() {
-            node_names_vec.push(node_get_name(&node));
-        }
-
-        debug!("{:?}", node_names_vec);
-        // parentless nodes have 255 as "index"
-        let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
-
-        for (i, node) in skin.joints().enumerate() {
-            for child in node.children() {
-                //rdm: children know their parent VS glTF parents know their children
-                let c_name = node_get_name(&child);
-
-                let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
-                node_vec[child_idx] = i as u8;
-                debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
+            for node in skin.joints() {
+                node_names_vec.push(self.node_get_name(&node));
             }
-        }
 
-        debug!("node_vec: {:?}", node_vec);
-        let node_vec_iter = node_vec.into_iter();
-        let node_names_vec_iter = node_names_vec.into_iter();
+            debug!("{:?}", node_names_vec);
+            // parentless nodes have 255 as "index"
+            let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
 
-        let reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
+            for (i, node) in skin.joints().enumerate() {
+                for child in node.children() {
+                    //rdm: children know their parent VS glTF parents know their children
+                    let c_name = self.node_get_name(&child);
 
-        let mats_iter = reader.read_inverse_bind_matrices().unwrap();
-        for (z, ((mat, parent), name)) in mats_iter
-            .zip(node_vec_iter)
-            .zip(node_names_vec_iter)
-            .enumerate()
-        {
-            let inverse_bind_matrix: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
-            // inverseBindMatrix^-1 = BindMatrix
-            // BindMatrix: global transform of the respective joint
-            let mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
-            debug!("{} mat4_init: {}", z, mat4_init);
-            out_joints_vec.push(create_joint(mat4_init, name, parent));
-        }
-    }
-    let mut check = true;
-    while check {
-        check = create_joints_from_non_skin_nodes(gltf, &mut out_joints_vec);
-    }
-    out_joints_vec
-}
-
-fn create_joints_from_non_skin_nodes(gltf: &gltf::Document, rdjoint: &mut Vec<RdJoint>) -> bool {
-    // TODO: refactor this ugly mess
-    // If a joint has a parent that is not a joint itself convert the parent
-    let rdlen = rdjoint.len();
-    let mut l = rdjoint.len().try_into().unwrap();
-    let mut node_converted_to_joints = Vec::new();
-    let mut has_converted = false;
-    debug!("check_all_node_in_skin");
-    for j in rdjoint.iter_mut().filter(|k| k.parent == 255) {
-        for n in gltf.nodes() {
-            if n.children().any(|n| node_get_name(&n) == j.name) {
-                let did = node_converted_to_joints
-                    .iter()
-                    .position(|o: &RdJoint| o.name == node_get_name(&n));
-                match did {
-                    Some(index) => j.parent = u8::try_from(rdlen + index).unwrap(),
-                    None => {
-                        info!("Promoting (non skin) node: {}", n.index());
-                        j.parent = l;
-                        l = l.checked_add(1).unwrap();
-                        has_converted = true;
-                        let mat4_init: Matrix4<f32> = build_transform2(gltf, n.index());
-                        node_converted_to_joints.push(create_joint(
-                            mat4_init,
-                            node_get_name(&n),
-                            255,
-                        ));
-                    }
+                    let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
+                    node_vec[child_idx] = i as u8;
+                    debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
                 }
-                break;
+            }
+
+            debug!("node_vec: {:?}", node_vec);
+            let node_vec_iter = node_vec.into_iter();
+            let node_names_vec_iter = node_names_vec.into_iter();
+
+            let reader = skin.reader(|buffer| Some(&self.buffers[buffer.index()]));
+
+            let mats_iter = reader.read_inverse_bind_matrices().unwrap();
+            for (z, ((mat, parent), name)) in mats_iter
+                .zip(node_vec_iter)
+                .zip(node_names_vec_iter)
+                .enumerate()
+            {
+                let inverse_bind_matrix: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
+                // inverseBindMatrix^-1 = BindMatrix
+                // BindMatrix: global transform of the respective joint
+                let mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
+                debug!("{} mat4_init: {}", z, mat4_init);
+                out_joints_vec.push(create_joint(mat4_init, name, parent));
             }
         }
+        let mut check = true;
+        while check {
+            check = self.create_joints_from_non_skin_nodes(&mut out_joints_vec);
+        }
+        out_joints_vec
     }
-    rdjoint.append(&mut node_converted_to_joints);
-    has_converted
+
+    fn create_joints_from_non_skin_nodes(&self, rdjoint: &mut Vec<RdJoint>) -> bool {
+        // TODO: refactor this ugly mess
+        // If a joint has a parent that is not a joint itself convert the parent
+        let rdlen = rdjoint.len();
+        let mut l = rdjoint.len().try_into().unwrap();
+        let mut node_converted_to_joints = Vec::new();
+        let mut has_converted = false;
+        debug!("check_all_node_in_skin");
+        for j in rdjoint.iter_mut().filter(|k| k.parent == 255) {
+            for n in self.gltf.nodes() {
+                if n.children().any(|n| self.node_get_name(&n) == j.name) {
+                    let did = node_converted_to_joints
+                        .iter()
+                        .position(|o: &RdJoint| o.name == self.node_get_name(&n));
+                    match did {
+                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap(),
+                        None => {
+                            info!("Promoting (non skin) node: {}", n.index());
+                            j.parent = l;
+                            l = l.checked_add(1).unwrap();
+                            has_converted = true;
+                            let mat4_init: Matrix4<f32> = build_transform2(&self.gltf, n.index());
+                            node_converted_to_joints.push(create_joint(
+                                mat4_init,
+                                self.node_get_name(&n),
+                                255,
+                            ));
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        rdjoint.append(&mut node_converted_to_joints);
+        has_converted
+    }
 }
 
 #[inline]
