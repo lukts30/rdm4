@@ -35,6 +35,7 @@ pub struct ImportedGltf {
     gltf: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
     pub name_setting: ResolveNodeName,
+    pub mesh_idx: u32,
 }
 
 impl<'a> TryFrom<&'a Path> for ImportedGltf {
@@ -46,6 +47,7 @@ impl<'a> TryFrom<&'a Path> for ImportedGltf {
             gltf,
             buffers,
             name_setting: ResolveNodeName::UniqueName,
+            mesh_idx: 0,
         });
         info!("gltf::import end!");
         res
@@ -153,7 +155,7 @@ impl ImportedGltf {
         if self.name_setting == ResolveNodeName::UniqueName {
             let error_msg = "
             This converter by default matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique. 
-            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-unsable-index`";
+            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-unstable-node-index`";
             let len = self.gltf.nodes().len();
             let no_dupes: HashSet<&str> = self
                 .gltf
@@ -377,22 +379,19 @@ impl ImportedGltf {
         no_transform: bool,
         overide_mesh_idx: Option<Vec<u32>>,
     ) -> RdModell {
-        let (gltf, buffers) = (&self.gltf, &self.buffers);
-
         if negative_x_and_v0v2v1 {
             warn!("negative_x_and_v0v2v1: {}", negative_x_and_v0v2v1);
             warn!("negative_x_and_v0v2v1 may cause lighting artifacts !");
         }
-        let gltf_imp = read_mesh(
-            gltf,
-            buffers,
-            dst_format,
-            load_skin,
-            negative_x_and_v0v2v1,
-            no_transform,
-            overide_mesh_idx,
-        )
-        .unwrap();
+        let gltf_imp = self
+            .read_mesh(
+                dst_format,
+                load_skin,
+                negative_x_and_v0v2v1,
+                no_transform,
+                overide_mesh_idx,
+            )
+            .unwrap();
         let size = 0;
         let vertices = gltf_imp.1;
         let triangles = gltf_imp.2;
@@ -433,8 +432,17 @@ impl ImportedGltf {
 
     fn read_skin(&self) -> Vec<RdJoint> {
         let mut out_joints_vec = Vec::new();
+        let mesh = self
+            .gltf
+            .meshes()
+            .nth(self.mesh_idx.try_into().unwrap())
+            .unwrap();
+        let mesh_instantiating_node =
+            find_first_mesh_instantiating_node(&self.gltf, mesh.index()).unwrap();
+        let node_with_skin = self.gltf.nodes().nth(mesh_instantiating_node);
 
-        for skin in self.gltf.skins() {
+        let skin = node_with_skin.unwrap().skin().unwrap();
+        {
             let mut node_names_vec: Vec<String> = Vec::new();
 
             info!("skin #{}", skin.index());
@@ -521,6 +529,376 @@ impl ImportedGltf {
         rdjoint.append(&mut node_converted_to_joints);
         has_converted
     }
+
+    fn read_mesh(
+        &self,
+        dst_format: TargetVertexFormat,
+        read_joints: bool,
+        mut negative_x_and_v0v2v1: bool,
+        no_transform: bool,
+        overide_mesh_idx: Option<Vec<u32>>,
+    ) -> ReadMeshOutput {
+        let (gltf, buffers) = (&self.gltf, &self.buffers);
+        // only the nth mesh of file gets read
+        if let Some(mesh) = gltf.meshes().nth(self.mesh_idx.try_into().unwrap()) {
+            info!("Mesh #{}", mesh.index());
+
+            let mesh_instantiating_node =
+                find_first_mesh_instantiating_node(gltf, mesh.index()).unwrap();
+            debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
+
+            let mut base: Matrix4<f32> = if no_transform {
+                Matrix4::identity()
+            } else {
+                build_transform2(gltf, mesh_instantiating_node)
+            };
+
+            if negative_x_and_v0v2v1 {
+                let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+                base *= m.to_homogeneous();
+                negative_x_and_v0v2v1 = false;
+            }
+
+            debug!("base: {}", &base);
+
+            let det = base.determinant();
+            if det.is_sign_negative() {
+                warn!("determinant is negative: {}", det);
+                warn!("negative determinant requires special code path!");
+                negative_x_and_v0v2v1 = true;
+            }
+
+            let mat3 = base.fixed_resize::<3, 3>(0.0);
+            let inv_transform_mat3 = mat3.try_inverse().unwrap();
+            let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
+
+            let ident = match dst_format {
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
+                }
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
+                }
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
+                }
+            };
+            let vertsize = ident.iter().map(|x| x.get_size()).sum();
+
+            let mut mesh_info: Vec<MeshInstance> = Vec::new();
+            let mut merged_triangle_vec = Vec::new();
+            let mut vertices_count: u32 = 0;
+            let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
+
+            let mut kown_vbuffers = HashMap::new();
+
+            if let Some(v) = overide_mesh_idx.as_ref() {
+                assert_eq!(mesh.primitives().len(), v.len());
+            }
+            for (i, primitive) in mesh.primitives().enumerate() {
+                info!("- Primitive #{}", primitive.index());
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                let mut position_iter = reader.read_positions().unwrap();
+                let mut count = position_iter.len();
+                let normal_it = match reader.read_normals() {
+                    Some(iter) => iter.collect(),
+                    None => {
+                        error!("Model has no normals! Enable normal export in Blender! Non existing normal will cause garbage values!");
+                        vec![[0.0f32, 0.0f32, 1.0f32]]
+                    }
+                };
+                let mut normal_iter = normal_it.into_iter().cycle();
+
+                let tangent_it = match reader.read_tangents() {
+                    Some(iter) => iter.collect(),
+                    None => {
+                        error!("Model has no tangents! Enable tangent export in Blender! Non existing tangents will cause garbage values!");
+                        vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
+                    }
+                };
+                let mut tangent_iter = tangent_it.into_iter().cycle();
+
+                let tex_iter1 = reader.read_tex_coords(0);
+                let p: Vec<[f32; 2]> = match tex_iter1 {
+                    Some(tex) => {
+                        let r: Vec<[f32; 2]> = tex.into_f32().collect();
+                        assert_eq!(count, r.len());
+                        r
+                    }
+                    None => {
+                        error!(
+                            "No tex_coords ! Non existing 'texcoord_0' will cause garbage values!"
+                        );
+                        vec![[0.0f32, 0.0f32]]
+                    }
+                };
+                let mut tex_iter = p.into_iter().cycle();
+
+                let jvecarr: Vec<[u16; 4]> = match reader.read_joints(0) {
+                    Some(joints) if read_joints => {
+                        let j: Vec<[u16; 4]> = joints.into_u16().collect();
+                        assert_eq!(count, j.len());
+                        j
+                    }
+                    _ => {
+                        warn!("No joints in glTF file !");
+                        if read_joints {
+                            panic!("No joints in glTF file but --skeleton flag was set!")
+                        }
+                        vec![[0, 0, 0, 0]]
+                    }
+                };
+
+                let mut joints_iter = jvecarr.into_iter().cycle();
+
+                let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
+                    Some(weight) if read_joints => {
+                        let j: Vec<[f32; 4]> = weight.into_f32().collect();
+                        assert_eq!(count, j.len());
+                        j
+                    }
+                    _ => {
+                        warn!("No weights in glTF file !");
+                        if read_joints {
+                            panic!("No joints/weights in glTF file but --skeleton flag was set!")
+                        }
+                        vec![[0.0, 0.0, 0.0, 0.0]]
+                    }
+                };
+
+                let mut weights_iter = wvecarr.into_iter().cycle();
+
+                info!("dst_format: {:?}", dst_format);
+                //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
+
+                trace!("vertex read loop");
+                let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
+
+                let pre_vertices_added = verts_vec.len();
+
+                while count > 0 {
+                    trace!("count {}", count);
+                    let vertex_position = position_iter.next().unwrap();
+                    let vertex =
+                        Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
+                    let transformed_vertex = base.transform_point(&vertex);
+
+                    let p4h = P4h {
+                        data: [
+                            f16::from_f32(1.0 * transformed_vertex[0]),
+                            f16::from_f32(1.0 * transformed_vertex[1]),
+                            f16::from_f32(1.0 * transformed_vertex[2]),
+                            f16::from_f32(0.0),
+                        ],
+                    };
+
+                    let normals = normal_iter.next().unwrap();
+                    let normv: Vector3<f32> = Vector3::new(normals[0], normals[1], normals[2]);
+                    let transformed_normals: Vector3<f32> = transpose_inv_transform_mat3 * normv;
+
+                    let mut nx = transformed_normals[0];
+                    let mut ny = transformed_normals[1];
+                    let mut nz = transformed_normals[2];
+                    //dbg!(((nx * nx) + (ny * ny) + (nz * nz)).sqrt());
+
+                    let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
+
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
+
+                    let n4b = N4b {
+                        data: [
+                            (((nx + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((ny + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((nz + 1.0) / 2.0) * 255.0).round() as u8,
+                            0,
+                        ],
+                    };
+
+                    let tangents = tangent_iter.next().unwrap();
+                    let tangv = Vector3::new(tangents[0], tangents[1], tangents[2]);
+                    let transformed_tangents = transpose_inv_transform_mat3 * tangv;
+
+                    let mut tx = transformed_tangents[0];
+                    let mut ty = transformed_tangents[1];
+                    let mut tz = transformed_tangents[2];
+
+                    //let tlen = -1.0f32*((tx * tx) + (ty * ty) + (tz * tz)).sqrt();
+                    //dbg!(((tx * tx) + (ty * ty) + (tz * tz)).sqrt());
+                    let tlen = -1.0;
+
+                    tx /= tlen;
+                    ty /= tlen;
+                    tz /= tlen;
+
+                    let tw = if negative_x_and_v0v2v1 {
+                        tangents[3]
+                    } else {
+                        -tangents[3]
+                    };
+                    //assert_relative_eq!(tw.abs(), 1.0);
+
+                    let g4b = G4b {
+                        data: [
+                            (((tx + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((ty + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((tz + 1.0) / 2.0) * 255.0).round() as u8,
+                            0,
+                        ],
+                    };
+
+                    let normal = Vector3::new(nx, ny, nz);
+                    let tangent = Vector3::new(tx, ty, tz);
+                    trace!("normal.dot(&tangent): {}", normal.dot(&tangent));
+
+                    let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
+
+                    let b4b = B4b {
+                        data: [
+                            (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
+                            (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
+                            0,
+                        ],
+                    };
+
+                    // tex
+
+                    let tex = tex_iter.next().unwrap();
+                    //let tex = [0.0, 0.0];
+                    let t2h = T2h {
+                        data: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
+                    };
+
+                    verts_vec.put_vertex_data(&p4h);
+                    verts_vec.put_vertex_data(&n4b);
+                    verts_vec.put_vertex_data(&g4b);
+                    verts_vec.put_vertex_data(&b4b);
+                    verts_vec.put_vertex_data(&t2h);
+                    // TODO clean up checks
+                    if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b
+                        || dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b
+                    {
+                        // joints idx
+                        let joint = joints_iter.next().unwrap();
+
+                        let i4b = I4b {
+                            data: [
+                                joint[0] as u8,
+                                joint[1] as u8,
+                                joint[2] as u8,
+                                joint[3] as u8,
+                            ],
+                        };
+                        verts_vec.put_vertex_data(&i4b);
+                    }
+
+                    if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b {
+                        let weight = weights_iter.next().unwrap();
+                        let w4b = W4b {
+                            data: [
+                                (weight[0] * 255.0).round() as u8,
+                                (weight[1] * 255.0).round() as u8,
+                                (weight[2] * 255.0).round() as u8,
+                                (weight[3] * 255.0).round() as u8,
+                            ],
+                        };
+                        verts_vec.put_vertex_data(&w4b);
+                    }
+
+                    count -= 1;
+                }
+
+                let mut hasher = DefaultHasher::new();
+                Hash::hash_slice(&verts_vec[pre_vertices_added..verts_vec.len()], &mut hasher);
+                let hash_v = hasher.finish();
+                debug!("Primivive {} hash is {:x}.", i, &hash_v);
+                match kown_vbuffers.get(&hash_v) {
+                    Some(found_start_vertices_count) => {
+                        info!("found hash {:x}! Buffer already written.", &hash_v);
+                        start_vertices_count = *found_start_vertices_count;
+                        verts_vec.resize(pre_vertices_added, 0)
+                    }
+                    None => {
+                        kown_vbuffers.insert(hash_v, start_vertices_count);
+                    }
+                }
+
+                vertices_count = verts_vec.len() as u32 / vertsize;
+                info!("Vertex count: {}", vertices_count);
+                if vertices_count > (u16::MAX - 1).into() {
+                    error!("Mesh consists of too many vertices ({})!", vertices_count);
+                    error!("Mesh vertices count must stay below 65535!");
+                    error!("The vertex count that Max/Maya/Blender show may not reflect the reality of the glTF.");
+                    error!("E.g. during Blender's glTF export, shared vertices may need to be unshared (duplicated again) if not all vertex attributes (normals, tangents, UV) are exactly the same!")
+                }
+
+                //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
+
+                let mut triangle_iter = reader.read_indices().unwrap().into_u32();
+                let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
+
+                let mut tcount = triangle_iter.len() / 3;
+
+                while tcount > 0 {
+                    //let ctri = triangle_iter.next().unwrap();
+                    let v0 = triangle_iter.next().unwrap();
+                    let v1 = triangle_iter.next().unwrap();
+                    let v2 = triangle_iter.next().unwrap();
+                    let t = if negative_x_and_v0v2v1 {
+                        Triangle {
+                            indices: [
+                                u16::try_from(start_vertices_count + v0).unwrap(),
+                                u16::try_from(start_vertices_count + v2).unwrap(),
+                                u16::try_from(start_vertices_count + v1).unwrap(),
+                            ],
+                        }
+                    } else {
+                        Triangle {
+                            indices: [
+                                u16::try_from(start_vertices_count + v0).unwrap(),
+                                u16::try_from(start_vertices_count + v1).unwrap(),
+                                u16::try_from(start_vertices_count + v2).unwrap(),
+                            ],
+                        }
+                    };
+                    tcount -= 1;
+                    triangle_vec.push(t);
+                }
+
+                mesh_info.push(MeshInstance {
+                    start_index_location: merged_triangle_vec.len() as u32 * 3,
+                    index_count: triangle_vec.len() as u32 * 3,
+                    material: match overide_mesh_idx.as_ref() {
+                        Some(j) => j[i],
+                        None => i.try_into().unwrap(),
+                    },
+                });
+
+                merged_triangle_vec.append(&mut triangle_vec);
+
+                info!("{:?}", &mesh_info);
+                //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
+            }
+            let verts = VertexFormat2::new(
+                ident.into_boxed_slice(),
+                vertices_count,
+                vertsize,
+                0,
+                verts_vec.freeze(),
+            );
+            return Some((
+                vertsize,
+                verts,
+                merged_triangle_vec,
+                vertices_count,
+                mesh_info,
+            ));
+        }
+        None
+    }
 }
 
 #[inline]
@@ -553,374 +931,6 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
 }
 
 type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)>;
-
-fn read_mesh(
-    gltf: &gltf::Document,
-    buffers: &[gltf::buffer::Data],
-    dst_format: TargetVertexFormat,
-    read_joints: bool,
-    mut negative_x_and_v0v2v1: bool,
-    no_transform: bool,
-    overide_mesh_idx: Option<Vec<u32>>,
-) -> ReadMeshOutput {
-    // only the first mesh the file gets read
-    if let Some(mesh) = gltf.meshes().next() {
-        info!("Mesh #{}", mesh.index());
-
-        let mesh_instantiating_node =
-            find_first_mesh_instantiating_node(gltf, mesh.index()).unwrap();
-        debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
-
-        let mut base: Matrix4<f32> = if no_transform {
-            Matrix4::identity()
-        } else {
-            build_transform2(gltf, mesh_instantiating_node)
-        };
-
-        if negative_x_and_v0v2v1 {
-            let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
-            base *= m.to_homogeneous();
-            negative_x_and_v0v2v1 = false;
-        }
-
-        debug!("base: {}", &base);
-
-        let det = base.determinant();
-        if det.is_sign_negative() {
-            warn!("determinant is negative: {}", det);
-            warn!("negative determinant requires special code path!");
-            negative_x_and_v0v2v1 = true;
-        }
-
-        let mat3 = base.fixed_resize::<3, 3>(0.0);
-        let inv_transform_mat3 = mat3.try_inverse().unwrap();
-        let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
-
-        let ident = match dst_format {
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
-                crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
-            }
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
-                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
-            }
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
-                crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
-            }
-        };
-        let vertsize = ident.iter().map(|x| x.get_size()).sum();
-
-        let mut mesh_info: Vec<MeshInstance> = Vec::new();
-        let mut merged_triangle_vec = Vec::new();
-        let mut vertices_count: u32 = 0;
-        let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
-
-        let mut kown_vbuffers = HashMap::new();
-
-        if let Some(v) = overide_mesh_idx.as_ref() {
-            assert_eq!(mesh.primitives().len(), v.len());
-        }
-        for (i, primitive) in mesh.primitives().enumerate() {
-            info!("- Primitive #{}", primitive.index());
-            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-            let mut position_iter = reader.read_positions().unwrap();
-            let mut count = position_iter.len();
-            let normal_it = match reader.read_normals() {
-                Some(iter) => iter.collect(),
-                None => {
-                    error!("Model has no normals! Enable normal export in Blender! Non existing normal will cause garbage values!");
-                    vec![[0.0f32, 0.0f32, 1.0f32]]
-                }
-            };
-            let mut normal_iter = normal_it.into_iter().cycle();
-
-            let tangent_it = match reader.read_tangents() {
-                Some(iter) => iter.collect(),
-                None => {
-                    error!("Model has no tangents! Enable tangent export in Blender! Non existing tangents will cause garbage values!");
-                    vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
-                }
-            };
-            let mut tangent_iter = tangent_it.into_iter().cycle();
-
-            let tex_iter1 = reader.read_tex_coords(0);
-            let p: Vec<[f32; 2]> = match tex_iter1 {
-                Some(tex) => {
-                    let r: Vec<[f32; 2]> = tex.into_f32().collect();
-                    assert_eq!(count, r.len());
-                    r
-                }
-                None => {
-                    error!("No tex_coords ! Non existing 'texcoord_0' will cause garbage values!");
-                    vec![[0.0f32, 0.0f32]]
-                }
-            };
-            let mut tex_iter = p.into_iter().cycle();
-
-            let jvecarr: Vec<[u16; 4]> = match reader.read_joints(0) {
-                Some(joints) if read_joints => {
-                    let j: Vec<[u16; 4]> = joints.into_u16().collect();
-                    assert_eq!(count, j.len());
-                    j
-                }
-                _ => {
-                    warn!("No joints in glTF file !");
-                    if read_joints {
-                        panic!("No joints in glTF file but --skeleton flag was set!")
-                    }
-                    vec![[0, 0, 0, 0]]
-                }
-            };
-
-            let mut joints_iter = jvecarr.into_iter().cycle();
-
-            let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
-                Some(weight) if read_joints => {
-                    let j: Vec<[f32; 4]> = weight.into_f32().collect();
-                    assert_eq!(count, j.len());
-                    j
-                }
-                _ => {
-                    warn!("No weights in glTF file !");
-                    if read_joints {
-                        panic!("No joints/weights in glTF file but --skeleton flag was set!")
-                    }
-                    vec![[0.0, 0.0, 0.0, 0.0]]
-                }
-            };
-
-            let mut weights_iter = wvecarr.into_iter().cycle();
-
-            info!("dst_format: {:?}", dst_format);
-            //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
-
-            trace!("vertex read loop");
-            let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
-
-            let pre_vertices_added = verts_vec.len();
-
-            while count > 0 {
-                trace!("count {}", count);
-                let vertex_position = position_iter.next().unwrap();
-                let vertex =
-                    Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
-                let transformed_vertex = base.transform_point(&vertex);
-
-                let p4h = P4h {
-                    data: [
-                        f16::from_f32(1.0 * transformed_vertex[0]),
-                        f16::from_f32(1.0 * transformed_vertex[1]),
-                        f16::from_f32(1.0 * transformed_vertex[2]),
-                        f16::from_f32(0.0),
-                    ],
-                };
-
-                let normals = normal_iter.next().unwrap();
-                let normv: Vector3<f32> = Vector3::new(normals[0], normals[1], normals[2]);
-                let transformed_normals: Vector3<f32> = transpose_inv_transform_mat3 * normv;
-
-                let mut nx = transformed_normals[0];
-                let mut ny = transformed_normals[1];
-                let mut nz = transformed_normals[2];
-                //dbg!(((nx * nx) + (ny * ny) + (nz * nz)).sqrt());
-
-                let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
-
-                nx /= len;
-                ny /= len;
-                nz /= len;
-
-                let n4b = N4b {
-                    data: [
-                        (((nx + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((ny + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((nz + 1.0) / 2.0) * 255.0).round() as u8,
-                        0,
-                    ],
-                };
-
-                let tangents = tangent_iter.next().unwrap();
-                let tangv = Vector3::new(tangents[0], tangents[1], tangents[2]);
-                let transformed_tangents = transpose_inv_transform_mat3 * tangv;
-
-                let mut tx = transformed_tangents[0];
-                let mut ty = transformed_tangents[1];
-                let mut tz = transformed_tangents[2];
-
-                //let tlen = -1.0f32*((tx * tx) + (ty * ty) + (tz * tz)).sqrt();
-                //dbg!(((tx * tx) + (ty * ty) + (tz * tz)).sqrt());
-                let tlen = -1.0;
-
-                tx /= tlen;
-                ty /= tlen;
-                tz /= tlen;
-
-                let tw = if negative_x_and_v0v2v1 {
-                    tangents[3]
-                } else {
-                    -tangents[3]
-                };
-                //assert_relative_eq!(tw.abs(), 1.0);
-
-                let g4b = G4b {
-                    data: [
-                        (((tx + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((ty + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((tz + 1.0) / 2.0) * 255.0).round() as u8,
-                        0,
-                    ],
-                };
-
-                let normal = Vector3::new(nx, ny, nz);
-                let tangent = Vector3::new(tx, ty, tz);
-                trace!("normal.dot(&tangent): {}", normal.dot(&tangent));
-
-                let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
-
-                let b4b = B4b {
-                    data: [
-                        (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
-                        (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
-                        0,
-                    ],
-                };
-
-                // tex
-
-                let tex = tex_iter.next().unwrap();
-                //let tex = [0.0, 0.0];
-                let t2h = T2h {
-                    data: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
-                };
-
-                verts_vec.put_vertex_data(&p4h);
-                verts_vec.put_vertex_data(&n4b);
-                verts_vec.put_vertex_data(&g4b);
-                verts_vec.put_vertex_data(&b4b);
-                verts_vec.put_vertex_data(&t2h);
-                // TODO clean up checks
-                if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b
-                    || dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b
-                {
-                    // joints idx
-                    let joint = joints_iter.next().unwrap();
-
-                    let i4b = I4b {
-                        data: [
-                            joint[0] as u8,
-                            joint[1] as u8,
-                            joint[2] as u8,
-                            joint[3] as u8,
-                        ],
-                    };
-                    verts_vec.put_vertex_data(&i4b);
-                }
-
-                if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b {
-                    let weight = weights_iter.next().unwrap();
-                    let w4b = W4b {
-                        data: [
-                            (weight[0] * 255.0).round() as u8,
-                            (weight[1] * 255.0).round() as u8,
-                            (weight[2] * 255.0).round() as u8,
-                            (weight[3] * 255.0).round() as u8,
-                        ],
-                    };
-                    verts_vec.put_vertex_data(&w4b);
-                }
-
-                count -= 1;
-            }
-
-            let mut hasher = DefaultHasher::new();
-            Hash::hash_slice(&verts_vec[pre_vertices_added..verts_vec.len()], &mut hasher);
-            let hash_v = hasher.finish();
-            debug!("Primivive {} hash is {:x}.", i, &hash_v);
-            match kown_vbuffers.get(&hash_v) {
-                Some(found_start_vertices_count) => {
-                    info!("found hash {:x}! Buffer already written.", &hash_v);
-                    start_vertices_count = *found_start_vertices_count;
-                    verts_vec.resize(pre_vertices_added, 0)
-                }
-                None => {
-                    kown_vbuffers.insert(hash_v, start_vertices_count);
-                }
-            }
-
-            vertices_count = verts_vec.len() as u32 / vertsize;
-            info!("Vertex count: {}", vertices_count);
-            if vertices_count > (u16::MAX - 1).into() {
-                error!("Mesh consists of too many vertices ({})!", vertices_count);
-                error!("Mesh vertices count must stay below 65535!");
-                error!("The vertex count that Max/Maya/Blender show may not reflect the reality of the glTF.");
-                error!("E.g. during Blender's glTF export, shared vertices may need to be unshared (duplicated again) if not all vertex attributes (normals, tangents, UV) are exactly the same!")
-            }
-
-            //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
-
-            let mut triangle_iter = reader.read_indices().unwrap().into_u32();
-            let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
-
-            let mut tcount = triangle_iter.len() / 3;
-
-            while tcount > 0 {
-                //let ctri = triangle_iter.next().unwrap();
-                let v0 = triangle_iter.next().unwrap();
-                let v1 = triangle_iter.next().unwrap();
-                let v2 = triangle_iter.next().unwrap();
-                let t = if negative_x_and_v0v2v1 {
-                    Triangle {
-                        indices: [
-                            u16::try_from(start_vertices_count + v0).unwrap(),
-                            u16::try_from(start_vertices_count + v2).unwrap(),
-                            u16::try_from(start_vertices_count + v1).unwrap(),
-                        ],
-                    }
-                } else {
-                    Triangle {
-                        indices: [
-                            u16::try_from(start_vertices_count + v0).unwrap(),
-                            u16::try_from(start_vertices_count + v1).unwrap(),
-                            u16::try_from(start_vertices_count + v2).unwrap(),
-                        ],
-                    }
-                };
-                tcount -= 1;
-                triangle_vec.push(t);
-            }
-
-            mesh_info.push(MeshInstance {
-                start_index_location: merged_triangle_vec.len() as u32 * 3,
-                index_count: triangle_vec.len() as u32 * 3,
-                material: match overide_mesh_idx.as_ref() {
-                    Some(j) => j[i],
-                    None => i.try_into().unwrap(),
-                },
-            });
-
-            merged_triangle_vec.append(&mut triangle_vec);
-
-            info!("{:?}", &mesh_info);
-            //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
-        }
-        let verts = VertexFormat2::new(
-            ident.into_boxed_slice(),
-            vertices_count,
-            vertsize,
-            0,
-            verts_vec.freeze(),
-        );
-        return Some((
-            vertsize,
-            verts,
-            merged_triangle_vec,
-            vertices_count,
-            mesh_info,
-        ));
-    }
-    None
-}
 
 fn find_first_mesh_instantiating_node(gltf: &gltf::Document, mesh_idx: usize) -> Option<usize> {
     for (i, node) in gltf.nodes().enumerate() {

@@ -104,7 +104,7 @@ struct Opts {
     out: Option<PathBuf>,
 
     /// Sets output to input file name
-    #[clap(long = "in_is_out_filename", display_order(2), short = 'n')]
+    #[clap(display_order(2), short = 'n')]
     in_is_out_filename: bool,
 
     /// Batch process recursively
@@ -126,25 +126,25 @@ struct Opts {
     )]
     diffusetexture: Option<Vec<PathBuf>>,
 
-    /// Overrides MeshInstance mesh indcies. Useful to match existing cfg material orders.
-    #[clap(long = "overide_mesh_idx")]
+    /// Overrides MeshInstance mesh indcies. Useful to match a existing cfg material order.
+    #[clap(long)]
     overide_mesh_idx: Option<Vec<u32>>,
 
     /// Mirrors the object on the x axis.
     #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
     negative_x_and_v0v2v1: bool,
 
-    /// Depreacted option use option gltf_export_format instead.
-    #[clap(long)]
-    gltf_separate: bool,
-
     /// Export format to use for rdm to gltf: "glb", "gltf", "gltfmin"
     #[clap(short = 'e', long, default_value = "glb")]
     gltf_export_format: GltfExportFormat,
 
     /// use glTF node index instead of name for rdm bone
-    #[clap(long, short = 'u')]
-    gltf_unstable_index: bool,
+    #[clap(long, short = 'u', display_order(3))]
+    gltf_unstable_node_index: bool,
+
+    /// glTF mesh index to convert to rdm.
+    #[clap(long, default_value = "0")]
+    gltf_mesh_index: u32,
 
     /// Override existing files
     #[clap(long)]
@@ -171,9 +171,6 @@ fn main() {
 }
 
 fn entry_do_work(mut opts: Opts) {
-    opts.gltf_separate.then(|| {
-        error!("Depreacted option gltf_separate: use option --gltf_export_format instead!")
-    });
     assert!(
         opts.input.is_file(),
         "Input must be a file! Missing --batch / -b ?"
@@ -224,7 +221,8 @@ fn entry_do_work(mut opts: Opts) {
         let f_path = opts.input.as_path();
         let i_gltf = {
             let mut interm = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
-            interm.name_setting = match opts.gltf_unstable_index {
+            interm.mesh_idx = opts.gltf_mesh_index;
+            interm.name_setting = match opts.gltf_unstable_node_index {
                 true => ResolveNodeName::UnstableIndex,
                 false => ResolveNodeName::UniqueName,
             };
@@ -283,9 +281,9 @@ fn test_batch() {
         out: Some(dst),
         overide_mesh_idx: None,
         force: false,
-        gltf_separate: true,
-        gltf_unstable_index: false,
+        gltf_unstable_node_index: false,
         gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
+        gltf_mesh_index: 0,
     };
     batch(opt).expect("msg");
 }
@@ -352,9 +350,9 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             out: Some(dst),
                             overide_mesh_idx: None,
                             force: defopt.force,
-                            gltf_separate: true,
-                            gltf_unstable_index: false,
+                            gltf_unstable_node_index: false,
                             gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
+                            gltf_mesh_index: 0,
                         };
                         let result = panic::catch_unwind(|| {
                             entry_do_work(opt);
