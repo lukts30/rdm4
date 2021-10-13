@@ -16,7 +16,6 @@ extern crate log;
 
 use clap::Clap;
 use env_logger::Env;
-use std::convert::TryFrom;
 use std::{ffi::OsStr, panic};
 use walkdir::WalkDir;
 
@@ -52,6 +51,7 @@ struct Opts {
         short = 'g',
         long = "gltf",
         conflicts_with("rdanimation"),
+        value_name("VertexFormat"),
         display_order(2)
     )]
     gltf: Option<TargetVertexFormat>,
@@ -138,9 +138,9 @@ struct Opts {
     #[clap(short = 'e', long, default_value = "glb")]
     gltf_export_format: GltfExportFormat,
 
-    /// use glTF node index instead of name for rdm bone
-    #[clap(long, short = 'u', display_order(3))]
-    gltf_unstable_node_index: bool,
+    /// For glTF joint to rdm bone: source for a unique identifier: "i"/"UnstableIndex" | "n"/"UniqueName"
+    #[clap(long, short = 'u', default_value = "UniqueName", display_order(3))]
+    gltf_node_joint_name_src: ResolveNodeName,
 
     /// glTF mesh index to convert to rdm.
     #[clap(long, default_value = "0")]
@@ -219,15 +219,12 @@ fn entry_do_work(mut opts: Opts) {
         gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
     } else {
         let f_path = opts.input.as_path();
-        let i_gltf = {
-            let mut interm = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
-            interm.mesh_idx = opts.gltf_mesh_index;
-            interm.name_setting = match opts.gltf_unstable_node_index {
-                true => ResolveNodeName::UnstableIndex,
-                false => ResolveNodeName::UniqueName,
-            };
-            interm
-        };
+        let i_gltf = gltf_reader::ImportedGltf::try_import(
+            f_path,
+            opts.gltf_mesh_index,
+            opts.gltf_node_joint_name_src,
+        )
+        .unwrap();
 
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &i_gltf,
@@ -281,7 +278,7 @@ fn test_batch() {
         out: Some(dst),
         overide_mesh_idx: None,
         force: false,
-        gltf_unstable_node_index: false,
+        gltf_node_joint_name_src: ResolveNodeName::UniqueName,
         gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
         gltf_mesh_index: 0,
     };
@@ -350,7 +347,7 @@ fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 's
                             out: Some(dst),
                             overide_mesh_idx: None,
                             force: defopt.force,
-                            gltf_unstable_node_index: false,
+                            gltf_node_joint_name_src: ResolveNodeName::UniqueName,
                             gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
                             gltf_mesh_index: 0,
                         };

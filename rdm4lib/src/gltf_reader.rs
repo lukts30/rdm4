@@ -19,6 +19,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::str::FromStr;
 use std::u16;
 use std::{
     collections::HashMap,
@@ -31,26 +32,30 @@ pub enum ResolveNodeName {
     UniqueName,
 }
 
+impl FromStr for ResolveNodeName {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_ascii_lowercase().as_str() {
+            "uniquename" | "n" => Ok(ResolveNodeName::UniqueName),
+            "unstableindex" | "i" => Ok(ResolveNodeName::UnstableIndex),
+            _ => Err(format!("Invalid value for ResolveNodeName: {}", input)),
+        }
+    }
+}
+
 pub struct ImportedGltf {
     gltf: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
     pub name_setting: ResolveNodeName,
-    pub mesh_idx: u32,
+    mesh_idx: u32,
+    mesh_node: u32,
 }
 
 impl<'a> TryFrom<&'a Path> for ImportedGltf {
     type Error = gltf::Error;
     fn try_from(f_path: &'a Path) -> Result<ImportedGltf, gltf::Error> {
-        info!("gltf::import start!");
-        let (gltf, buffers, _) = gltf::import(f_path)?;
-        let res = Ok(Self {
-            gltf,
-            buffers,
-            name_setting: ResolveNodeName::UniqueName,
-            mesh_idx: 0,
-        });
-        info!("gltf::import end!");
-        res
+        self::ImportedGltf::try_import(f_path, 0, ResolveNodeName::UniqueName)
     }
 }
 
@@ -150,12 +155,48 @@ fn interpolate_translation_on_rotation(translation: &[Frame], rotation: &mut [Fr
     }
 }
 
-impl ImportedGltf {
+impl<'a> ImportedGltf {
+    pub fn try_import(
+        f_path: &'a Path,
+        mesh_idx: u32,
+        joint_name_src: ResolveNodeName,
+    ) -> Result<ImportedGltf, gltf::Error> {
+        info!("gltf::import start!");
+        let (gltf, buffers, _) = gltf::import(f_path)?;
+        let mut res = Self {
+            gltf,
+            buffers,
+            name_setting: joint_name_src,
+            mesh_idx: 0,
+            mesh_node: 0,
+        };
+        res.change_mesh_index(mesh_idx);
+        info!("gltf::import end!");
+        Ok(res)
+    }
+
+    pub fn change_mesh_index(&mut self, idx: u32) {
+        self.mesh_idx = idx;
+        self.set_mesh_node();
+    }
+
+    fn set_mesh_node(&mut self) {
+        let mesh = self
+            .gltf
+            .meshes()
+            .nth(self.mesh_idx.try_into().unwrap())
+            .unwrap();
+        let mesh_instantiating_node =
+            find_first_mesh_instantiating_node(&self.gltf, mesh.index()).unwrap();
+
+        self.mesh_node = mesh_instantiating_node as u32;
+    }
+
     fn check_node_name_uniqueness(&self) {
         if self.name_setting == ResolveNodeName::UniqueName {
             let error_msg = "
             This converter by default matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique. 
-            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-unstable-node-index`";
+            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-node-joint-name-src`";
             let len = self.gltf.nodes().len();
             let no_dupes: HashSet<&str> = self
                 .gltf
@@ -432,14 +473,7 @@ impl ImportedGltf {
 
     fn read_skin(&self) -> Vec<RdJoint> {
         let mut out_joints_vec = Vec::new();
-        let mesh = self
-            .gltf
-            .meshes()
-            .nth(self.mesh_idx.try_into().unwrap())
-            .unwrap();
-        let mesh_instantiating_node =
-            find_first_mesh_instantiating_node(&self.gltf, mesh.index()).unwrap();
-        let node_with_skin = self.gltf.nodes().nth(mesh_instantiating_node);
+        let node_with_skin = self.gltf.nodes().nth(self.mesh_node.try_into().unwrap());
 
         let skin = node_with_skin.unwrap().skin().unwrap();
         {
@@ -543,8 +577,7 @@ impl ImportedGltf {
         if let Some(mesh) = gltf.meshes().nth(self.mesh_idx.try_into().unwrap()) {
             info!("Mesh #{}", mesh.index());
 
-            let mesh_instantiating_node =
-                find_first_mesh_instantiating_node(gltf, mesh.index()).unwrap();
+            let mesh_instantiating_node = self.mesh_node.try_into().unwrap();
             debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
 
             let mut base: Matrix4<f32> = if no_transform {
