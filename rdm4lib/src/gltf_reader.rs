@@ -196,7 +196,7 @@ impl<'a> ImportedGltf {
         if self.name_setting == ResolveNodeName::UniqueName {
             let error_msg = "
             This converter by default matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique. 
-            To instead use gltf node index as a source for rdm bone name use option `-u, --gltf-node-joint-name-src`";
+            To instead use gltf node index as a source for rdm bone name use option `-u=UnstableIndex, --gltf-node-joint-name-src=UnstableIndex`";
             let len = self.gltf.nodes().len();
             let no_dupes: HashSet<&str> = self
                 .gltf

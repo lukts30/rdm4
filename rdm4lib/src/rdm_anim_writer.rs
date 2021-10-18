@@ -167,7 +167,7 @@ impl RdAnimWriter {
             file.push(self.input.name);
         } else {
             let n = file.file_stem().unwrap();
-            let anim_name = format!("{}_anim", n.to_string_lossy());
+            let anim_name = format!("{}_{}", n.to_string_lossy(), self.input.name);
             file.set_file_name(anim_name);
         }
         file.set_extension("rdm");

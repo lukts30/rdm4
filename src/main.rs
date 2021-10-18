@@ -14,12 +14,10 @@ use rdm4lib::{gltf_reader, rdm_material::RdMaterial};
 #[macro_use]
 extern crate log;
 
-use clap::Clap;
+use clap::Parser;
 use env_logger::Env;
-use std::{ffi::OsStr, panic};
-use walkdir::WalkDir;
-
 use std::path::PathBuf;
+use std::{ffi::OsStr, panic};
 
 fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
     let p = PathBuf::from(v);
@@ -30,129 +28,143 @@ fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
     }
 }
 
-fn cli_in_is_file_or_dir(v: &OsStr) -> Result<(), String> {
-    let p = PathBuf::from(v);
-    if p.is_file() || p.is_dir() {
-        Ok(())
-    } else {
-        Err(format!("No such file or directory {}", v.to_string_lossy()))
-    }
-}
+static HEADER_GLTF2RDM: &str = "GLTF TO RDM OPTIONS";
+static HEADER_RDM2GLTF: &str = "RDM TO GLTF OPTIONS";
 
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(
     version = env!("CARGO_PKG_VERSION"),
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
-    /// Convert from glTF to .rdm
-    /// Possible VertexFormat values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
+    // start of common options
+    /// Input file
     #[clap(
-        short = 'g',
-        long = "gltf",
-        conflicts_with("rdanimation"),
-        value_name("VertexFormat"),
-        display_order(2)
+        display_order(0),
+        short = 'i',
+        long = "input",
+        value_name("glTF or rdm FILE"),
+        validator_os(cli_in_is_file),
+        parse(from_str)
     )]
-    gltf: Option<TargetVertexFormat>,
+    input: PathBuf,
+
+    /// Output file or folder. If `--in-is-out-filename` is set this must be a folder!
+    #[clap(display_order(1), short = 'o', long = "outdst", parse(from_str))]
+    out: Option<PathBuf>,
+
+    /// Sets output to input file name
+    #[clap(display_order(2), short = 'n', long)]
+    in_is_out_filename: bool,
+
+    /// Override existing files
+    #[clap(display_order(4), long)]
+    force: bool,
 
     /// Export (available) skin
-    #[clap(short = 's', long = "skeleton", display_order(5))]
+    #[clap(display_order(5), short = 's', long = "skeleton")]
     skeleton: bool,
 
     /// Export (available) animation. RDM to glTF needs external animation file (rdanimation)
     #[clap(
+        display_order(6),
         short = 'a',
         long = "animation",
-        display_order(6),
         requires("skeleton")
     )]
     animation: bool,
+
+    /// A level of verbosity, and can be used multiple times
+    #[clap(display_order(7), short, long, parse(from_occurrences))]
+    verbose: i32,
+
+    // end of common options
+    // start of HEADER_GLTF2RDM
+    /// VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
+    #[clap(
+        display_order(0),
+        short = 'g',
+        long = "gltf",
+        value_name("VertexFormat"),
+        conflicts_with("rdanimation"),
+        help_heading = HEADER_GLTF2RDM
+    )]
+    gltf: Option<TargetVertexFormat>,
+
+    /// glTF mesh index to convert to rdm.
+    #[clap(
+        display_order(1),
+        long,
+        default_value = "0",
+        help_heading = HEADER_GLTF2RDM
+    )]
+    gltf_mesh_index: u32,
+
+    /// glTF to rdm: Do not apply node transforms. Recommended to use when working with animations.
+    #[clap(
+        display_order(2),
+        long = "no_transform",
+        requires("gltf"),
+        help_heading = HEADER_GLTF2RDM
+    )]
+    no_transform: bool,
+
+    /// Mirrors the object on the x axis.
+    #[clap(display_order(3),long, conflicts_with_all(&["skeleton", "animation"]),help_heading = HEADER_GLTF2RDM)]
+    negative_x_and_v0v2v1: bool,
+
+    /// Overrides MeshInstance mesh indcies. Useful to match the material order of an existing cfg.
+    #[clap(display_order(4),long, help_heading = HEADER_GLTF2RDM)]
+    overide_mesh_idx: Option<Vec<u32>>,
+
+    /// For glTF joint to rdm bone: source for a unique identifier: "UnstableIndex" | "UniqueName"
+    #[clap(
+        display_order(5),
+        long,
+        short = 'u',
+        default_value = "UniqueName",
+        help_heading = HEADER_GLTF2RDM
+    )]
+    gltf_node_joint_name_src: ResolveNodeName,
+
+    // end of HEADER_GLTF2RDM
+    // start of HEADER_RDM2GLTF
+    /// Export format to use for rdm to gltf: "glb", "gltf", "gltfmin"
+    #[clap(
+        display_order(0),
+        short = 'e',
+        long,
+        default_value = "glb",
+        help_heading = HEADER_RDM2GLTF
+    )]
+    gltf_export_format: GltfExportFormat,
 
     /// External animation file for rdm
     #[clap(
         short = 'm',
         long = "rdanimation",
-        display_order(7),
+        display_order(1),
         value_name("anim/*.rdm"),
         validator_os(cli_in_is_file),
         parse(from_str),
         conflicts_with("gltf"),
-        requires_all(&["skeleton", "animation"])
+        requires_all(&["skeleton", "animation"]),
+        help_heading = HEADER_RDM2GLTF
     )]
     rdanimation: Option<PathBuf>,
-
-    /// Input file or folder (see --batch)
-    #[clap(
-        short = 'i',
-        long = "input",
-        display_order(0),
-        value_name("glTF or rdm FILE(s)"),
-        validator_os(cli_in_is_file_or_dir),
-        parse(from_str)
-    )]
-    input: PathBuf,
-
-    /// Output file or folder. If 'in_is_out_filename' is set this must be a folder!
-    #[clap(
-        short = 'o',
-        long = "outdst",
-        display_order(1),
-        parse(from_str),
-        validator_os(cli_in_is_file_or_dir)
-    )]
-    out: Option<PathBuf>,
-
-    /// Sets output to input file name
-    #[clap(display_order(2), short = 'n')]
-    in_is_out_filename: bool,
-
-    /// Batch process recursively
-    #[clap(short = 'b',long = "batch", display_order(3),conflicts_with_all(&["diffusetexture", "rdanimation"]))]
-    batch: bool,
-
-    /// glTF to rdm: Do not apply node transforms.
-    #[clap(long = "no_transform", display_order(3), requires("gltf"))]
-    no_transform: bool,
 
     /// DiffuseTextures.
     #[clap(
         short = 't',
         long = "diffusetexture",
         value_name("*.dds"),
-        display_order(5),
+        display_order(2),
         validator_os(cli_in_is_file),
-        parse(from_str)
+        parse(from_str),
+        help_heading = HEADER_RDM2GLTF
     )]
     diffusetexture: Option<Vec<PathBuf>>,
-
-    /// Overrides MeshInstance mesh indcies. Useful to match a existing cfg material order.
-    #[clap(long)]
-    overide_mesh_idx: Option<Vec<u32>>,
-
-    /// Mirrors the object on the x axis.
-    #[clap(long, display_order(4),conflicts_with_all(&["skeleton", "animation"]))]
-    negative_x_and_v0v2v1: bool,
-
-    /// Export format to use for rdm to gltf: "glb", "gltf", "gltfmin"
-    #[clap(short = 'e', long, default_value = "glb")]
-    gltf_export_format: GltfExportFormat,
-
-    /// For glTF joint to rdm bone: source for a unique identifier: "i"/"UnstableIndex" | "n"/"UniqueName"
-    #[clap(long, short = 'u', default_value = "UniqueName", display_order(3))]
-    gltf_node_joint_name_src: ResolveNodeName,
-
-    /// glTF mesh index to convert to rdm.
-    #[clap(long, default_value = "0")]
-    gltf_mesh_index: u32,
-
-    /// Override existing files
-    #[clap(long)]
-    force: bool,
-
-    /// A level of verbosity, and can be used multiple times
-    #[clap(short, long, parse(from_occurrences))]
-    verbose: i32,
+    // end of HEADER_RDM2GLTF
 }
 
 fn main() {
@@ -163,18 +175,10 @@ fn main() {
         2 => env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init(),
         _ => warn!("Don't be crazy"),
     }
-    if opts.batch {
-        batch(opts).unwrap();
-    } else {
-        entry_do_work(opts);
-    }
+    entry_do_work(opts);
 }
 
 fn entry_do_work(mut opts: Opts) {
-    assert!(
-        opts.input.is_file(),
-        "Input must be a file! Missing --batch / -b ?"
-    );
     if let Some(ref mut out) = opts.out {
         if opts.in_is_out_filename {
             let k = opts.input.file_stem().unwrap();
@@ -198,176 +202,69 @@ fn entry_do_work(mut opts: Opts) {
     info!("Export skeleton: {:?}", opts.skeleton);
     info!("Export rdanimation: {:?}", opts.rdanimation);
     if opts.gltf.is_none() {
-        let mut rdm = RdModell::from(opts.input.as_path());
-        if opts.skeleton && opts.rdanimation.is_none() {
-            rdm.add_skin();
-            info!("Skin added !");
-        } else if opts.skeleton && opts.rdanimation.is_some() {
-            rdm.add_skin();
-            let anim = RdAnim::from(opts.rdanimation.unwrap().as_path());
-            rdm.add_anim(anim);
-            info!("Skin and anim added !");
-        } else {
-            warn!("No skin. No anim !");
-        }
-
-        if let Some(diffusetexture) = opts.diffusetexture {
-            rdm.mat = Some(RdMaterial::new(diffusetexture));
-        }
-        info!("running gltf_export ...");
-
-        gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
+        convert_rdm_to_gltf(opts);
     } else {
-        let f_path = opts.input.as_path();
-        let i_gltf = gltf_reader::ImportedGltf::try_import(
-            f_path,
-            opts.gltf_mesh_index,
-            opts.gltf_node_joint_name_src,
-        )
-        .unwrap();
-
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &i_gltf,
-            opts.gltf.unwrap(),
-            opts.skeleton,
-            opts.negative_x_and_v0v2v1,
-            opts.no_transform,
-            opts.overide_mesh_idx,
-        );
-
-        if opts.skeleton && opts.animation {
-            let jj = rdm.joints.as_ref().unwrap();
-
-            match gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333) {
-                Some(mut anims) => {
-                    for anim in anims.drain(..) {
-                        let exp_rdm = RdAnimWriter::from(anim);
-                        exp_rdm.write_anim_rdm(opts.out.clone(), !opts.force);
-                    }
-                }
-                None => error!("Could not read animation. Does glTF contain any animations ?"),
-            }
-        }
-
-        let exp_rdm = RdWriter::from(rdm);
-        exp_rdm.write_rdm(opts.out, !opts.force);
-        if opts.skeleton && !opts.no_transform {
-            error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
-        }
+        convert_gltf_to_rdm(opts);
     }
 }
 
-#[ignore]
-#[test]
-fn test_batch() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    let input = PathBuf::from(r"C:\Users\lukas\Desktop\anno7\data");
-    let dst = PathBuf::from(r"C:\Users\lukas\Desktop\anno7\dst\final");
-    let opt = Opts {
-        batch: true,
-        gltf: None,
-        animation: false,
-        diffusetexture: None,
-        in_is_out_filename: true,
-        input,
-        negative_x_and_v0v2v1: false,
-        no_transform: false,
-        rdanimation: None,
-        skeleton: false,
-        verbose: 0,
-        out: Some(dst),
-        overide_mesh_idx: None,
-        force: false,
-        gltf_node_joint_name_src: ResolveNodeName::UniqueName,
-        gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
-        gltf_mesh_index: 0,
-    };
-    batch(opt).expect("msg");
+fn convert_rdm_to_gltf(opts: Opts) {
+    let mut rdm = RdModell::from(opts.input.as_path());
+    if opts.skeleton && opts.rdanimation.is_none() {
+        rdm.add_skin();
+        info!("Skin added !");
+    } else if opts.skeleton && opts.rdanimation.is_some() {
+        rdm.add_skin();
+        let anim = RdAnim::from(opts.rdanimation.unwrap().as_path());
+        rdm.add_anim(anim);
+        info!("Skin and anim added !");
+    } else {
+        warn!("No skin. No anim !");
+    }
+
+    if let Some(diffusetexture) = opts.diffusetexture {
+        rdm.mat = Some(RdMaterial::new(diffusetexture));
+    }
+    info!("running gltf_export ...");
+
+    gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
 }
 
-fn batch(defopt: Opts) -> std::result::Result<(), Box<dyn std::error::Error + 'static>> {
-    let input = defopt.input;
-    assert!(input.is_dir(), "Batch: input must be a folder!");
+fn convert_gltf_to_rdm(opts: Opts) {
+    let f_path = opts.input.as_path();
+    let i_gltf = gltf_reader::ImportedGltf::try_import(
+        f_path,
+        opts.gltf_mesh_index,
+        opts.gltf_node_joint_name_src,
+    )
+    .unwrap();
 
-    let mut dst = defopt.out.unwrap();
-    let dst_clone = dst.clone();
-    assert!(dst.is_dir(), "Batch: dst must be a folder!");
+    let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+        &i_gltf,
+        opts.gltf.unwrap(),
+        opts.skeleton,
+        opts.negative_x_and_v0v2v1,
+        opts.no_transform,
+        opts.overide_mesh_idx,
+    );
 
-    let rext = if defopt.gltf.is_some() {
-        OsStr::new("gltf")
-    } else {
-        OsStr::new("rdm")
-    };
-    let rext2 = if defopt.gltf.is_some() {
-        OsStr::new("glb")
-    } else {
-        OsStr::new("rdm")
-    };
+    if opts.skeleton && opts.animation {
+        let jj = rdm.joints.as_ref().unwrap();
 
-    let anim = OsStr::new("anim");
-    let anims = OsStr::new("anims");
-    for entry in WalkDir::new(&input).min_depth(1) {
-        let rel_enty = entry?;
-        let path = rel_enty.path();
-
-        match path.extension() {
-            Some(ext) => {
-                if ext.eq(rext) || ext.eq(rext2) {
-                    let parent = path.parent().unwrap();
-
-                    if (!parent.ends_with(anim) && !parent.ends_with(anims))
-                        || defopt.gltf.is_some()
-                    {
-                        let base = input.parent().unwrap();
-                        dst.push(path.strip_prefix(base).unwrap());
-
-                        if defopt.gltf.is_some() && (defopt.in_is_out_filename || !ext.eq("glb")) {
-                            dbg!(&dst);
-                            dst.pop();
-                            dbg!(&dst);
-                            if defopt.in_is_out_filename && !ext.eq(rext2) {
-                                dst.pop();
-                            }
-                            dbg!(&dst);
-                        }
-                        std::fs::create_dir_all(&dst)?;
-                        let input_final = PathBuf::from(path);
-                        let opt = Opts {
-                            batch: false,
-                            gltf: defopt.gltf.clone(),
-                            animation: false,
-                            diffusetexture: None,
-                            in_is_out_filename: defopt.in_is_out_filename,
-                            input: input_final.clone(),
-                            negative_x_and_v0v2v1: defopt.negative_x_and_v0v2v1,
-                            no_transform: defopt.no_transform,
-                            rdanimation: None,
-                            skeleton: defopt.skeleton,
-                            verbose: defopt.verbose,
-                            out: Some(dst),
-                            overide_mesh_idx: None,
-                            force: defopt.force,
-                            gltf_node_joint_name_src: ResolveNodeName::UniqueName,
-                            gltf_export_format: GltfExportFormat::GltfSeparateMinimise,
-                            gltf_mesh_index: 0,
-                        };
-                        let result = panic::catch_unwind(|| {
-                            entry_do_work(opt);
-                        });
-                        match result {
-                            Ok(_) => {}
-                            Err(_) => {
-                                error!("Thread panicked !");
-                                error!("Could not convert: {}", &input_final.display());
-                            }
-                        }
-                        dst = dst_clone.clone();
-                    }
+        match gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333) {
+            Some(mut anims) => {
+                for anim in anims.drain(..) {
+                    let exp_rdm = RdAnimWriter::from(anim);
+                    exp_rdm.write_anim_rdm(opts.out.clone(), !opts.force);
                 }
             }
-            None => continue,
+            None => error!("Could not read animation. Does the glTF contain any animations ?"),
         }
     }
 
-    Ok(())
+    let exp_rdm = RdWriter::from(rdm);
+    exp_rdm.write_rdm(opts.out, !opts.force);
+    if opts.skeleton && !opts.no_transform {
+        error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
+    }
 }
