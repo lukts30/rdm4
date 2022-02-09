@@ -172,7 +172,8 @@ pub struct VertexFormat2 {
     identifiers: Box<[VertexIdentifier]>,
     offsets: Box<[usize]>,
     text: String,
-    vertex_offset: u32,
+    #[allow(dead_code)]
+    vertex_offset: Option<NonZeroU32>,
     pub vertex_count: u32,
     size: u32,
     vertex_buffer: Bytes,
@@ -225,7 +226,7 @@ impl VertexFormat2 {
         identifiers: Box<[VertexIdentifier]>,
         vertex_count: u32,
         vertex_size: u32,
-        vertex_offset: u32,
+        vertex_offset: Option<NonZeroU32>,
         vertex_buffer: Bytes,
     ) -> Self {
         let mut offsets = Vec::with_capacity(identifiers.len());
@@ -301,7 +302,7 @@ impl VertexFormat2 {
             vec.into_boxed_slice(),
             vertex_count,
             vertex_size,
-            vertex_offset,
+            NonZeroU32::new(vertex_offset),
             vertex_buffer,
         )
     }

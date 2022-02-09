@@ -437,12 +437,7 @@ impl<'a> ImportedGltf {
         let vertices = gltf_imp.1;
         let triangles = gltf_imp.2;
 
-        let meta = 0;
-
-        let triangles_offset = 0;
-
         let triangles_idx_count = triangles.len() as u32 * 3;
-        let triangles_idx_size = 2;
 
         let joints_vec = if load_skin {
             self.check_node_name_uniqueness();
@@ -459,12 +454,11 @@ impl<'a> ImportedGltf {
             mesh_info: mesh_info_vec,
             joints: joints_vec,
             triangle_indices: triangles,
-            meta,
+            meta: None,
             vertex: vertices,
 
-            triangles_offset,
+            triangles_offset: None,
             triangles_idx_count,
-            triangles_idx_size,
 
             anim: None,
             mat: None,
@@ -919,7 +913,7 @@ impl<'a> ImportedGltf {
                 ident.into_boxed_slice(),
                 vertices_count,
                 vertsize,
-                0,
+                None,
                 verts_vec.freeze(),
             );
             return Some((
@@ -949,7 +943,6 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
     let translation: Translation3<f32> = isometry.translation;
 
     RdJoint {
-        nameptr: 0,
         name,
         locked: false,
         parent,

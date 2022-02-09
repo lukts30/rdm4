@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes};
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use std::fs::File;
@@ -35,12 +36,13 @@ pub struct RdModell {
     pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
-    meta: u32,
+    #[allow(dead_code)]
+    meta: Option<NonZeroU32>,
     pub vertex: VertexFormat2,
 
-    triangles_offset: u32,
+    #[allow(dead_code)]
+    triangles_offset: Option<NonZeroU32>,
     pub triangles_idx_count: u32,
-    triangles_idx_size: u32,
 
     anim: Option<RdAnim>,
     pub mat: Option<RdMaterial>,
@@ -61,7 +63,6 @@ impl Seek for Bytes {
 #[derive(Debug, Clone)]
 pub struct RdJoint {
     name: String,
-    nameptr: u32,
     transition: [f32; 3],
     quaternion: [f32; 4],
     parent: u8,
@@ -161,9 +162,10 @@ impl RdModell {
             assert_eq!(joint_name_buffer.get_u32_le(), 1);
             let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
             let joint_name = String::from(name);
-            joint_name_buffer.advance(len_joint_name as usize);
 
             let nameptr = skin_buffer.get_u32_le();
+            assert_eq!(nameptr, self.size - joint_name_buffer.len() as u32);
+            joint_name_buffer.advance(len_joint_name as usize);
 
             let tx = skin_buffer.get_f32_le();
             let ty = skin_buffer.get_f32_le();
@@ -188,7 +190,6 @@ impl RdModell {
 
             let joint = RdJoint {
                 name: joint_name,
-                nameptr,
                 transition: [v_transformed.x, v_transformed.y, v_transformed.z],
                 quaternion: [
                     quaternion_mat4.x,
@@ -271,11 +272,10 @@ impl RdModell {
             mesh_info,
             joints: None,
             triangle_indices: triangles,
-            meta,
+            meta: NonZeroU32::new(meta),
             vertex: vvert,
-            triangles_offset,
+            triangles_offset: NonZeroU32::new(triangles_count_off),
             triangles_idx_count,
-            triangles_idx_size,
             anim: None,
             mat: None,
         }
