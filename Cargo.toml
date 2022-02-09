@@ -1,6 +1,6 @@
 [package]
 name = "rdm4-bin"
-version = "0.6.0-alpha.1"
+version = "0.7.0-alpha.1"
 publish = false
 authors = ["lukts30 <llukas21307@gmail.com>"]
 edition = "2018"
