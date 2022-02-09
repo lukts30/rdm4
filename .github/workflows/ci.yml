@@ -42,11 +42,11 @@ jobs:
           - name: linux
             os: ubuntu-latest
             artifact_name: rdm4-bin
-            asset_name: rdm4-bin-linux-amd64
+            asset_name: rdm4-linux-x64
           - name: windows
             os: windows-latest
             artifact_name: rdm4-bin.exe
-            asset_name: rdm4-bin-windows-amd64
+            asset_name: rdm4-windows-x64
     runs-on: ${{ matrix.os }}  
     steps:
       - uses: actions/checkout@v2
