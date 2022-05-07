@@ -17,7 +17,7 @@ extern crate log;
 use clap::Parser;
 use env_logger::Env;
 use std::path::PathBuf;
-use std::{ffi::OsStr, panic};
+use std::{ffi::OsStr};
 
 fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
     let p = PathBuf::from(v);

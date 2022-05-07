@@ -126,7 +126,7 @@ impl RdGltfBuilder {
                         trans_anim_buf.put_u32_le(0xDEAD_BEEF);
 
                         t_anim_buf.put_u32_le(0xDEAD_BEEF);
-                    };
+                    }
                     continue;
                 }
             };
