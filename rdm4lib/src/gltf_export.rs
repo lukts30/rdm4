@@ -106,15 +106,28 @@ impl RdGltfBuilder {
         for (i, joint) in p.iter().enumerate() {
             modell_nodes.insert(joint.name.clone(), i);
         }
-
         for (_, janim) in anim_vec.iter().enumerate() {
             let target_node_idx = match modell_nodes.get(&janim.name) {
                 Some(idx) => *idx as u32,
                 None => {
-                    panic!(
+                    warn!(
                         "Could not find animation target {:?} in base model {:?}",
                         &janim.name, p
                     );
+                    //TODO: proper fix for unused animation targets.
+                    for _ in 0..janim.frames.len() {
+                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
+                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
+                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
+                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
+
+                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
+                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
+                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
+
+                        t_anim_buf.put_u32_le(0xDEAD_BEEF);
+                    };
+                    continue;
                 }
             };
 
