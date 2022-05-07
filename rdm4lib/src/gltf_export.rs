@@ -972,6 +972,7 @@ impl RdGltfBuilder {
             buffer_views: self.buffer_views,
             meshes: vec![mesh],
             nodes: self.nodes,
+            scene: Some(json::Index::new(0)),
             scenes: vec![json::Scene {
                 extensions: Default::default(),
                 extras: Default::default(),
