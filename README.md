@@ -17,7 +17,7 @@ Create the folder C:\tools. Copy rdm4-bin.exe to C:\tools. Choose one of the reg
 ## command-line interface rdm4-bin
 
 ```
-rdm4-bin 0.7.0-alpha.1
+rdm4-bin 0.8.0-alpha.1
 lukts30 <https://github.com/lukts30/rdm4>
 
 USAGE:
