@@ -90,6 +90,15 @@ where
     }
 }
 
+impl<Z> std::ops::DerefMut for RdmContainer<true, Fixed<Z>>
+where
+    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.e.x
+    }
+}
+
 impl<const T_IS_PARTSIZED: bool, Z> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
 where
     Z: for<'a> BinRead<Args<'a> = ()> + 'static,
@@ -100,8 +109,17 @@ where
     }
 }
 
+impl<const T_IS_PARTSIZED: bool, Z> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
+where
+    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.e.x
+    }
+}
+
 impl RdmString {
-    fn as_ascii(&self) -> &str {
+    pub fn as_ascii(&self) -> &str {
         let (_head, body, _tail) = unsafe { self.deref().align_to::<u8>() };
         str::from_utf8(body).unwrap()
     }
@@ -129,6 +147,12 @@ impl<T: BinRead> std::ops::Deref for AnnoPtr<T> {
     }
 }
 
+impl<T: BinRead> std::ops::DerefMut for AnnoPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl<T: BinRead + std::fmt::Debug> std::fmt::Debug for AnnoPtr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.deref(), f)
@@ -151,12 +175,20 @@ where
     ) -> binrw::BinResult<Self> {
         let mut p: FilePtr32<RdmContainer<N, Z>> =
             <_>::read_options(reader, endian, FilePtrArgs::default()).unwrap();
-        p.ptr -= 8;
+        if p.ptr != 0 {
+            p.ptr -= 8;
 
-        p.after_parse(reader, endian, FilePtrArgs::default())
-            .unwrap();
+            p.after_parse(reader, endian, FilePtrArgs::default())
+                .unwrap();
 
-        Ok(AnnoPtr(p))
+            return Ok(AnnoPtr(p));
+        }
+        // Err(binrw::Error::NoVariantMatch { pos: reader.stream_position().unwrap()-4 })
+        // NullPtr
+        Ok(AnnoPtr(FilePtr32 {
+            ptr: 0,
+            value: None,
+        }))
     }
 }
 
@@ -196,6 +228,11 @@ where
         endian: binrw::Endian,
         args: Self::Args<'_>,
     ) -> binrw::BinResult<()> {
+        if self.0.value.is_none() {
+            dbg!("Wrote null ptr!");
+            0u32.write_options(writer, endian, ()).unwrap();
+            return Ok(());
+        }
         dbg!(*args);
         let _ptrptr: u64 = writer.stream_position().unwrap();
         (*args as u32 + 8)

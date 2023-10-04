@@ -1,4 +1,4 @@
-use crate::{rdm_material::RdMaterial, vertex::*, MeshInstance, RdJoint, RdModell};
+use crate::{rdm_data::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
@@ -665,7 +665,7 @@ impl RdGltfBuilder {
     }
 
     fn put_material(&mut self) {
-        let material_len = MeshInstance::get_max_material(&self.rdm.mesh_info) as usize + 1;
+        let material_len = MeshInfo::get_max_material(&self.rdm.mesh_info) as usize + 1;
         // get_max_material returns the max value used to index the material vec
         let mut texture_info_descriptors = vec![None; material_len];
         if let Some(mats) = self.rdm.mat.as_ref() {

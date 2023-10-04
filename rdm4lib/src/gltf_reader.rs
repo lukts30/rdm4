@@ -1,7 +1,8 @@
+use crate::rdm_data::MeshInfo;
 use crate::vertex::*;
+use crate::RdModell;
 use crate::{rdm_writer::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
-use crate::{MeshInstance, RdModell};
 
 use gltf::animation::Channel;
 use gltf::Node;
@@ -9,7 +10,7 @@ use nalgebra::*;
 
 use half::f16;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 
 use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
@@ -390,7 +391,6 @@ impl<'a> ImportedGltf {
                 overide_mesh_idx,
             )
             .unwrap();
-        let size = 0;
         let vertices = gltf_imp.1;
         let triangles = gltf_imp.2;
 
@@ -404,8 +404,7 @@ impl<'a> ImportedGltf {
         // todo!("TODO : FIX ME !!!");
         let mesh_info_vec = gltf_imp.4;
         RdModell {
-            size,
-            buffer: Bytes::new(),
+            rdmf: None,
             mesh_info: mesh_info_vec,
             joints: joints_vec,
             triangle_indices: triangles,
@@ -562,7 +561,7 @@ impl<'a> ImportedGltf {
             };
             let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
-            let mut mesh_info: Vec<MeshInstance> = Vec::new();
+            let mut mesh_info: Vec<MeshInfo> = Vec::new();
             let mut merged_triangle_vec = Vec::new();
             let mut vertices_count: u32 = 0;
             let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
@@ -845,13 +844,14 @@ impl<'a> ImportedGltf {
                     triangle_vec.push(t);
                 }
 
-                mesh_info.push(MeshInstance {
+                mesh_info.push(MeshInfo {
                     start_index_location: merged_triangle_vec.len() as u32 * 3,
                     index_count: triangle_vec.len() as u32 * 3,
                     material: match overide_mesh_idx.as_ref() {
                         Some(j) => j[i],
                         None => i.try_into().unwrap(),
                     },
+                    _padding: Default::default(),
                 });
 
                 merged_triangle_vec.append(&mut triangle_vec);
@@ -904,7 +904,7 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
     }
 }
 
-type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)>;
+type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInfo>)>;
 
 fn find_first_mesh_instantiating_node(gltf: &gltf::Document, mesh_idx: usize) -> Option<usize> {
     for (i, node) in gltf.nodes().enumerate() {

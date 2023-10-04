@@ -174,7 +174,7 @@ impl<const I: u32, const N: usize> Normalise for AnnoData<f32, I, N> {
 
 #[derive(Debug)]
 pub struct VertexFormat2 {
-    identifiers: Box<[VertexIdentifier]>,
+    pub identifiers: Box<[VertexIdentifier]>,
     offsets: Box<[usize]>,
     text: String,
     pub vertex_count: u32,

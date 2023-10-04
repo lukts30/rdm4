@@ -1,4 +1,7 @@
+use binrw::BinReaderExt;
 use bytes::{Buf, Bytes};
+use rdm_data::*;
+use rdm_data::{MeshInfo, RdmFile};
 use std::path::Path;
 
 use std::fs::File;
@@ -30,11 +33,9 @@ use vertex::VertexFormat2;
 pub mod rdm_container;
 pub mod rdm_data;
 
-#[derive(Debug)]
 pub struct RdModell {
-    size: u32,
-    buffer: Bytes,
-    pub mesh_info: Vec<MeshInstance>,
+    rdmf: Option<RdmFile>,
+    pub mesh_info: Vec<MeshInfo>,
     pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
@@ -63,19 +64,6 @@ pub struct RdJoint {
     parent: u8,
 }
 
-#[derive(Debug)]
-pub struct MeshInstance {
-    start_index_location: u32,
-    index_count: u32,
-    material: u32,
-}
-
-impl MeshInstance {
-    pub fn get_max_material(instances: &[MeshInstance]) -> u32 {
-        instances.iter().map(|e| e.material).max().unwrap()
-    }
-}
-
 impl RdModell {
     const META_COUNT: u32 = 8; //neg
     const VERTEX_META: u32 = 12;
@@ -99,47 +87,20 @@ impl RdModell {
     }
 
     pub fn add_skin(&mut self) {
-        let mut skin_buffer = self.buffer.clone();
-        skin_buffer.advance(40);
-        let skin_offset = skin_buffer.get_u32_le();
-        assert!(skin_offset != 0, "File does not contain a skin !");
+        let rdm = self.rdmf.as_ref().unwrap();
 
-        skin_buffer.seek(skin_offset, self.size);
+        let raw_joints = &rdm.header1.skin.e.x.joint.0.e.x;
+        let mut joints_vec = vec![];
 
-        let first_skin_offset = skin_buffer.get_u32_le();
-        let joint_count_ptr = first_skin_offset - RdModell::META_COUNT;
+        for raw_joint in raw_joints {
+            let tx = raw_joint.t[0];
+            let ty = raw_joint.t[1];
+            let tz = raw_joint.t[2];
 
-        skin_buffer.seek(joint_count_ptr, self.size);
-
-        let joint_count = skin_buffer.get_u32_le();
-        let joint_size = skin_buffer.get_u32_le();
-
-        let mut joints_vec: Vec<RdJoint> = Vec::with_capacity(joint_count as usize);
-
-        let mut joint_name_buffer = skin_buffer.clone();
-
-        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RdModell::META_COUNT;
-        joint_name_buffer.seek(len_first_joint_name_ptr, self.size);
-
-        assert_eq!(joint_size, 84);
-        for _ in 0..joint_count {
-            let len_joint_name = joint_name_buffer.get_u32_le();
-            assert_eq!(joint_name_buffer.get_u32_le(), 1);
-            let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
-            let joint_name = String::from(name);
-
-            let nameptr = skin_buffer.get_u32_le();
-            assert_eq!(nameptr, self.size - joint_name_buffer.len() as u32);
-            joint_name_buffer.advance(len_joint_name as usize);
-
-            let tx = skin_buffer.get_f32_le();
-            let ty = skin_buffer.get_f32_le();
-            let tz = skin_buffer.get_f32_le();
-
-            let rx = skin_buffer.get_f32_le();
-            let ry = skin_buffer.get_f32_le();
-            let rz = skin_buffer.get_f32_le();
-            let rw = skin_buffer.get_f32_le();
+            let rx = raw_joint.r[0];
+            let ry = raw_joint.r[1];
+            let rz = raw_joint.r[2];
+            let rw = raw_joint.r[3];
 
             let quaternion = Quaternion::new(rw, rx, ry, rz);
             let unit_quaternion = UnitQuaternion::from_quaternion(quaternion);
@@ -151,10 +112,8 @@ impl RdModell {
             let v: Vector3<f32> = Vector3::new(tx, ty, tz);
             let v_transformed = unit_quaternion.transform_vector(&v).scale(-1.0);
 
-            let parent_id = skin_buffer.get_u8();
-
             let joint = RdJoint {
-                name: joint_name,
+                name: String::from(raw_joint.name.as_ascii()),
                 transition: [v_transformed.x, v_transformed.y, v_transformed.z],
                 quaternion: [
                     quaternion_mat4.x,
@@ -162,27 +121,17 @@ impl RdModell {
                     quaternion_mat4.z,
                     quaternion_mat4.w,
                 ],
-                parent: parent_id,
+                parent: raw_joint.parent_id,
             };
-
             joints_vec.push(joint);
-            skin_buffer.advance(84 - 33);
         }
 
         self.joints = Some(joints_vec);
     }
 
     fn new(buf: Vec<u8>) -> Self {
-        use binrw::BinReaderExt;
-        use rdm_data::*;
-
-        RdModell::check_has_magic_byte(&buf);
-
         let mut reader = std::io::Cursor::new(&buf);
         let rdm: RdmFile = reader.read_ne().unwrap();
-
-        let size = buf.len() as u32;
-        let buffer = Bytes::from(buf);
 
         let vvert = VertexFormat2::read_format_via_data(&rdm);
         info!(
@@ -202,18 +151,10 @@ impl RdModell {
             triangles.push(t);
         }
 
-        let mut mesh_info = vec![];
-        for x in rdm.header1.meta.0.mesh_info.iter() {
-            mesh_info.push(MeshInstance {
-                index_count: x.index_count,
-                start_index_location: x.start_index_location,
-                material: x.material,
-            });
-        }
+        let mesh_info = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
 
         RdModell {
-            size,
-            buffer,
+            rdmf: Some(rdm),
             mesh_info,
             joints: None,
             triangle_indices: triangles,

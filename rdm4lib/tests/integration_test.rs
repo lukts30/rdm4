@@ -16,6 +16,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdm4lib::rdm_data::RdWriter2;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::convert::TryFrom;
     use std::fs;
@@ -296,6 +297,25 @@ mod tests {
 
         let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
+        std::fs::create_dir_all(&dir_dst).unwrap();
+        exp_rdm.write_rdm(Some(dir_dst), false);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn read_gltf_no_skin_rdw2() {
+        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
+            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf")).unwrap(),
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+            false,
+            false,
+            false,
+            None,
+        );
+        assert_eq!(rdm.vertex.len(), 5184);
+
+        let exp_rdm = RdWriter2::new(rdm);
+        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin_rdw2");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
     }
