@@ -8,7 +8,6 @@ use std::fs::File;
 #[derive(Debug, Clone)]
 pub struct FrameCollection {
     pub name: String,
-    pub len: u32,
     pub frames: Vec<Frame>,
 }
 
@@ -34,7 +33,6 @@ impl RdAnim {
             let ent_model = x.j_name.as_ascii().into();
             let ent = FrameCollection {
                 name: ent_model,
-                len: x.j_data.len() as u32,
                 frames: x.j_data.e.x.clone(),
             };
             anim_vec.push(ent);

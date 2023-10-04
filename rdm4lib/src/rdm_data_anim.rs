@@ -3,7 +3,7 @@
 use binrw::binrw;
 use std::io::SeekFrom;
 
-use crate::{rdm_container::*, rdm_data::RdmHeader2};
+use crate::{rdm_container::*, rdm_data_main::RdmHeader2};
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
@@ -53,7 +53,7 @@ pub struct RdmHeader1b {
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmAnimFile {
-    #[bw(args_raw = RdmContainerArgs {ptr: None, end_offset: crate::rdm_data::DataAndPointedToSize::get_direct_and_pointed_data_size(header2)})]
+    #[bw(args_raw = RdmContainerArgs {ptr: None, end_offset: crate::rdm_data_main::DataAndPointedToSize::get_direct_and_pointed_data_size(header2)})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
     pub header1: RdmTypedT<RdmHeader1b>,
 

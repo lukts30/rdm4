@@ -1,5 +1,5 @@
-use crate::rdm_data::MeshInfo;
 use crate::rdm_data_anim::Frame;
+use crate::rdm_data_main::MeshInfo;
 use crate::vertex::*;
 use crate::RdModell;
 use crate::{rdm_writer::PutVertex, RdJoint};
@@ -353,7 +353,6 @@ impl<'a> ImportedGltf {
             let mut frame_collections: Vec<FrameCollection> = Vec::new();
             for (node_str, frames) in translation_map.drain() {
                 frame_collections.push(FrameCollection {
-                    len: frames.len() as u32,
                     frames,
                     name: node_str.to_string(),
                 })

@@ -1,4 +1,4 @@
-use crate::{rdm_data::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
+use crate::{rdm_data_main::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
@@ -76,10 +76,7 @@ impl RdGltfBuilder {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
-        let mut size: usize = 0;
-        for janim in &anim_vec {
-            size += janim.len as usize;
-        }
+        let size: usize = anim_vec.iter().map(|f| f.frames.len()).sum();
 
         let rot_size = size * 16;
         let trans_size = size * 12;
@@ -131,7 +128,7 @@ impl RdGltfBuilder {
                 }
             };
 
-            let count = janim.len as usize;
+            let count = janim.frames.len();
 
             let rot_start = rot_anim_buf.len();
             let trans_start = trans_anim_buf.len();

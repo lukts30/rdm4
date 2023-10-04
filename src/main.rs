@@ -1,11 +1,11 @@
 extern crate rdm4lib;
 
 use rdm4lib::gltf_reader::ResolveNodeName;
+use rdm4lib::rdm_data_main::RdWriter2;
 use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RdModell};
 
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RdAnim;
-use rdm4lib::rdm_writer::RdWriter;
 
 use rdm4lib::rdm_anim_writer::RdAnimWriter;
 
@@ -262,7 +262,7 @@ fn convert_gltf_to_rdm(opts: Opts) {
         }
     }
 
-    let exp_rdm = RdWriter::from(rdm);
+    let exp_rdm = RdWriter2::new(rdm);
     exp_rdm.write_rdm(opts.out, !opts.force);
     if opts.skeleton && !opts.no_transform {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");

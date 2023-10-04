@@ -2,7 +2,6 @@ use rdm4lib::RdModell;
 
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RdAnim;
-use rdm4lib::rdm_writer::RdWriter;
 
 use rdm4lib::rdm_anim_writer::RdAnimWriter;
 
@@ -16,7 +15,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rdm4lib::rdm_data::RdWriter2;
+    use rdm4lib::rdm_data_main::RdWriter2;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::convert::TryFrom;
     use std::fs;
@@ -192,7 +191,7 @@ mod tests {
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.mesh_info.len(), 1);
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -249,7 +248,7 @@ mod tests {
         );
         assert_eq!(rdm.vertex.len(), 5184);
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -295,7 +294,7 @@ mod tests {
         );
         assert_eq!(rdm.vertex.len(), 5184);
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_rdm(Some(dir_dst), false);
@@ -335,7 +334,7 @@ mod tests {
         );
         assert_eq!(rdm.vertex.len(), 3);
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
 
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
         std::fs::create_dir_all(&dir_dst).unwrap();

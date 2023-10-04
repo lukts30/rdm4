@@ -139,7 +139,7 @@ impl RdAnimWriter {
             }
             self.buf.put_slice(collection.name.as_bytes());
 
-            self.buf.put_u32_le(collection.len);
+            self.buf.put_u32_le(collection.frames.len() as u32);
             self.buf.put_u32_le(32);
 
             for frame in collection.frames.iter() {

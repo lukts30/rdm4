@@ -251,14 +251,12 @@ mod tests {
 
     #[test]
     fn rdm_file_serialisation_roundtrip() {
-        //let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
-        let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
+        let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
+        //let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
 
         let mut reader = std::io::Cursor::new(&data);
 
         let rdm: RdmFile = reader.read_ne().unwrap();
-
-        dbg!(&rdm.header1.skin.e.x.joint.0.e.x);
 
         dbg!(rdm.header2.get_direct_and_pointed_data_size());
 
@@ -397,7 +395,7 @@ impl RdWriter2 {
                 e: rdm_container::VectorN {
                     x: {
                         let mut o = Vec::new();
-                        for x in rdm_in.triangle_indices {
+                        for x in &rdm_in.triangle_indices {
                             o.push(AnnoU16(x.indices[0]));
                             o.push(AnnoU16(x.indices[1]));
                             o.push(AnnoU16(x.indices[2]));
@@ -475,7 +473,62 @@ impl RdWriter2 {
             mats.push(dummy_mat);
         }
 
-        //rdm.header1.skin = 0;
+        if rdm_in.has_skin() {
+            let mut replacement_raw_joints = vec![];
+            for j in &rdm_in.joints.unwrap() {
+                let joint_quaternion = j.quaternion;
+
+                let rx = joint_quaternion[0];
+                let ry = joint_quaternion[1];
+                let rz = joint_quaternion[2];
+                let rw = joint_quaternion[3];
+
+                let q = Quaternion::new(rw, rx, ry, rz);
+                let unit_quaternion = UnitQuaternion::from_quaternion(q);
+
+                let trans = j.transition;
+                let tx = trans[0];
+                let ty = trans[1];
+                let tz = trans[2];
+                let v: Vector3<f32> = Vector3::new(tx, ty, tz);
+
+                // undo rotation since it will be applied on load
+                // rdm -> internal representation -> rdm: v vector in add_skin should be equal to v_init
+                let v_init = unit_quaternion.inverse_transform_vector(&v).scale(-1.0);
+                let rot = unit_quaternion.quaternion().coords;
+
+                let res = RdmJoint {
+                    name: AnnoPtr(binrw::FilePtr32 {
+                        ptr: 0,
+                        value: Some(RdmContainer {
+                            info: RdmContainerPrefix {
+                                count: j.name.as_bytes().len() as u32,
+                                part_size: 1,
+                            },
+                            e: rdm_container::VectorN {
+                                x: j.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
+                            },
+                        }),
+                    }),
+                    t: [v_init.x, v_init.y, v_init.z],
+                    r: [rot.x, rot.y, rot.z, rot.w],
+                    parent_id: j.parent,
+                    _padding: [0; 51],
+                };
+
+                replacement_raw_joints.push(res);
+            }
+            assert_eq!(rdm.header1.skin.0.joint.0.info.part_size, 84);
+            rdm.header1.skin.0.joint.0.info.count = replacement_raw_joints.len() as u32;
+
+            let raw_joints = &mut rdm.header1.skin.0.joint.0.e.x;
+            *raw_joints = replacement_raw_joints;
+        } else {
+            rdm.header1.skin.0 = binrw::FilePtr32 {
+                ptr: 0,
+                value: None,
+            }
+        }
 
         rdm.header1.rdm_blob_to_mat.0 = binrw::FilePtr32 {
             ptr: 0,

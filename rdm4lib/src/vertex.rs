@@ -1,7 +1,7 @@
 use bytes::{Buf, Bytes};
 use std::{fmt, str::FromStr};
 
-use crate::{rdm_data::RdmFile, *};
+use crate::{rdm_data_main::RdmFile, *};
 use binrw::binrw;
 
 #[repr(C)]
@@ -259,7 +259,7 @@ impl VertexFormat2 {
     }
 
     pub fn read_format_via_data(rdm: &RdmFile) -> Self {
-        let meta: &rdm_data::Meta = &rdm.header1.meta.0;
+        let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
         let format_identifiers = &meta.format_identifiers;
 
         let ids = &format_identifiers.rdm_container;

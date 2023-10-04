@@ -1,6 +1,6 @@
 use binrw::BinReaderExt;
-use rdm_data::*;
-use rdm_data::{MeshInfo, RdmFile};
+use rdm_data_main::*;
+use rdm_data_main::{MeshInfo, RdmFile};
 use std::path::Path;
 
 use std::fs::File;
@@ -30,8 +30,8 @@ use rdm_material::RdMaterial;
 use vertex::VertexFormat2;
 
 pub mod rdm_container;
-pub mod rdm_data;
 pub mod rdm_data_anim;
+pub mod rdm_data_main;
 
 pub struct RdModell {
     rdmf: Option<RdmFile>,
@@ -53,9 +53,6 @@ pub struct RdJoint {
 }
 
 impl RdModell {
-    const VERTEX_META: u32 = 12;
-    const TRIANGLES_META: u32 = 16;
-
     pub fn has_skin(&self) -> bool {
         self.joints.is_some()
     }
