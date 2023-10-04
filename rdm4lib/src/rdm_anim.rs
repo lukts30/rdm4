@@ -1,18 +1,9 @@
-use bytes::{Buf, Bytes};
+use binrw::BinReaderExt;
 use std::path::Path;
 
+use crate::rdm_data_anim::Frame;
+use crate::rdm_data_anim::RdmAnimFile;
 use std::fs::File;
-
-use crate::RdModell;
-use crate::Seek;
-use std::str;
-
-#[derive(Debug, Copy, Clone)]
-pub struct Frame {
-    pub rotation: [f32; 4],
-    pub translation: [f32; 3],
-    pub time: f32,
-}
 
 #[derive(Debug, Clone)]
 pub struct FrameCollection {
@@ -30,95 +21,24 @@ pub struct RdAnim {
 
 impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
-        let mut buffer = Bytes::from(buffer);
-        let size = buffer.len() as u32;
+        let mut reader = std::io::Cursor::new(&buffer);
+        let rdmm: RdmAnimFile = reader.read_ne().unwrap();
+        let v = &rdmm.header1.meta.anims;
 
-        buffer.advance(44);
+        let time_max = rdmm.header1.meta.time_max;
+        // let name_anim = rdmm.header1.meta.name.as_ascii().into();
 
-        let base_offset = buffer.get_u32_le();
+        let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(v.len());
 
-        buffer.seek(base_offset, size);
-
-        // maybe NULL !
-        let model_str_ptr = buffer.get_u32_le();
-        buffer.advance(4);
-        let time_max = buffer.get_u32_le();
-
-        buffer.seek(model_str_ptr - RdModell::META_COUNT, size);
-
-        let model_str_len = buffer.get_u32_le() as usize;
-        assert!(model_str_len > 1);
-        assert_eq!(buffer.get_u32_le(), 1);
-
-        let model_str = str::from_utf8(&buffer[..model_str_len]).unwrap();
-        let model = String::from(model_str);
-
-        info!("target model name: {}", model);
-        buffer.advance(model_str_len);
-
-        let joint_targets_num = buffer.get_u32_le() as usize;
-        let joint_targets_tables_size = buffer.get_u32_le();
-        assert_eq!(joint_targets_tables_size, 24);
-        info!("joint_targets_count: {}", joint_targets_num);
-
-        let mut jtable: Vec<(u32, u32)> = Vec::with_capacity(joint_targets_num);
-        for _ in 0..joint_targets_num {
-            jtable.push((buffer.get_u32_le(), buffer.get_u32_le()));
-
-            buffer.advance(16);
-        }
-
-        info!("jtable: {:?}", jtable);
-
-        let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(joint_targets_num);
-
-        for ent in &jtable {
-            trace!("ent.0: {}", ent.0);
-            trace!("buffer.remaining(): {}", buffer.remaining());
-            buffer.seek(ent.0 - RdModell::META_COUNT, size);
-            let ent_str_len = buffer.get_u32_le() as usize;
-            assert!(ent_str_len > 1);
-            assert_eq!(buffer.get_u32_le(), 1);
-
-            let ent_model_str = str::from_utf8(&buffer[..ent_str_len]).unwrap();
-            let ent_model = String::from(ent_model_str);
-
-            debug!("joint: {}", ent_model_str);
-            buffer.advance(ent_str_len);
-
-            let ent_child_count = buffer.get_u32_le();
-            assert_eq!(buffer.get_u32_le(), 32);
-
-            let mut frame: Vec<Frame> = Vec::new();
-
-            for _ in 0..ent_child_count {
-                let kframe = Frame {
-                    rotation: [
-                        buffer.get_f32_le(),
-                        buffer.get_f32_le(),
-                        buffer.get_f32_le(),
-                        buffer.get_f32_le(),
-                    ],
-                    translation: [
-                        buffer.get_f32_le(),
-                        buffer.get_f32_le(),
-                        buffer.get_f32_le(),
-                    ],
-                    time: buffer.get_f32_le(),
-                };
-                frame.push(kframe);
-            }
-
+        for x in v.iter() {
+            let ent_model = x.j_name.as_ascii().into();
             let ent = FrameCollection {
                 name: ent_model,
-                len: ent_child_count,
-                frames: frame,
+                len: x.j_data.len() as u32,
+                frames: x.j_data.e.x.clone(),
             };
-
             anim_vec.push(ent);
         }
-
-        trace!("anim: {:?}", anim_vec);
 
         RdAnim {
             anim_vec,
@@ -137,7 +57,6 @@ impl<P: AsRef<Path>> From<P> for RdAnim {
         let buffer_len = buffer.len();
         info!("loaded {:?} into buffer", f_path.as_ref().to_str().unwrap());
         info!("buffer size: {}", buffer_len);
-        RdModell::check_has_magic_byte(&buffer);
 
         RdAnim::new(
             buffer,

@@ -1,4 +1,5 @@
 use crate::rdm_data::MeshInfo;
+use crate::rdm_data_anim::Frame;
 use crate::vertex::*;
 use crate::RdModell;
 use crate::{rdm_writer::PutVertex, RdJoint};

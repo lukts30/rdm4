@@ -1,5 +1,4 @@
 use binrw::BinReaderExt;
-use bytes::{Buf, Bytes};
 use rdm_data::*;
 use rdm_data::{MeshInfo, RdmFile};
 use std::path::Path;
@@ -32,6 +31,7 @@ use vertex::VertexFormat2;
 
 pub mod rdm_container;
 pub mod rdm_data;
+pub mod rdm_data_anim;
 
 pub struct RdModell {
     rdmf: Option<RdmFile>,
@@ -44,18 +44,6 @@ pub struct RdModell {
     pub mat: Option<RdMaterial>,
 }
 
-trait Seek {
-    fn seek(&mut self, from_start: u32, file_size: u32);
-}
-
-impl Seek for Bytes {
-    fn seek(&mut self, offset_from_start: u32, file_size: u32) {
-        let already_read = file_size - self.remaining() as u32;
-        let cnt: usize = (offset_from_start.checked_sub(already_read).unwrap()) as usize;
-        self.advance(cnt);
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct RdJoint {
     name: String,
@@ -65,7 +53,6 @@ pub struct RdJoint {
 }
 
 impl RdModell {
-    const META_COUNT: u32 = 8; //neg
     const VERTEX_META: u32 = 12;
     const TRIANGLES_META: u32 = 16;
 
@@ -75,15 +62,6 @@ impl RdModell {
 
     pub fn add_anim(&mut self, anim: RdAnim) {
         self.anim = Some(anim);
-    }
-
-    pub fn check_has_magic_byte(bytes: &[u8]) {
-        static MAGIC: &[u8] = &[0x52, 0x44, 0x4D, 0x01];
-        assert_eq!(
-            &bytes[0..4],
-            MAGIC,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
     }
 
     pub fn add_skin(&mut self) {

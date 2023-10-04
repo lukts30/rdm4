@@ -294,6 +294,7 @@ where
         p.write_options(writer, endian, &mut end)?;
 
         let pos_end = writer.stream_position().unwrap();
+
         assert_eq!(
             pos_end - pos_start,
             (self.info.count * self.info.part_size) as u64
