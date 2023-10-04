@@ -48,9 +48,9 @@ impl RdMaterial {
             }
 
             let output = Command::new("texconv.exe")
-                .arg(&ab_path.as_os_str())
+                .arg(ab_path.as_os_str())
                 .arg(r"-o")
-                .arg(&ab_dst.as_os_str())
+                .arg(ab_dst.as_os_str())
                 .arg(r"-ft")
                 .arg(r"png")
                 .output()

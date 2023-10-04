@@ -30,13 +30,8 @@ mod tests {
         let rdm = RdModell::from("rdm/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.vertex.len(), 3291);
-        assert_eq!(rdm.triangles_idx_count, 7473);
+        assert_eq!(rdm.triangle_indices.len() * 3, 7473);
         assert_eq!(rdm.mesh_info.len(), 2);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -47,11 +42,6 @@ mod tests {
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.vertex.get_size(), 28);
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         rdm.add_skin();
 
@@ -177,14 +167,9 @@ mod tests {
     fn fishery_others_cutout_lod0() {
         let rdm = RdModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertex.len(), 32);
-        assert_eq!(rdm.triangles_idx_count, 78);
+        assert_eq!(rdm.triangle_indices.len() * 3, 78);
         assert_eq!(rdm.vertex.to_string(), "P4h");
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -195,11 +180,6 @@ mod tests {
         // TODO: cfg says P4h_N4b_T2h_C4c
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -210,11 +190,6 @@ mod tests {
         assert_eq!(rdm.vertex.len(), 2615);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
@@ -236,10 +211,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let jj = rdm.joints.clone().unwrap();
         let mut anims =
@@ -276,10 +247,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
@@ -301,10 +268,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let jj = &rdm.joints.unwrap();
         let mut anims =
@@ -330,10 +293,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let exp_rdm = RdWriter::from(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
@@ -355,10 +314,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 3);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let exp_rdm = RdWriter::from(rdm);
 

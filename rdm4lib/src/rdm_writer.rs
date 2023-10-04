@@ -281,7 +281,8 @@ impl RdWriter {
     }
 
     fn put_indexed_triangle_list(&mut self) {
-        self.buf.put_u32_le(self.input.triangles_idx_count);
+        self.buf
+            .put_u32_le(3 * self.input.triangle_indices.len() as u32);
         self.buf.put_u32_le(2);
 
         {

@@ -515,7 +515,7 @@ impl RdGltfBuilder {
                     .zip(global_bind_matrices.iter())
                     .enumerate()
                 {
-                    if joint.parent == 255 || joint.locked {
+                    if joint.parent == 255 {
                         children_of_root_node.push(json::Index::new(i as u32));
                         // Skip to the next iteration because without a parent: global transform == local transform
                         continue;
@@ -906,7 +906,7 @@ impl RdGltfBuilder {
         let mut accessor_idx_meshes = Vec::with_capacity(self.rdm.mesh_info.len());
         for submesh in self.rdm.mesh_info.iter() {
             let mut buff = BytesMut::with_capacity(submesh.index_count as usize);
-            let r = (submesh.start_index_location as usize / 3) as usize
+            let r = (submesh.start_index_location / 3) as usize
                 ..((submesh.start_index_location / 3) + submesh.index_count / 3) as usize;
             unsafe { buff.put_slice(self.rdm.triangle_indices[r].align_to::<u8>().1) }
             bytes.push((BufferContainer::Bytes(buff.freeze()), submesh.index_count));
@@ -1032,7 +1032,7 @@ impl RdGltfBuilder {
 
         for view in self.buffer_views.iter_mut() {
             let n = view_off_mapping[view.buffer.value()];
-            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n as u32);
+            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n);
             view.buffer = json::Index::new(0);
         }
 

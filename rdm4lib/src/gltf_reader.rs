@@ -119,42 +119,6 @@ fn read_animation_channel(buffers: &[gltf::buffer::Data], channel: Channel) -> V
     }
 }
 
-fn interpolate_translation_on_rotation(translation: &[Frame], rotation: &mut [Frame]) {
-    fn interpolate(
-        current_time: f32,
-        input_time: &[f32],
-        output_values: &[Vector3<f32>],
-    ) -> Vector3<f32> {
-        let next_idx = input_time
-            .iter()
-            .position(|t| t > &current_time)
-            .unwrap_or(input_time.len() - 1);
-        let previous_idx = next_idx - 1;
-
-        let previous_time = input_time[previous_idx];
-        let next_time = input_time[next_idx];
-
-        let previous_translation = output_values[previous_idx];
-        let next_translation = output_values[next_idx];
-
-        let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
-
-        previous_translation + interpolation_value * (next_translation - previous_translation)
-    }
-    assert!(translation.len() <= rotation.len());
-
-    let input_time: Vec<f32> = translation.iter().map(|t| t.time).collect();
-    let output_values: Vec<Vector3<f32>> = translation
-        .iter()
-        .map(|t| Vector3::from(t.translation))
-        .collect();
-
-    for rot in rotation {
-        let raw = interpolate(rot.time, &input_time, &output_values);
-        rot.translation = [raw.x, raw.y, raw.z];
-    }
-}
-
 impl<'a> ImportedGltf {
     pub fn try_import(
         f_path: &'a Path,
@@ -347,14 +311,7 @@ impl<'a> ImportedGltf {
             }
 
             // TODO: finish interpolate
-            for (name, (t, mut r)) in interpolate_channel.drain() {
-                let max_time_t = t.iter().map(|f| f.time).reduce(f32::max).unwrap();
-                let max_time_r = r.iter().map(|f| f.time).reduce(f32::max).unwrap();
-                assert_relative_eq!(max_time_t, max_time_r);
-                error!("{} {} {}", name, max_time_t, max_time_r);
-                warn!("{} {} {}", name, t.len(), r.len());
-                interpolate_translation_on_rotation(&t, &mut r);
-                translation_map.insert(name, r);
+            if interpolate_channel.drain().next().is_some() {
                 unimplemented!("{}", interpolate_error_message);
             }
 
@@ -437,8 +394,6 @@ impl<'a> ImportedGltf {
         let vertices = gltf_imp.1;
         let triangles = gltf_imp.2;
 
-        let triangles_idx_count = triangles.len() as u32 * 3;
-
         let joints_vec = if load_skin {
             self.check_node_name_uniqueness();
             Some(self.read_skin())
@@ -454,12 +409,7 @@ impl<'a> ImportedGltf {
             mesh_info: mesh_info_vec,
             joints: joints_vec,
             triangle_indices: triangles,
-            meta: None,
             vertex: vertices,
-
-            triangles_offset: None,
-            triangles_idx_count,
-
             anim: None,
             mat: None,
         }
@@ -913,7 +863,6 @@ impl<'a> ImportedGltf {
                 ident.into_boxed_slice(),
                 vertices_count,
                 vertsize,
-                None,
                 verts_vec.freeze(),
             );
             return Some((
@@ -944,7 +893,6 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
 
     RdJoint {
         name,
-        locked: false,
         parent,
         quaternion: [
             quaternion_raw.x,
