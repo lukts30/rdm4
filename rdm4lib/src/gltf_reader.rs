@@ -2,7 +2,7 @@ use crate::rdm_data_anim::Frame;
 use crate::rdm_data_main::MeshInfo;
 use crate::vertex::*;
 use crate::RdModell;
-use crate::{rdm_writer::PutVertex, RdJoint};
+use crate::{gltf_reader_vertex::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 
 use gltf::animation::Channel;

@@ -3,8 +3,6 @@ use rdm4lib::RdModell;
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RdAnim;
 
-use rdm4lib::rdm_anim_writer::RdAnimWriter;
-
 use rdm4lib::gltf_reader;
 
 use std::fs::File;
@@ -15,6 +13,7 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdm4lib::rdm_data_anim::RdAnimWriter2;
     use rdm4lib::rdm_data_main::RdWriter2;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use std::convert::TryFrom;
@@ -275,7 +274,7 @@ mod tests {
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
-        let exp_rdm = RdAnimWriter::from(anim);
+        let exp_rdm = RdAnimWriter2::new(anim);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_anim_rdm(Some(dir_dst), false);

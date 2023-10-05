@@ -141,9 +141,9 @@ pub struct RdmHeader1 {
 #[bw(import_raw(end: &mut u64))]
 pub struct RdmHeader2 {
     #[bw(args_raw = end)]
-    export_name1: AnnoPtr<RdmString>,
+    pub export_name1: AnnoPtr<RdmString>,
     #[bw(args_raw = end)]
-    export_name2: AnnoPtr<RdmString>,
+    pub export_name2: AnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
 
