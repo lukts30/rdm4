@@ -11,7 +11,7 @@ use crate::{rdm_anim::RdAnim, rdm_container::*, rdm_data_main::RdmHeader2};
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_data2 == 0xF))]
+#[br(assert(_unknown0_15 == 15))]
 pub struct AnimMeta {
     #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
@@ -19,8 +19,8 @@ pub struct AnimMeta {
     #[bw(args_raw = end)]
     pub anims: AnnoPtr<RdmTypedContainer<AnimInner>>,
     pub time_max: u32,
-    _data2: u32,
-    _data: [u8; 32],
+    _unknown0_15: u32,
+    _padding: [u8; 32],
 }
 
 #[binrw]
@@ -30,7 +30,7 @@ pub struct AnimInner {
     pub j_name: AnnoPtr<RdmString>,
     #[bw(args_raw = end)]
     pub j_data: AnnoPtr<RdmTypedContainer<Frame>>,
-    _data: [u8; 16],
+    _padding: [u8; 16],
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -44,14 +44,14 @@ pub struct Frame {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_data0 == 84))]
+#[br(assert(_unknown0_84 == 84))]
 pub struct RdmHeader1b {
-    _data0: u32,
-    _data1: [u8; 12],
+    _unknown0_84: u32,
+    _unknown1: [u8; 12],
 
     #[bw(args_raw = end)]
     pub meta: AnnoPtr<RdmTypedT<AnimMeta>>,
-    _data: [u8; 48 - 20],
+    _padding: [u8; 28],
 }
 
 #[binrw]
@@ -79,9 +79,6 @@ mod tests {
 
         let mut reader = std::io::Cursor::new(&data);
         let rdm: RdmAnimFile = reader.read_ne().unwrap();
-        //dbg!(rdm.header1.meta.time_max);
-        //let v = &rdm.header1.meta.anims;
-        //dbg!(&v[1].j_data[1]);
 
         let mut dst = Vec::new();
         let mut writer = std::io::Cursor::new(&mut dst);
@@ -92,9 +89,6 @@ mod tests {
 
         let mut file = fs::File::create("/tmp/anim_out.rdm").unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
-
-        dbg!(file.metadata().unwrap().len());
-        dbg!(data.len());
         assert_eq!(data, fs::read("/tmp/anim_out.rdm").unwrap())
     }
 
@@ -205,7 +199,7 @@ impl RdAnimWriter2 {
                         e: rdm_container::VectorN { x: x.frames },
                     }),
                 }),
-                _data: [0; 16],
+                _padding: [0; 16],
             };
             anim_data.push(o);
         }

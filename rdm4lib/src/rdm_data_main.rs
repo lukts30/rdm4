@@ -24,7 +24,7 @@ pub struct VertId {
     #[bw(args_raw = end)]
     pub rdm_container: AnnoPtr<RdmTypedContainer<crate::vertex::VertexIdentifier>>,
     unknown_shader_id: u8,
-    _padding: [u8; 20 - 1],
+    _padding: [u8; 19],
 }
 
 #[derive(Debug, Clone)]
@@ -123,8 +123,10 @@ pub struct RdmJoint {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[br(assert(_unknown0_84 == 84))]
+#[br(assert(meta.ptr != 0))]
 pub struct RdmHeader1 {
-    _data0: [u8; 4],
+    _unknown0_84: u32,
     #[bw(args_raw = end)]
     pub meta: AnnoPtr<RdmTypedT<Meta>>,
     #[bw(args_raw = end)]
@@ -294,7 +296,7 @@ pub struct RdWriter2 {
 }
 
 impl RdWriter2 {
-    pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) {
+    pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) -> PathBuf {
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("rdm_out");
             let _ = fs::create_dir(&f);
@@ -315,6 +317,8 @@ impl RdWriter2 {
         writer
             .write_type_args(&self.inner, binrw::Endian::Little, ())
             .unwrap();
+
+        file.as_path().into()
     }
 
     pub fn new(rdm_in: RdModell) -> RdWriter2 {
@@ -518,11 +522,9 @@ impl RdWriter2 {
 
                 replacement_raw_joints.push(res);
             }
-            assert_eq!(rdm.header1.skin.0.joint.0.info.part_size, 84);
-            rdm.header1.skin.0.joint.0.info.count = replacement_raw_joints.len() as u32;
-
-            let raw_joints = &mut rdm.header1.skin.0.joint.0.e.x;
-            *raw_joints = replacement_raw_joints;
+            assert_eq!(rdm.header1.skin.joint.info.part_size, 84);
+            rdm.header1.skin.joint.info.count = replacement_raw_joints.len() as u32;
+            rdm.header1.skin.joint.e.x = replacement_raw_joints;
         } else {
             rdm.header1.skin.0 = binrw::FilePtr32 {
                 ptr: 0,

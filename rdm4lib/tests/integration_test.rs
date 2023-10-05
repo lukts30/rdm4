@@ -16,12 +16,22 @@ mod tests {
     use rdm4lib::rdm_data_anim::RdAnimWriter2;
     use rdm4lib::rdm_data_main::RdWriter2;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
+    use sha2::{Digest, Sha256};
     use std::convert::TryFrom;
     use std::fs;
     use std::path::PathBuf;
 
     #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
+
+    pub fn check_hash(path: &Path, expected: &str) {
+        let hash = Sha256::new()
+            .chain_update(fs::read(path).unwrap())
+            .finalize();
+
+        let calc_hash = base16ct::lower::encode_string(&hash);
+        assert_eq!(expected, calc_hash);
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -193,7 +203,11 @@ mod tests {
         let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "fdd11ec94cc389127e5a2bc2b4e90d9d331133af5d33f2c54be7d92f01255e18",
+        );
     }
 
     #[test]
@@ -250,7 +264,11 @@ mod tests {
         let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "abe695daaf05d9b715a99f1c8131ec1e50704aa21f8a50955da288e667986d37",
+        );
     }
 
     #[test]
@@ -296,32 +314,17 @@ mod tests {
         let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn read_gltf_no_skin_rdw2() {
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf")).unwrap(),
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
-            false,
-            false,
-            false,
-            None,
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "358481e3d0b0fa06daee00ae2a10b6f1933caffe83e18dec4633123155d0aedc",
         );
-        assert_eq!(rdm.vertex.len(), 5184);
-
-        let exp_rdm = RdWriter2::new(rdm);
-        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin_rdw2");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     #[ignore]
-    fn read_gltf_no_skin2() {
+    fn read_gltf_no_skin2_triangle() {
         // no normals so ignore it !
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf")).unwrap(),
@@ -335,64 +338,12 @@ mod tests {
 
         let exp_rdm = RdWriter2::new(rdm);
 
-        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
+        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2_triangle");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    #[ignore]
-    fn matrix_rel_calc() {
-        use nalgebra::*;
-        let global_parent_translation = Translation3::new(-1.0, 2.0, 0.0);
-        let global_child_translation = Translation3::new(1.0, 2.0, 3.0);
-
-        let c: Matrix4<f32> = global_child_translation.to_homogeneous();
-        let p: Matrix4<f32> = global_parent_translation.to_homogeneous();
-
-        let local: Matrix4<f32> = p.try_inverse().unwrap() * c;
-        println!("{}", local);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    #[ignore]
-    fn interpolation_test() {
-        use nalgebra::Vector3;
-
-        let input_time = vec![0.0f32, 0.8, 1.6, 2.4, 3.2];
-        let output_values = vec![
-            Vector3::new(10.0f32, 5.0, -5.0),
-            Vector3::new(14.0f32, 3.0, -2.0),
-            Vector3::new(18.0f32, 1.0, 1.0),
-            Vector3::new(24.0f32, -1.0, 4.0),
-            Vector3::new(31.0f32, -3.0, 7.0),
-        ];
-
-        assert_eq!(input_time.len(), output_values.len());
-
-        fn interpolate(
-            current_time: f32,
-            input_time: &[f32],
-            output_values: &[Vector3<f32>],
-        ) -> Vector3<f32> {
-            let next_idx = input_time.iter().position(|t| t > &current_time).unwrap();
-            let previous_idx = next_idx - 1;
-
-            let previous_time = input_time[previous_idx];
-            let next_time = input_time[next_idx];
-
-            let previous_translation = output_values[previous_idx];
-            let next_translation = output_values[next_idx];
-
-            let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
-
-            let current_translation = previous_translation
-                + interpolation_value * (next_translation - previous_translation);
-            current_translation
-        }
-
-        dbg!(interpolate(1.2f32, &&input_time, &output_values));
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "f456d4418387e5bcbe4522064f5fdb75bd67b762793489ad6220a9718d431e3c",
+        );
     }
 }
