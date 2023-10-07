@@ -177,7 +177,7 @@ impl RdAnimWriter2 {
         let mut anim_data: Vec<AnimInner> = vec![];
         for x in anim_input.anim_vec {
             let o: AnimInner = AnimInner {
-                j_name: AnnoPtr(binrw::FilePtr32 {
+                j_name: AnnoPtr2(binrw::FilePtr32 {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
@@ -189,7 +189,7 @@ impl RdAnimWriter2 {
                         },
                     }),
                 }),
-                j_data: AnnoPtr(binrw::FilePtr32 {
+                j_data: AnnoPtr2(binrw::FilePtr32 {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {

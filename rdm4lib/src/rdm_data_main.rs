@@ -133,8 +133,7 @@ pub struct RdmHeader1 {
     rdm_blob_to_mat: AnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
 
     #[bw(args_raw = end)]
-    // Nullable
-    pub skin: AnnoPtr<RdmTypedT<RdmBlobToJoint>>,
+    pub skin: NullableAnnoPtr<RdmTypedT<RdmBlobToJoint>>,
 
     _data: [u8; 48 - 4 * 4],
 }
@@ -148,6 +147,14 @@ pub struct RdmHeader2 {
     pub export_name2: AnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
+
+trait RDMStructSize<const N: u32> {
+    fn get_struct_byte_size() -> u32 {
+        N
+    }
+}
+
+impl RDMStructSize<72> for RdmHeader2 {}
 
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
@@ -434,7 +441,7 @@ impl RdWriter2 {
         let mut mats = vec![];
         for i in 0..MeshInfo::get_max_material(&rdm_in.mesh_info) + 1 {
             let dummy_mat = RdmBlobToMat {
-                mat: AnnoPtr(binrw::FilePtr32 {
+                mat: AnnoPtr2(binrw::FilePtr32 {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
@@ -443,7 +450,7 @@ impl RdWriter2 {
                         },
                         e: rdm_container::Vector1 {
                             x: RdmMat {
-                                name: AnnoPtr(binrw::FilePtr32 {
+                                name: AnnoPtr2(binrw::FilePtr32 {
                                     ptr: 0,
                                     value: Some(RdmContainer {
                                         info: RdmContainerPrefix {
@@ -455,7 +462,7 @@ impl RdWriter2 {
                                         },
                                     }),
                                 }),
-                                png: AnnoPtr(binrw::FilePtr32 {
+                                png: AnnoPtr2(binrw::FilePtr32 {
                                     ptr: 0,
                                     value: Some(RdmContainer {
                                         info: RdmContainerPrefix {
@@ -502,7 +509,7 @@ impl RdWriter2 {
                 let rot = unit_quaternion.quaternion().coords;
 
                 let res = RdmJoint {
-                    name: AnnoPtr(binrw::FilePtr32 {
+                    name: AnnoPtr2(binrw::FilePtr32 {
                         ptr: 0,
                         value: Some(RdmContainer {
                             info: RdmContainerPrefix {

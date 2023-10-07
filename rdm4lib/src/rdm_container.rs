@@ -7,7 +7,19 @@ use std::vec::Vec;
 use std::marker::PhantomData;
 
 use binrw::file_ptr::FilePtrArgs;
-use binrw::{binread, binrw, BinRead, BinWrite, FilePtr32};
+use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
+
+fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
+    let old_pos = reader.stream_position()?;
+    let len = reader.seek(SeekFrom::End(0))?;
+
+    // Avoid seeking a third time when we were already at the end of the
+    // stream. The branch is usually way cheaper than a seek operation.
+    if old_pos != len {
+        reader.seek(SeekFrom::Start(old_pos))?;
+    }
+    Ok(len)
+}
 
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
@@ -18,7 +30,7 @@ pub struct VectorN<T: for<'a> BinRead<Args<'a> = ()> + 'static> {
 
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
-#[br(assert(c == 1,"Expected only 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
+#[br(assert(c == 1,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
 pub struct Vector1<T: for<'a> BinRead<Args<'a> = ()> + 'static> {
     pub x: T,
 }
@@ -56,10 +68,51 @@ where
 }
 
 #[derive(Debug)]
-#[binrw]
+#[binwrite]
 pub struct RdmContainerPrefix {
     pub count: u32,
     pub part_size: u32,
+}
+
+impl BinRead for RdmContainerPrefix {
+    type Args<'a> = ();
+
+    fn read_options<R: std::io::Read + Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        _args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        let c_prefix = RdmContainerPrefix {
+            count: <u32>::read_options(reader, endian, ()).unwrap(),
+            part_size: <u32>::read_options(reader, endian, ()).unwrap(),
+        };
+
+        if c_prefix.count == 0 {
+            return Err(binrw::Error::AssertFail {
+                message: "count 0 ".into(),
+                pos: reader.stream_position().unwrap() - 8,
+            });
+        }
+
+        if c_prefix.part_size == 0 {
+            return Err(binrw::Error::AssertFail {
+                message: "part_size 0 ".into(),
+                pos: reader.stream_position().unwrap() - 4,
+            });
+        }
+
+        let file_size = stream_len(reader)?;
+        if file_size
+            < (c_prefix.count * c_prefix.part_size) as u64 + reader.stream_position().unwrap()
+        {
+            return Err(binrw::Error::AssertFail {
+                message: "RdmContainer > EOF".into(),
+                pos: reader.stream_position().unwrap() - 8,
+            });
+        }
+
+        Ok(c_prefix)
+    }
 }
 
 #[binread]
@@ -137,9 +190,16 @@ impl fmt::Debug for RdmString {
     }
 }
 
-pub struct AnnoPtr<T>(pub FilePtr32<T>);
+pub type AnnoPtr<T> = AnnoPtr2<false, T>;
+pub type NullableAnnoPtr<T> = AnnoPtr2<true, T>;
+/*
+#[binrw]
+pub struct AnnoPtr<T>(AnnoPtr2<true, T>);
+ */
 
-impl<T: BinRead> std::ops::Deref for AnnoPtr<T> {
+pub struct AnnoPtr2<const PTR_NULLABLE: bool, T>(pub FilePtr32<T>);
+
+impl<const PTR_NULLABLE: bool, T: BinRead> std::ops::Deref for AnnoPtr2<PTR_NULLABLE, T> {
     type Target = FilePtr32<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -147,13 +207,15 @@ impl<T: BinRead> std::ops::Deref for AnnoPtr<T> {
     }
 }
 
-impl<T: BinRead> std::ops::DerefMut for AnnoPtr<T> {
+impl<const PTR_NULLABLE: bool, T: BinRead> std::ops::DerefMut for AnnoPtr2<PTR_NULLABLE, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T: BinRead + std::fmt::Debug> std::fmt::Debug for AnnoPtr<T> {
+impl<const PTR_NULLABLE: bool, T: BinRead + std::fmt::Debug> std::fmt::Debug
+    for AnnoPtr2<PTR_NULLABLE, T>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.deref(), f)
     }
@@ -161,7 +223,8 @@ impl<T: BinRead + std::fmt::Debug> std::fmt::Debug for AnnoPtr<T> {
 
 // https://docs.rs/binrw/0.11.2/binrw/docs/attribute/index.html#custom-parserswriters
 // https://github.com/jam1garner/binrw/blob/8a49a5cea8568eed7b86a0e2646b8608527a60f4/binrw/src/file_ptr.rs#L127
-impl<const N: bool, Z> BinRead for AnnoPtr<RdmContainer<N, Z>>
+impl<const PTR_NULLABLE: bool, const N: bool, Z> BinRead
+    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
     Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
@@ -176,25 +239,44 @@ where
         let mut p: FilePtr32<RdmContainer<N, Z>> =
             <_>::read_options(reader, endian, FilePtrArgs::default()).unwrap();
         if p.ptr != 0 {
+            let saved_ptr = p.ptr;
             p.ptr -= 8;
 
-            p.after_parse(reader, endian, FilePtrArgs::default())
-                .unwrap();
+            if p.ptr as u64 <= reader.stream_position().unwrap() {
+                return Err(binrw::Error::AssertFail {
+                    message: format!("unexpected back-pointer {:#x}", saved_ptr),
+                    pos: reader.stream_position().unwrap() - 4,
+                });
+            }
+            let file_size = stream_len(reader)?;
 
-            return Ok(AnnoPtr(p));
+            if file_size <= p.ptr.into() {
+                return Err(binrw::Error::AssertFail {
+                    message: format!("out-of-bounds pointer {:#x}", saved_ptr),
+                    pos: reader.stream_position().unwrap() - 4,
+                });
+            }
+
+            p.after_parse(reader, endian, FilePtrArgs::default())?;
+
+            Ok(AnnoPtr2(p))
+        } else if PTR_NULLABLE {
+            Ok(AnnoPtr2(FilePtr32 {
+                ptr: 0,
+                value: None,
+            }))
+        } else {
+            return Err(binrw::Error::AssertFail {
+                message: "null pointer".into(),
+                pos: reader.stream_position().unwrap() - 4,
+            });
         }
-        // Err(binrw::Error::NoVariantMatch { pos: reader.stream_position().unwrap()-4 })
-        // NullPtr
-        Ok(AnnoPtr(FilePtr32 {
-            ptr: 0,
-            value: None,
-        }))
     }
 }
 
 // https://docs.rs/binrw/0.11.2/binrw/docs/attribute/index.html#using-fileptrparse-to-read-a-nullstring-without-storing-a-fileptr
 // https://docs.rs/binrw/0.11.2/binrw/file_ptr/struct.FilePtr.html#method.parse
-impl<const N: bool, Z> AnnoPtr<RdmContainer<N, Z>>
+impl<const PTR_NULLABLE: bool, const N: bool, Z> AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
     Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
@@ -214,7 +296,8 @@ where
     }
 }
 
-impl<const N: bool, Z> BinWrite for AnnoPtr<RdmContainer<N, Z>>
+impl<const PTR_NULLABLE: bool, const N: bool, Z> BinWrite
+    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
     Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
