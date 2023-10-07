@@ -32,4 +32,4 @@ version = "1.6.0"
 features = []
 
 [dependencies.rdm_derive]
-path = "./rdm_derive"
+path = "../rdm_derive"

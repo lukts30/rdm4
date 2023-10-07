@@ -11,6 +11,15 @@ use binrw::file_ptr::FilePtrArgs;
 use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
 use rdm_derive::RdmStructSize;
 
+pub trait RdmRead: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
+impl<M> RdmRead for M where M: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
+
+pub trait RdmContainerRead: for<'a> BinRead<Args<'a> = u32> + 'static {}
+impl<M> RdmContainerRead for M where M: for<'a> BinRead<Args<'a> = u32> + 'static {}
+
+pub trait RdmContainerWrite: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static {}
+impl<M> RdmContainerWrite for M where M: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static {}
+
 fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
     let old_pos = reader.stream_position()?;
     let len = reader.seek(SeekFrom::End(0))?;
@@ -25,7 +34,7 @@ fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
 
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
-pub struct VectorN<T: for<'a> BinRead<Args<'a> = ()> + 'static> {
+pub struct VectorN<T: RdmRead> {
     #[br(count = c)]
     pub x: Vec<T>,
 }
@@ -33,7 +42,7 @@ pub struct VectorN<T: for<'a> BinRead<Args<'a> = ()> + 'static> {
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
 #[br(assert(c == 1,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
-pub struct Vector1<T: for<'a> BinRead<Args<'a> = ()> + 'static> {
+pub struct Vector1<T: RdmRead> {
     pub x: T,
 }
 
@@ -46,14 +55,16 @@ pub struct Dynamic<T>(PhantomData<T>);
 // a type level function that says what kind of data corresponds to what type
 pub trait VectorSize {
     type Data;
+    type Element;
     fn len(data: &Self::Data) -> u32;
 }
 
 impl<T> VectorSize for Dynamic<T>
 where
-    T: for<'a> BinRead<Args<'a> = ()> + 'static,
+    T: RdmRead,
 {
     type Data = VectorN<T>;
+    type Element = T;
     fn len(data: &Self::Data) -> u32 {
         data.x.len() as u32
     }
@@ -61,9 +72,10 @@ where
 
 impl<T> VectorSize for Fixed<T>
 where
-    T: for<'a> BinRead<Args<'a> = ()> + 'static,
+    T: RdmRead,
 {
     type Data = Vector1<T>;
+    type Element = T;
     fn len(_data: &Self::Data) -> u32 {
         1
     }
@@ -121,9 +133,9 @@ impl BinRead for RdmContainerPrefix {
 pub struct RdmContainer<const T_IS_PARTSIZED: bool, Z>
 where
     Z: VectorSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
+    Z::Data: RdmContainerRead,
 {
-    // #[br(assert(info.count == 1))]
+    // #[br(assert(info.count == 0))]
     pub info: RdmContainerPrefix,
 
     //#[br(args_raw = c)]
@@ -137,7 +149,7 @@ where
 
 impl<Z> std::ops::Deref for RdmContainer<true, Fixed<Z>>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+    Z: RdmRead,
 {
     type Target = Z;
     fn deref(&self) -> &Self::Target {
@@ -147,7 +159,7 @@ where
 
 impl<Z> std::ops::DerefMut for RdmContainer<true, Fixed<Z>>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+    Z: RdmRead,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.e.x
@@ -156,7 +168,7 @@ where
 
 impl<const T_IS_PARTSIZED: bool, Z> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+    Z: RdmRead,
 {
     type Target = [Z];
     fn deref(&self) -> &Self::Target {
@@ -166,7 +178,7 @@ where
 
 impl<const T_IS_PARTSIZED: bool, Z> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
+    Z: RdmRead,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.e.x
@@ -194,10 +206,6 @@ impl fmt::Debug for RdmString {
 
 pub type AnnoPtr<T> = AnnoPtr2<false, T>;
 pub type NullableAnnoPtr<T> = AnnoPtr2<true, T>;
-/*
-#[binrw]
-pub struct AnnoPtr<T>(AnnoPtr2<true, T>);
- */
 
 pub struct AnnoPtr2<const PTR_NULLABLE: bool, T>(pub FilePtr32<T>);
 
@@ -229,7 +237,7 @@ impl<const PTR_NULLABLE: bool, const N: bool, Z> BinRead
     for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
+    Z::Data: RdmContainerRead,
 {
     type Args<'a> = ();
 
@@ -281,8 +289,8 @@ where
 impl<const PTR_NULLABLE: bool, const N: bool, Z> AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
-    Z::Data: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z::Data: RdmContainerRead,
+    Z::Data: RdmContainerWrite,
 {
     #[binrw::parser(reader, endian)]
     pub fn parse<Args>(_args: FilePtrArgs<Args>, ...) -> binrw::BinResult<RdmContainer<N, Z>>
@@ -302,8 +310,8 @@ impl<const PTR_NULLABLE: bool, const N: bool, Z> BinWrite
     for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
 where
     Z: VectorSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
-    Z::Data: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z::Data: RdmContainerRead,
+    Z::Data: RdmContainerWrite,
 {
     type Args<'a> = &'a mut u64;
 
@@ -352,10 +360,9 @@ pub struct RdmContainerArgs {
 impl<const N: bool, Z> BinWrite for RdmContainer<N, Z>
 where
     Z: VectorSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
-    Z::Data: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z::Data: RdmContainerRead,
+    Z::Data: RdmContainerWrite,
 {
-    //type Args<'a> = Option<u64>;
     type Args<'a> = RdmContainerArgs;
 
     fn write_options<W: Write + Seek>(
@@ -393,8 +400,8 @@ where
 
 impl<Z> BinWrite for VectorN<Z>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
-    Z: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z: RdmRead,
+    Z: RdmContainerWrite,
 {
     type Args<'a> = &'a mut u64;
 
@@ -414,8 +421,8 @@ where
 
 impl<Z> BinWrite for Vector1<Z>
 where
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
-    Z: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z: RdmRead,
+    Z: RdmContainerWrite,
 {
     type Args<'a> = &'a mut u64;
 
@@ -433,6 +440,7 @@ where
 #[binrw]
 #[bw(import_raw(_dst: &mut u64))]
 #[repr(transparent)]
+#[derive(RdmStructSize)]
 pub struct AnnoChar(pub u8);
 
 #[binrw]

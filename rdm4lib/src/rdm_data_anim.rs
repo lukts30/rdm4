@@ -28,6 +28,7 @@ pub struct AnimMeta {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct AnimInner {
     #[bw(args_raw = end)]
     pub j_name: AnnoPtr<RdmString>,
@@ -39,6 +40,7 @@ pub struct AnimInner {
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct Frame {
     pub rotation: [f32; 4],
     pub translation: [f32; 3],

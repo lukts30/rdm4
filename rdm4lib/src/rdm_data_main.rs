@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinRead, BinWrite, BinWriterExt};
+use binrw::{binrw, BinWriterExt};
 
 use crate::{rdm_container::*, vertex::VertexIdentifier, RdModell};
 use rdm_derive::RdmStructSize;
@@ -124,6 +124,7 @@ pub struct RdmBlobToJoint {
 #[derive(Debug)]
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct RdmJoint {
     #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
@@ -194,8 +195,8 @@ impl<Z> DataAndPointedToSize for RdmContainer<true, Z>
 where
     Z: VectorSize,
     Z::Data: DataAndPointedToSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
-    Z::Data: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z::Data: RdmContainerRead,
+    Z::Data: RdmContainerWrite,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
         8 + self.e.get_direct_and_pointed_data_size()
@@ -206,8 +207,8 @@ impl<Z> DataAndPointedToSize for RdmContainer<false, Z>
 where
     Z: VectorSize,
     Z::Data: DataAndPointedToSize,
-    Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
-    Z::Data: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z::Data: RdmContainerRead,
+    Z::Data: RdmContainerWrite,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
         (self.info.count * self.info.part_size) as u64 + 8
@@ -217,8 +218,8 @@ where
 impl<Z> DataAndPointedToSize for VectorN<Z>
 where
     Z: DataAndPointedToSize,
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
-    Z: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z: RdmRead,
+    Z: RdmContainerWrite,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
         let mut sum = 0;
@@ -232,8 +233,8 @@ where
 impl<Z> DataAndPointedToSize for Vector1<Z>
 where
     Z: DataAndPointedToSize,
-    Z: for<'a> BinRead<Args<'a> = ()> + 'static,
-    Z: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static,
+    Z: RdmRead,
+    Z: RdmContainerWrite,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
         self.x.get_direct_and_pointed_data_size()

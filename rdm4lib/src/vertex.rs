@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes};
+use rdm_derive::RdmStructSize;
 use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
@@ -8,6 +9,7 @@ use binrw::binrw;
 #[derive(Clone, Debug)]
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct VertexIdentifier {
     pub uniq: UniqueIdentifier,
     pub unit_size: IdentifierSize,
