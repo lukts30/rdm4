@@ -1,17 +1,20 @@
 #![allow(dead_code, unused_variables)]
 
 use binrw::{binrw, BinWriterExt};
+use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},
     io::SeekFrom,
     path::PathBuf,
 };
 
+use crate::RDMStructSizeTr;
 use crate::{rdm_anim::RdAnim, rdm_container::*, rdm_data_main::RdmHeader2};
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[br(assert(_unknown0_15 == 15))]
+#[derive(RdmStructSize)]
 pub struct AnimMeta {
     #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
@@ -45,6 +48,7 @@ pub struct Frame {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[br(assert(_unknown0_84 == 84))]
+#[derive(RdmStructSize)]
 pub struct RdmHeader1b {
     _unknown0_84: u32,
     _unknown1: [u8; 12],

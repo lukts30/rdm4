@@ -6,8 +6,10 @@ use std::vec::Vec;
 
 use std::marker::PhantomData;
 
+use crate::RDMStructSizeTr;
 use binrw::file_ptr::FilePtrArgs;
 use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
+use rdm_derive::RdmStructSize;
 
 fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
     let old_pos = reader.stream_position()?;
@@ -121,7 +123,7 @@ where
     Z: VectorSize,
     Z::Data: for<'a> BinRead<Args<'a> = u32> + 'static,
 {
-    //#[br(temp)]
+    // #[br(assert(info.count == 1))]
     pub info: RdmContainerPrefix,
 
     //#[br(args_raw = c)]
@@ -436,11 +438,13 @@ pub struct AnnoChar(pub u8);
 #[binrw]
 #[bw(import_raw(_dst: &mut u64))]
 #[repr(transparent)]
+#[derive(RdmStructSize)]
 pub struct AnnoU8(pub u8);
 
 #[binrw]
 #[bw(import_raw(_dst: &mut u64))]
 #[repr(transparent)]
+#[derive(RdmStructSize)]
 pub struct AnnoU16(pub u16);
 
 pub type RdmTypedT<T> = RdmContainer<true, Fixed<T>>;

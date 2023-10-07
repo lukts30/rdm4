@@ -9,7 +9,8 @@ repository = "https://github.com/lukts30/rdm4"
 
 [workspace]
 members = [
-    "cfghelper"
+    "cfghelper",
+    "rdm4lib/rdm_derive"
 ]
 
 [dependencies]

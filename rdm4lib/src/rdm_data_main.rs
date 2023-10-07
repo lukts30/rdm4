@@ -9,9 +9,15 @@ use std::{
 use binrw::{binrw, BinRead, BinWrite, BinWriterExt};
 
 use crate::{rdm_container::*, vertex::VertexIdentifier, RdModell};
+use rdm_derive::RdmStructSize;
+
+pub trait RDMStructSizeTr {
+    fn get_struct_byte_size() -> usize;
+}
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 struct ModelName {
     #[bw(args_raw = end)]
     name: AnnoPtr<RdmString>,
@@ -20,6 +26,7 @@ struct ModelName {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct VertId {
     #[bw(args_raw = end)]
     pub rdm_container: AnnoPtr<RdmTypedContainer<crate::vertex::VertexIdentifier>>,
@@ -30,6 +37,7 @@ pub struct VertId {
 #[derive(Debug, Clone)]
 #[binrw]
 #[bw(import_raw(_dst: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct MeshInfo {
     pub start_index_location: u32,
     pub index_count: u32,
@@ -45,6 +53,7 @@ impl MeshInfo {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct Meta {
     #[bw(args_raw = end)]
     model_name: AnnoPtr<RdmTypedT<ModelName>>,
@@ -85,6 +94,7 @@ pub struct Meta {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 struct RdmBlobToMat {
     #[bw(args_raw = end)]
     mat: AnnoPtr<RdmTypedT<RdmMat>>,
@@ -93,6 +103,7 @@ struct RdmBlobToMat {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 struct RdmMat {
     #[bw(args_raw = end)]
     name: AnnoPtr<RdmString>,
@@ -103,6 +114,7 @@ struct RdmMat {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct RdmBlobToJoint {
     #[bw(args_raw = end)]
     pub joint: AnnoPtr<RdmTypedContainer<RdmJoint>>,
@@ -125,6 +137,7 @@ pub struct RdmJoint {
 #[bw(import_raw(end: &mut u64))]
 #[br(assert(_unknown0_84 == 84))]
 #[br(assert(meta.ptr != 0))]
+#[derive(RdmStructSize)]
 pub struct RdmHeader1 {
     _unknown0_84: u32,
     #[bw(args_raw = end)]
@@ -140,6 +153,7 @@ pub struct RdmHeader1 {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct RdmHeader2 {
     #[bw(args_raw = end)]
     pub export_name1: AnnoPtr<RdmString>,
@@ -147,14 +161,6 @@ pub struct RdmHeader2 {
     pub export_name2: AnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
-
-trait RDMStructSize<const N: u32> {
-    fn get_struct_byte_size() -> u32 {
-        N
-    }
-}
-
-impl RDMStructSize<72> for RdmHeader2 {}
 
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
@@ -257,6 +263,23 @@ mod tests {
     use super::*;
     use binrw::{BinReaderExt, BinWriterExt};
     use std::fs;
+
+    #[test]
+    fn struct_sizes() {
+        assert_eq!(RdmHeader1::get_struct_byte_size(), 48);
+        assert_eq!(RdmBlobToMat::get_struct_byte_size(), 28);
+        assert_eq!(RdmBlobToJoint::get_struct_byte_size(), 32);
+
+        assert_eq!(Meta::get_struct_byte_size(), 92);
+        assert_eq!(ModelName::get_struct_byte_size(), 28);
+        assert_eq!(VertId::get_struct_byte_size(), 24);
+        assert_eq!(MeshInfo::get_struct_byte_size(), 28);
+
+        assert_eq!(RdmHeader2::get_struct_byte_size(), 72);
+
+        assert_eq!(AnnoU16::get_struct_byte_size(), 2);
+        assert_eq!(AnnoU8::get_struct_byte_size(), 1);
+    }
 
     #[test]
     fn rdm_file_serialisation_roundtrip() {

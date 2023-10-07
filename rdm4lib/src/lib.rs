@@ -164,6 +164,8 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 
 #[cfg(test)]
 mod tests_intern {
+    use crate::rdm_container::RdmString;
+
     use super::*;
 
     #[test]
@@ -176,5 +178,22 @@ mod tests_intern {
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.vertex.get_size(), 8);
         assert_eq!(rdm.triangle_indices.len() * 3, 78);
+    }
+
+    use crate::rdm_container::AnnoPtr;
+    use binrw::binread;
+    use rdm_derive::RdmStructSize;
+
+    #[derive(RdmStructSize)]
+    #[binread]
+    struct MyStruct {
+        _my_number: f32,
+        _my_other_number: [u8; 16],
+        _name: AnnoPtr<RdmString>,
+    }
+
+    #[test]
+    fn test() {
+        dbg!(MyStruct::get_struct_byte_size());
     }
 }
