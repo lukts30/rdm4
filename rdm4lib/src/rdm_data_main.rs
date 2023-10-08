@@ -8,7 +8,7 @@ use std::{
 
 use binrw::{binrw, BinWriterExt};
 
-use crate::{rdm_container::*, vertex::VertexIdentifier, RdModell};
+use crate::{rdm_container::*, RdModell};
 use rdm_derive::RdmStructSize;
 
 pub trait RDMStructSizeTr {
@@ -54,13 +54,21 @@ impl MeshInfo {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
+struct MetaUnknown {
+    _unknown: u32,
+    _padding: [u8; 16],
+}
+
+#[binrw]
+#[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct Meta {
     #[bw(args_raw = end)]
     model_name: AnnoPtr<RdmTypedT<ModelName>>,
     #[bw(args_raw = end)]
     pub format_identifiers: AnnoPtr<RdmTypedT<VertId>>,
     #[bw(args_raw = end)]
-    unknown: AnnoPtr<RdmUntypedContainer>,
+    unknown: AnnoPtr<RdmTypedT<MetaUnknown>>,
 
     #[bw(args_raw = {
         dbg!("v" , &end);
@@ -166,7 +174,7 @@ pub struct RdmHeader2 {
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmFile {
-    #[bw(args_raw = RdmContainerArgs {ptr: None, end_offset: header2.get_direct_and_pointed_data_size()})]
+    #[bw(args_raw = RdmContainerArgs {end_offset: header2.get_direct_and_pointed_data_size()})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
     pub header1: RdmTypedT<RdmHeader1>,
 
@@ -178,84 +186,64 @@ pub struct RdmFile {
 pub trait DataAndPointedToSize {
     fn get_direct_and_pointed_data_size(&self) -> u64;
 }
-impl DataAndPointedToSize for RdmHeader2 {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        72 + self.export_name1.get_direct_and_pointed_data_size()
-            + self.export_name2.get_direct_and_pointed_data_size()
-    }
-}
 
-impl DataAndPointedToSize for MeshInfo {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        28
-    }
-}
-
-impl<Z> DataAndPointedToSize for RdmContainer<true, Z>
+impl<C, T> DataAndPointedToSize for RdmContainer<true, C, T>
 where
-    Z: VectorSize,
-    Z::Data: DataAndPointedToSize,
-    Z::Data: RdmContainerRead,
-    Z::Data: RdmContainerWrite,
+    C: VectorSize2,
+    C::Storage<T>: RdmContainerRead,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead + RdmContainerWrite + DataAndPointedToSize,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        8 + self.e.get_direct_and_pointed_data_size()
+        let mut sum = 0;
+        for x in self.storage.into_iter() {
+            sum += x.get_direct_and_pointed_data_size();
+        }
+        8 + sum
     }
 }
 
-impl<Z> DataAndPointedToSize for RdmContainer<false, Z>
+impl<C, T> DataAndPointedToSize for RdmContainer<false, C, T>
 where
-    Z: VectorSize,
-    Z::Data: DataAndPointedToSize,
-    Z::Data: RdmContainerRead,
-    Z::Data: RdmContainerWrite,
+    C: VectorSize2,
+    C::Storage<T>: RdmContainerRead,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead + RdmContainerWrite,
 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
         (self.info.count * self.info.part_size) as u64 + 8
     }
 }
 
-impl<Z> DataAndPointedToSize for VectorN<Z>
-where
-    Z: DataAndPointedToSize,
-    Z: RdmRead,
-    Z: RdmContainerWrite,
-{
+impl DataAndPointedToSize for RdmHeader2 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        let mut sum = 0;
-        for x in self.x.iter() {
-            sum += x.get_direct_and_pointed_data_size();
-        }
-        sum
+        RdmHeader2::get_struct_byte_size() as u64
+            + self.export_name1.get_direct_and_pointed_data_size()
+            + self.export_name2.get_direct_and_pointed_data_size()
     }
 }
 
-impl<Z> DataAndPointedToSize for Vector1<Z>
-where
-    Z: DataAndPointedToSize,
-    Z: RdmRead,
-    Z: RdmContainerWrite,
-{
+impl DataAndPointedToSize for MeshInfo {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        self.x.get_direct_and_pointed_data_size()
+        MeshInfo::get_struct_byte_size() as u64
     }
 }
 
 impl DataAndPointedToSize for AnnoChar {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        1
+        AnnoChar::get_struct_byte_size() as u64
     }
 }
 
 impl DataAndPointedToSize for AnnoU8 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        1
+        AnnoU8::get_struct_byte_size() as u64
     }
 }
 
 impl DataAndPointedToSize for AnnoU16 {
     fn get_direct_and_pointed_data_size(&self) -> u64 {
-        2
+        AnnoU16::get_struct_byte_size() as u64
     }
 }
 
@@ -371,8 +359,8 @@ impl RdWriter2 {
                     count: export_name.len() as u32,
                     part_size: 1,
                 },
-                e: rdm_container::VectorN {
-                    x: export_name.map(AnnoChar).into(),
+                storage: rdm_container::VectorN {
+                    items: export_name.map(AnnoChar).into(),
                 },
             }),
         };
@@ -394,41 +382,39 @@ impl RdWriter2 {
 
         rdm.header1.meta.format_identifiers.rdm_container.0 = binrw::FilePtr32 {
             ptr: 0,
-            value: Some(
-                RdmContainer::<true, rdm_container::Dynamic<VertexIdentifier>> {
-                    info: RdmContainerPrefix {
-                        count: rdm_in.vertex.identifiers.len() as u32,
-                        part_size: 16,
-                    },
-                    e: rdm_container::VectorN {
-                        x: rdm_in.vertex.identifiers.clone().into(),
-                    },
+            value: Some(RdmContainer {
+                info: RdmContainerPrefix {
+                    count: rdm_in.vertex.identifiers.len() as u32,
+                    part_size: 16,
                 },
-            ),
+                storage: rdm_container::VectorN {
+                    items: rdm_in.vertex.identifiers.clone().into(),
+                },
+            }),
         };
 
         rdm.header1.meta.mesh_info.0 = binrw::FilePtr32 {
             ptr: 0,
-            value: Some(RdmContainer::<true, rdm_container::Dynamic<MeshInfo>> {
+            value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: rdm_in.mesh_info.len() as u32,
                     part_size: 28,
                 },
-                e: rdm_container::VectorN {
-                    x: rdm_in.mesh_info.clone(),
+                storage: rdm_container::VectorN {
+                    items: rdm_in.mesh_info.clone(),
                 },
             }),
         };
 
         rdm.header1.meta.triangles.0 = binrw::FilePtr32 {
             ptr: 0,
-            value: Some(RdmContainer::<true, rdm_container::Dynamic<AnnoU16>> {
+            value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: rdm_in.triangle_indices.len() as u32 * 3,
                     part_size: 2,
                 },
-                e: rdm_container::VectorN {
-                    x: {
+                storage: rdm_container::VectorN {
+                    items: {
                         let mut o = Vec::new();
                         for x in &rdm_in.triangle_indices {
                             o.push(AnnoU16(x.indices[0]));
@@ -443,13 +429,13 @@ impl RdWriter2 {
 
         rdm.header1.meta.vertex.0 = binrw::FilePtr32 {
             ptr: 0,
-            value: Some(RdmContainer::<false, rdm_container::Dynamic<AnnoU8>> {
+            value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: rdm_in.vertex.len(),
                     part_size: rdm_in.vertex.get_size(),
                 },
-                e: rdm_container::VectorN {
-                    x: rdm_in
+                storage: rdm_container::VectorN {
+                    items: rdm_in
                         .vertex
                         .as_bytes()
                         .iter()
@@ -472,8 +458,8 @@ impl RdWriter2 {
                             count: 1,
                             part_size: 48,
                         },
-                        e: rdm_container::Vector1 {
-                            x: RdmMat {
+                        storage: rdm_container::Vector1 {
+                            item: [RdmMat {
                                 name: AnnoPtr2(binrw::FilePtr32 {
                                     ptr: 0,
                                     value: Some(RdmContainer {
@@ -481,8 +467,8 @@ impl RdWriter2 {
                                             count: material.len() as u32,
                                             part_size: 1,
                                         },
-                                        e: rdm_container::VectorN {
-                                            x: material.map(AnnoChar).into(),
+                                        storage: rdm_container::VectorN {
+                                            items: material.map(AnnoChar).into(),
                                         },
                                     }),
                                 }),
@@ -493,13 +479,13 @@ impl RdWriter2 {
                                             count: dummy_png_path.len() as u32,
                                             part_size: 1,
                                         },
-                                        e: rdm_container::VectorN {
-                                            x: dummy_png_path.map(AnnoChar).into(),
+                                        storage: rdm_container::VectorN {
+                                            items: dummy_png_path.map(AnnoChar).into(),
                                         },
                                     }),
                                 }),
                                 _padding: [0; 40],
-                            },
+                            }],
                         },
                     }),
                 }),
@@ -540,8 +526,8 @@ impl RdWriter2 {
                                 count: j.name.as_bytes().len() as u32,
                                 part_size: 1,
                             },
-                            e: rdm_container::VectorN {
-                                x: j.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
+                            storage: rdm_container::VectorN {
+                                items: j.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
                             },
                         }),
                     }),
@@ -555,7 +541,7 @@ impl RdWriter2 {
             }
             assert_eq!(rdm.header1.skin.joint.info.part_size, 84);
             rdm.header1.skin.joint.info.count = replacement_raw_joints.len() as u32;
-            rdm.header1.skin.joint.e.x = replacement_raw_joints;
+            rdm.header1.skin.joint.storage.items = replacement_raw_joints;
         } else {
             rdm.header1.skin.0 = binrw::FilePtr32 {
                 ptr: 0,
@@ -565,12 +551,12 @@ impl RdWriter2 {
 
         rdm.header1.rdm_blob_to_mat.0 = binrw::FilePtr32 {
             ptr: 0,
-            value: Some(RdmContainer::<true, rdm_container::Dynamic<RdmBlobToMat>> {
+            value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: mats.len() as u32,
                     part_size: 28,
                 },
-                e: rdm_container::VectorN { x: mats },
+                storage: rdm_container::VectorN { items: mats },
             }),
         };
 

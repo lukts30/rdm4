@@ -63,7 +63,7 @@ impl RdModell {
     pub fn add_skin(&mut self) {
         let rdm = self.rdmf.as_ref().unwrap();
 
-        let raw_joints = &rdm.header1.skin.e.x.joint.e.x;
+        let raw_joints = &***rdm.header1.skin.joint;
         let mut joints_vec = vec![];
 
         for raw_joint in raw_joints {

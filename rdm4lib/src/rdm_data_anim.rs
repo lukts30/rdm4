@@ -63,7 +63,7 @@ pub struct RdmHeader1b {
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmAnimFile {
-    #[bw(args_raw = RdmContainerArgs {ptr: None, end_offset: crate::rdm_data_main::DataAndPointedToSize::get_direct_and_pointed_data_size(header2)})]
+    #[bw(args_raw = RdmContainerArgs { end_offset: crate::rdm_data_main::DataAndPointedToSize::get_direct_and_pointed_data_size(header2)})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
     pub header1: RdmTypedT<RdmHeader1b>,
 
@@ -156,8 +156,8 @@ impl RdAnimWriter2 {
                     count: export_name.len() as u32,
                     part_size: 1,
                 },
-                e: rdm_container::VectorN {
-                    x: export_name.map(AnnoChar).into(),
+                storage: rdm_container::VectorN {
+                    items: export_name.map(AnnoChar).into(),
                 },
             }),
         };
@@ -172,8 +172,8 @@ impl RdAnimWriter2 {
                     count: model_str.len() as u32,
                     part_size: 1,
                 },
-                e: rdm_container::VectorN {
-                    x: model_str.map(AnnoChar).into(),
+                storage: rdm_container::VectorN {
+                    items: model_str.map(AnnoChar).into(),
                 },
             }),
         };
@@ -190,8 +190,8 @@ impl RdAnimWriter2 {
                             count: x.name.as_bytes().len() as u32,
                             part_size: 1,
                         },
-                        e: rdm_container::VectorN {
-                            x: x.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
+                        storage: rdm_container::VectorN {
+                            items: x.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
                         },
                     }),
                 }),
@@ -202,7 +202,7 @@ impl RdAnimWriter2 {
                             count: x.frames.len() as u32,
                             part_size: 32,
                         },
-                        e: rdm_container::VectorN { x: x.frames },
+                        storage: rdm_container::VectorN { items: x.frames },
                     }),
                 }),
                 _padding: [0; 16],
@@ -210,7 +210,7 @@ impl RdAnimWriter2 {
             anim_data.push(o);
         }
         anim.header1.meta.anims.info.count = anim_data.len() as u32;
-        anim.header1.meta.anims.e.x = anim_data;
+        anim.header1.meta.anims.storage.items = anim_data;
 
         RdAnimWriter2 {
             name: anim_input.name,

@@ -33,7 +33,7 @@ impl RdAnim {
             let ent_model = x.j_name.as_ascii().into();
             let ent = FrameCollection {
                 name: ent_model,
-                frames: x.j_data.e.x.clone(),
+                frames: x.j_data.storage.items.clone(),
             };
             anim_vec.push(ent);
         }

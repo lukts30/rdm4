@@ -4,8 +4,6 @@ use std::ops::Deref;
 use std::str;
 use std::vec::Vec;
 
-use std::marker::PhantomData;
-
 use crate::RDMStructSizeTr;
 use binrw::file_ptr::FilePtrArgs;
 use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
@@ -36,47 +34,66 @@ fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
 #[br(import_raw(c: u32))]
 pub struct VectorN<T: RdmRead> {
     #[br(count = c)]
-    pub x: Vec<T>,
+    pub items: Vec<T>,
 }
 
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
 #[br(assert(c == 1,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
 pub struct Vector1<T: RdmRead> {
-    pub x: T,
+    pub item: [T; 1],
 }
 
-// types that will be used to parameterize a type constructor
-#[derive(Debug, BinRead)]
-pub struct Fixed<T>(PhantomData<T>);
-#[derive(Debug, BinRead)]
-pub struct Dynamic<T>(PhantomData<T>);
+impl<'a, T: RdmRead> IntoIterator for &'a Vector1<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
 
-// a type level function that says what kind of data corresponds to what type
-pub trait VectorSize {
-    type Data;
-    type Element;
-    fn len(data: &Self::Data) -> u32;
-}
-
-impl<T> VectorSize for Dynamic<T>
-where
-    T: RdmRead,
-{
-    type Data = VectorN<T>;
-    type Element = T;
-    fn len(data: &Self::Data) -> u32 {
-        data.x.len() as u32
+    fn into_iter(self) -> Self::IntoIter {
+        self.item.iter()
     }
 }
 
-impl<T> VectorSize for Fixed<T>
-where
-    T: RdmRead,
-{
-    type Data = Vector1<T>;
-    type Element = T;
-    fn len(_data: &Self::Data) -> u32 {
+impl<'a, T: RdmRead> IntoIterator for &'a VectorN<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.iter()
+    }
+}
+
+pub struct Fixed2;
+pub struct Dynamic2;
+
+pub trait VectorSize2 {
+    type Storage<T>: VectorLen + RdmContainerRead
+    where
+        T: RdmRead;
+}
+
+impl VectorSize2 for Fixed2 {
+    type Storage<T: RdmRead> = Vector1<T>;
+}
+
+impl VectorSize2 for Dynamic2 {
+    type Storage<T: RdmRead> = VectorN<T>;
+}
+
+pub trait VectorLen {
+    fn len(&self) -> u32;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl<T: RdmRead> VectorLen for VectorN<T> {
+    fn len(&self) -> u32 {
+        self.items.len() as u32
+    }
+}
+
+impl<T: RdmRead> VectorLen for Vector1<T> {
+    fn len(&self) -> u32 {
         1
     }
 }
@@ -130,58 +147,59 @@ impl BinRead for RdmContainerPrefix {
 }
 
 #[binread]
-pub struct RdmContainer<const T_IS_PARTSIZED: bool, Z>
+pub struct RdmContainer<const T_IS_PARTSIZED: bool, C, T>
 where
-    Z: VectorSize,
-    Z::Data: RdmContainerRead,
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead,
 {
-    // #[br(assert(info.count == 0))]
+    #[br(assert(!T_IS_PARTSIZED || info.part_size as usize == T::get_struct_byte_size(),
+     "Struct ({}) size mismatch expected {} but got {}",std::any::type_name::<T>(),T::get_struct_byte_size(),info.part_size))
+    ]
     pub info: RdmContainerPrefix,
 
-    //#[br(args_raw = c)]
-    //#[br(assert(if T_IS_PARTSIZED {true} else {true}, "oops!"))]
     #[br(args_raw = match T_IS_PARTSIZED {
         true => info.count,
         false => info.count * info.part_size,
     })]
-    pub e: Z::Data,
+    pub storage: C::Storage<T>,
 }
 
-impl<Z> std::ops::Deref for RdmContainer<true, Fixed<Z>>
+impl<T> std::ops::Deref for RdmContainer<true, Fixed2, T>
 where
-    Z: RdmRead,
+    T: RdmRead,
 {
-    type Target = Z;
+    type Target = T;
     fn deref(&self) -> &Self::Target {
-        &self.e.x
+        &self.storage.item[0]
     }
 }
 
-impl<Z> std::ops::DerefMut for RdmContainer<true, Fixed<Z>>
+impl<T> std::ops::DerefMut for RdmContainer<true, Fixed2, T>
 where
-    Z: RdmRead,
+    T: RdmRead,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.e.x
+        &mut self.storage.item[0]
     }
 }
 
-impl<const T_IS_PARTSIZED: bool, Z> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
+impl<const T_IS_PARTSIZED: bool, T> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Dynamic2, T>
 where
-    Z: RdmRead,
+    T: RdmRead,
 {
-    type Target = [Z];
+    type Target = [T];
     fn deref(&self) -> &Self::Target {
-        &self.e.x
+        &self.storage.items
     }
 }
 
-impl<const T_IS_PARTSIZED: bool, Z> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Dynamic<Z>>
+impl<const T_IS_PARTSIZED: bool, T> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Dynamic2, T>
 where
-    Z: RdmRead,
+    T: RdmRead,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.e.x
+        &mut self.storage.items
     }
 }
 
@@ -233,11 +251,12 @@ impl<const PTR_NULLABLE: bool, T: BinRead + std::fmt::Debug> std::fmt::Debug
 
 // https://docs.rs/binrw/0.11.2/binrw/docs/attribute/index.html#custom-parserswriters
 // https://github.com/jam1garner/binrw/blob/8a49a5cea8568eed7b86a0e2646b8608527a60f4/binrw/src/file_ptr.rs#L127
-impl<const PTR_NULLABLE: bool, const N: bool, Z> BinRead
-    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
+impl<const PTR_NULLABLE: bool, const N: bool, C, T> BinRead
+    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, C, T>>
 where
-    Z: VectorSize,
-    Z::Data: RdmContainerRead,
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead,
 {
     type Args<'a> = ();
 
@@ -246,11 +265,11 @@ where
         endian: binrw::Endian,
         _args: Self::Args<'_>,
     ) -> binrw::BinResult<Self> {
-        let mut p: FilePtr32<RdmContainer<N, Z>> =
+        let mut p: FilePtr32<RdmContainer<N, C, T>> =
             <_>::read_options(reader, endian, FilePtrArgs::default()).unwrap();
+        let saved_ptr = p.ptr;
         if p.ptr != 0 {
-            let saved_ptr = p.ptr;
-            p.ptr -= 8;
+            p.ptr = p.ptr.saturating_sub(8);
 
             if p.ptr as u64 <= reader.stream_position().unwrap() {
                 return Err(binrw::Error::AssertFail {
@@ -284,34 +303,14 @@ where
     }
 }
 
-// https://docs.rs/binrw/0.11.2/binrw/docs/attribute/index.html#using-fileptrparse-to-read-a-nullstring-without-storing-a-fileptr
-// https://docs.rs/binrw/0.11.2/binrw/file_ptr/struct.FilePtr.html#method.parse
-impl<const PTR_NULLABLE: bool, const N: bool, Z> AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
+impl<const PTR_NULLABLE: bool, const N: bool, C, T> BinWrite
+    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, C, T>>
 where
-    Z: VectorSize,
-    Z::Data: RdmContainerRead,
-    Z::Data: RdmContainerWrite,
-{
-    #[binrw::parser(reader, endian)]
-    pub fn parse<Args>(_args: FilePtrArgs<Args>, ...) -> binrw::BinResult<RdmContainer<N, Z>>
-    where
-        Args: Clone,
-        Z: for<'a> BinRead<Args<'a> = Args>,
-    {
-        let v = Self::read_options(reader, endian, ())
-            .unwrap()
-            .0
-            .into_inner();
-        Ok(v)
-    }
-}
-
-impl<const PTR_NULLABLE: bool, const N: bool, Z> BinWrite
-    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, Z>>
-where
-    Z: VectorSize,
-    Z::Data: RdmContainerRead,
-    Z::Data: RdmContainerWrite,
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    C::Storage<T>: RdmContainerWrite,
+    T: RdmRead,
+    T: RdmContainerWrite,
 {
     type Args<'a> = &'a mut u64;
 
@@ -322,7 +321,12 @@ where
         args: Self::Args<'_>,
     ) -> binrw::BinResult<()> {
         if self.0.value.is_none() {
-            dbg!("Wrote null ptr!");
+            if !PTR_NULLABLE {
+                return Err(binrw::Error::AssertFail {
+                    message: "No value for non nullable ptr!".into(),
+                    pos: writer.stream_position().unwrap(),
+                });
+            }
             0u32.write_options(writer, endian, ()).unwrap();
             return Ok(());
         }
@@ -336,14 +340,7 @@ where
         writer.seek(SeekFrom::Start(*args)).unwrap();
         let pointed_to_data = self.deref().deref();
         pointed_to_data
-            .write_options(
-                writer,
-                endian,
-                RdmContainerArgs {
-                    ptr: None,
-                    end_offset: 0,
-                },
-            )
+            .write_options(writer, endian, RdmContainerArgs { end_offset: 0 })
             .unwrap();
         *args = writer.stream_position().unwrap();
         writer.seek(SeekFrom::Start(pos_end)).unwrap();
@@ -353,15 +350,16 @@ where
 }
 #[derive(Default)]
 pub struct RdmContainerArgs {
-    pub ptr: Option<u64>,
     pub end_offset: u64,
 }
 
-impl<const N: bool, Z> BinWrite for RdmContainer<N, Z>
+impl<const N: bool, C, T> BinWrite for RdmContainer<N, C, T>
 where
-    Z: VectorSize,
-    Z::Data: RdmContainerRead,
-    Z::Data: RdmContainerWrite,
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    C::Storage<T>: RdmContainerWrite,
+    T: RdmRead,
+    T: RdmContainerWrite,
 {
     type Args<'a> = RdmContainerArgs;
 
@@ -374,16 +372,19 @@ where
         self.info.write_options(writer, endian, ())?;
 
         let pos_start = writer.stream_position().unwrap();
-        // Todo: Args Off ?!?
         let mut end = args.end_offset + pos_start + (self.info.count * self.info.part_size) as u64;
-        //dbg!(end);
 
-        let p: &Z::Data = &self.e;
-        assert!(Z::len(p) == self.info.count || !N);
-        if Z::len(p) != self.info.count && N {
-            dbg!(Z::len(p), self.info.count, self.info.part_size);
+        assert!(self.storage.len() == self.info.count || !N);
+        if self.storage.len() != self.info.count && N {
+            dbg!(self.storage.len(), self.info.count, self.info.part_size);
         }
-        p.write_options(writer, endian, &mut end)?;
+
+        self.storage.write_options(writer, endian, &mut end)?;
+        /*
+        for x in p.into_iter() {
+            x.write_options(writer, endian, &mut end)?;
+        }
+        */
 
         let pos_end = writer.stream_position().unwrap();
 
@@ -411,10 +412,11 @@ where
         endian: binrw::Endian,
         args: Self::Args<'_>,
     ) -> binrw::BinResult<()> {
-        for x in self.x.iter() {
+        for x in self.items.iter() {
             x.write_options(writer, endian, args)?;
         }
-        //self.x.write_options(writer, endian, ())?;
+        // self.items.write_options(writer, endian, ())?;
+
         Ok(())
     }
 }
@@ -432,7 +434,7 @@ where
         endian: binrw::Endian,
         args: Self::Args<'_>,
     ) -> binrw::BinResult<()> {
-        self.x.write_options(writer, endian, args)?;
+        self.item[0].write_options(writer, endian, args)?;
         Ok(())
     }
 }
@@ -455,7 +457,7 @@ pub struct AnnoU8(pub u8);
 #[derive(RdmStructSize)]
 pub struct AnnoU16(pub u16);
 
-pub type RdmTypedT<T> = RdmContainer<true, Fixed<T>>;
-pub type RdmTypedContainer<T> = RdmContainer<true, Dynamic<T>>;
-pub type RdmUntypedContainer = RdmContainer<false, Dynamic<AnnoU8>>;
-pub type RdmString = RdmContainer<true, Dynamic<AnnoChar>>;
+pub type RdmTypedT<T> = RdmContainer<true, Fixed2, T>;
+pub type RdmTypedContainer<T> = RdmContainer<true, Dynamic2, T>;
+pub type RdmUntypedContainer = RdmContainer<false, Dynamic2, AnnoU8>;
+pub type RdmString = RdmContainer<true, Dynamic2, AnnoChar>;
