@@ -95,8 +95,8 @@ pub struct Meta {
     })]
     d: (),
 
-    _padding_ff: [u8; 4], // 0x_FF_FF_FF_FF or 0x0
-    _padding_box: [u8; 24],
+    _padding_ff: u32, // 0x_FF_FF_FF_FF or 0x0
+    _unknown_box: [u8; 24],
     _padding_zero: [u8; 40],
 }
 
@@ -138,8 +138,8 @@ pub struct RdmJoint {
     pub name: AnnoPtr<RdmString>,
     pub t: [f32; 3],
     pub r: [f32; 4],
-    pub parent_id: u8,
-    _padding: [u8; 84 - 33],
+    pub parent_id: u32,
+    _padding: [u8; 84 - 20 - 16],
 }
 
 #[binrw]
@@ -264,6 +264,8 @@ mod tests {
         assert_eq!(VertId::get_struct_byte_size(), 24);
         assert_eq!(MeshInfo::get_struct_byte_size(), 28);
 
+        assert_eq!(RdmJoint::get_struct_byte_size(), 84);
+
         assert_eq!(RdmHeader2::get_struct_byte_size(), 72);
 
         assert_eq!(AnnoU16::get_struct_byte_size(), 2);
@@ -271,6 +273,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn rdm_file_serialisation_roundtrip() {
         let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
         //let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
@@ -377,7 +380,7 @@ impl RdWriter2 {
         rdm.header1.meta._padding_ff = if rdm_in.has_skin() {
             Default::default()
         } else {
-            [0xFF; 4]
+            u32::MAX
         };
 
         rdm.header1.meta.format_identifiers.rdm_container.0 = binrw::FilePtr32 {
@@ -405,6 +408,11 @@ impl RdWriter2 {
                 },
             }),
         };
+
+        rdm.header1.meta._unknown_box = [
+            0x00, 0x80, 0xF8, 0xBF, 0x00, 0x40, 0x22, 0xC0, 0x00, 0x60, 0xF7, 0xBF, 0x00, 0x80,
+            0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
+        ];
 
         rdm.header1.meta.triangles.0 = binrw::FilePtr32 {
             ptr: 0,
@@ -534,7 +542,7 @@ impl RdWriter2 {
                     t: [v_init.x, v_init.y, v_init.z],
                     r: [rot.x, rot.y, rot.z, rot.w],
                     parent_id: j.parent,
-                    _padding: [0; 51],
+                    _padding: [0; 48],
                 };
 
                 replacement_raw_joints.push(res);

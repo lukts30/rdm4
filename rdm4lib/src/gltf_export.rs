@@ -2,7 +2,7 @@ use crate::{rdm_data_main::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoin
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     convert::TryInto,
     env,
     fs::{self, File, OpenOptions},
@@ -32,7 +32,7 @@ struct RdGltfBuilder {
     buffer_views: Vec<json::buffer::View>,
     accessors: Vec<json::Accessor>,
     nodes: Vec<json::Node>,
-    attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
+    attr_map: BTreeMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
     rdm: RdModell,
@@ -53,7 +53,7 @@ impl RdGltfBuilder {
             buffer_views: Vec::new(),
             accessors: Vec::new(),
             nodes: Vec::new(),
-            attr_map: HashMap::new(),
+            attr_map: BTreeMap::new(),
             rdm,
             obj: RdGltf::new(),
             skin: None,
@@ -177,7 +177,7 @@ impl RdGltfBuilder {
 
             let rot_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -209,7 +209,7 @@ impl RdGltfBuilder {
 
             let trans_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -241,7 +241,7 @@ impl RdGltfBuilder {
 
             let time_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -512,7 +512,7 @@ impl RdGltfBuilder {
                     .zip(global_bind_matrices.iter())
                     .enumerate()
                 {
-                    if joint.parent == 255 {
+                    if joint.parent == u32::MAX {
                         children_of_root_node.push(json::Index::new(i as u32));
                         // Skip to the next iteration because without a parent: global transform == local transform
                         continue;
@@ -815,7 +815,7 @@ impl RdGltfBuilder {
 
         let normals_acc = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_views_idx)),
-            byte_offset: 0,
+            byte_offset: None,
             count: count.unwrap_or(vattr_len),
             component_type: Valid(json::accessor::GenericComponentType(component_type)),
             extensions: Default::default(),

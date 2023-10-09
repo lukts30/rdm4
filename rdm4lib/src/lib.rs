@@ -48,7 +48,7 @@ pub struct RdJoint {
     name: String,
     transition: [f32; 3],
     quaternion: [f32; 4],
-    parent: u8,
+    parent: u32,
 }
 
 impl RdModell {

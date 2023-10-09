@@ -360,6 +360,8 @@ impl<'a> ImportedGltf {
 
             assert_eq!(joints.len() - frame_collections.len(), 0);
 
+            frame_collections.sort_by(|a, b| a.name.cmp(&b.name));
+
             let name = format!("anim_{}", anim_idx);
             rd_animations.push(RdAnim {
                 time_max: (t_max * 1000.0) as u32,
@@ -430,7 +432,7 @@ impl<'a> ImportedGltf {
 
             debug!("{:?}", node_names_vec);
             // parentless nodes have 255 as "index"
-            let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
+            let mut node_vec: Vec<u32> = vec![u32::MAX; skin.joints().count()];
 
             for (i, node) in skin.joints().enumerate() {
                 for child in node.children() {
@@ -438,7 +440,7 @@ impl<'a> ImportedGltf {
                     let c_name = self.node_get_name(&child);
 
                     let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
-                    node_vec[child_idx] = i as u8;
+                    node_vec[child_idx] = i as u32;
                     debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
                 }
             }
@@ -478,14 +480,14 @@ impl<'a> ImportedGltf {
         let mut node_converted_to_joints = Vec::new();
         let mut has_converted = false;
         debug!("check_all_node_in_skin");
-        for j in rdjoint.iter_mut().filter(|k| k.parent == 255) {
+        for j in rdjoint.iter_mut().filter(|k| k.parent == u32::MAX) {
             for n in self.gltf.nodes() {
                 if n.children().any(|n| self.node_get_name(&n) == j.name) {
                     let did = node_converted_to_joints
                         .iter()
                         .position(|o: &RdJoint| o.name == self.node_get_name(&n));
                     match did {
-                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap(),
+                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap().into(),
                         None => {
                             info!("Promoting (non skin) node: {}", n.index());
                             j.parent = l;
@@ -495,7 +497,7 @@ impl<'a> ImportedGltf {
                             node_converted_to_joints.push(create_joint(
                                 mat4_init,
                                 self.node_get_name(&n),
-                                255,
+                                u32::MAX,
                             ));
                         }
                     }
@@ -878,7 +880,7 @@ impl<'a> ImportedGltf {
 }
 
 #[inline]
-fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoint {
+fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u32) -> RdJoint {
     // may perform expensive checks ...
     debug!("node_to_joint mat4_init: {}", mat4_init);
     mat4_init.m44 = 1.0;

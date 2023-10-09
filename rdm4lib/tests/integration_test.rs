@@ -206,7 +206,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
         check_hash(
             &dest_path,
-            "fdd11ec94cc389127e5a2bc2b4e90d9d331133af5d33f2c54be7d92f01255e18",
+            "2f6993eb99b4a0c89ee9723c822d18034cc772900331d1cb80e403b96339d398",
         );
     }
 
@@ -260,6 +260,7 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
+        assert_eq!(rdm.joints.as_ref().unwrap().len(), 72);
 
         let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
@@ -267,7 +268,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
         check_hash(
             &dest_path,
-            "abe695daaf05d9b715a99f1c8131ec1e50704aa21f8a50955da288e667986d37",
+            "242c11e5a71a85fd25c5a398374cac4da6575e73b6f8abc963b05dc7f1fdd5db",
         );
     }
 
@@ -317,7 +318,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
         check_hash(
             &dest_path,
-            "358481e3d0b0fa06daee00ae2a10b6f1933caffe83e18dec4633123155d0aedc",
+            "8f08378928a2d5cfc80d10a54c7cde05644de7d9977f0eb262ecb6adcd37aa4e",
         );
     }
 
