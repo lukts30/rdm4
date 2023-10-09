@@ -20,7 +20,7 @@ pub trait RDMStructSizeTr {
 #[derive(RdmStructSize)]
 struct ModelName {
     #[bw(args_raw = end)]
-    name: AnnoPtr<RdmString>,
+    name: NullableAnnoPtr<RdmString>,
     _padding: [u8; 24],
 }
 
@@ -144,12 +144,11 @@ pub struct RdmJoint {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_unknown0_84 == 84))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1 {
-    _unknown0_84: u32,
+    _header2_84: u32,
     #[bw(args_raw = end)]
-    #[br(err_context("the input file is not a rdm mesh!"))]
+    // #[br(err_context("the input file is not a rdm mesh!"))]
     pub meta: AnnoPtr<RdmTypedT<Meta>>,
     #[bw(args_raw = end)]
     rdm_blob_to_mat: NullableAnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
@@ -165,9 +164,9 @@ pub struct RdmHeader1 {
 #[derive(RdmStructSize)]
 pub struct RdmHeader2 {
     #[bw(args_raw = end)]
-    pub export_name1: AnnoPtr<RdmString>,
+    pub export_name1: NullableAnnoPtr<RdmString>,
     #[bw(args_raw = end)]
-    pub export_name2: AnnoPtr<RdmString>,
+    pub export_name2: NullableAnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
 
@@ -176,10 +175,12 @@ pub struct RdmHeader2 {
 pub struct RdmFile {
     #[bw(args_raw = RdmContainerArgs {end_offset: header2.get_direct_and_pointed_data_size()})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
+    #[br(assert(header1._header2_84 == 36 + header1.info.part_size))]
+    // RdmHeader1 usually 48 but sometimes 52
     pub header1: RdmTypedT<RdmHeader1>,
 
     #[bw(args_raw = RdmContainerArgs::default())]
-    #[brw(seek_before = SeekFrom::Start(0x0000004C))]
+    #[brw(seek_before = SeekFrom::Start(0x0000001C + header1.info.part_size as u64))]
     pub header2: RdmTypedT<RdmHeader2>,
 }
 

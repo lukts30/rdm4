@@ -49,11 +49,11 @@ pub struct Frame {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_unknown0_84 == 84))]
+#[br(assert(_header2_84 == 84))]
 #[br(assert(meta_main == 0))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1b {
-    _unknown0_84: u32,
+    _header2_84: u32,
     meta_main: u32,
     _unknown1: [u8; 8],
 

@@ -1,9 +1,11 @@
+use std::any::TypeId;
 use std::fmt;
 use std::io::{Seek, SeekFrom, Write};
 use std::ops::Deref;
 use std::str;
 use std::vec::Vec;
 
+use crate::rdm_data_main::{Meta, RdmHeader1};
 use crate::RDMStructSizeTr;
 use binrw::file_ptr::FilePtrArgs;
 use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
@@ -39,7 +41,9 @@ pub struct VectorN<T: RdmRead> {
 
 #[derive(Debug, BinRead)]
 #[br(import_raw(c: u32))]
-#[br(assert(c == 1,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
+#[br(assert(
+    c == 1 || TypeId::of::<Meta>() == TypeId::of::<T>() && { error!("ignoring {} additional {}",c-1,std::any::type_name::<T>()); true}
+    ,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
 pub struct Vector1<T: RdmRead> {
     pub item: [T; 1],
 }
@@ -153,7 +157,9 @@ where
     for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
     T: RdmRead,
 {
-    #[br(assert(!T_IS_PARTSIZED || info.part_size as usize == T::get_struct_byte_size(),
+    #[br(assert(!T_IS_PARTSIZED
+        || TypeId::of::<RdmHeader1>() == TypeId::of::<T>() && (info.part_size == 48 || info.part_size == 52)
+        || info.part_size as usize == T::get_struct_byte_size(),
      "Struct ({}) size mismatch expected {} but got {}",std::any::type_name::<T>(),T::get_struct_byte_size(),info.part_size))
     ]
     pub info: RdmContainerPrefix,
@@ -165,7 +171,7 @@ where
     pub storage: C::Storage<T>,
 }
 
-impl<T> std::ops::Deref for RdmContainer<true, Fixed2, T>
+impl<const T_IS_PARTSIZED: bool, T> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Fixed2, T>
 where
     T: RdmRead,
 {
@@ -175,7 +181,7 @@ where
     }
 }
 
-impl<T> std::ops::DerefMut for RdmContainer<true, Fixed2, T>
+impl<const T_IS_PARTSIZED: bool, T> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Fixed2, T>
 where
     T: RdmRead,
 {
