@@ -1,8 +1,8 @@
-use crate::{rdm_material::RdMaterial, vertex::*, MeshInstance, RdJoint, RdModell};
+use crate::{rdm_data_main::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     convert::TryInto,
     env,
     fs::{self, File, OpenOptions},
@@ -32,7 +32,7 @@ struct RdGltfBuilder {
     buffer_views: Vec<json::buffer::View>,
     accessors: Vec<json::Accessor>,
     nodes: Vec<json::Node>,
-    attr_map: HashMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
+    attr_map: BTreeMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
     rdm: RdModell,
@@ -53,7 +53,7 @@ impl RdGltfBuilder {
             buffer_views: Vec::new(),
             accessors: Vec::new(),
             nodes: Vec::new(),
-            attr_map: HashMap::new(),
+            attr_map: BTreeMap::new(),
             rdm,
             obj: RdGltf::new(),
             skin: None,
@@ -76,10 +76,7 @@ impl RdGltfBuilder {
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
 
-        let mut size: usize = 0;
-        for janim in &anim_vec {
-            size += janim.len as usize;
-        }
+        let size: usize = anim_vec.iter().map(|f| f.frames.len()).sum();
 
         let rot_size = size * 16;
         let trans_size = size * 12;
@@ -131,7 +128,7 @@ impl RdGltfBuilder {
                 }
             };
 
-            let count = janim.len as usize;
+            let count = janim.frames.len();
 
             let rot_start = rot_anim_buf.len();
             let trans_start = trans_anim_buf.len();
@@ -156,8 +153,8 @@ impl RdGltfBuilder {
             debug!("time_1000_f32_max: {}", time_1000_f32_max);
 
             let rot_end = rot_anim_buf.len();
-            trace!("{}", rot_start);
-            trace!("{}", rot_end);
+            debug!("{}", rot_start);
+            debug!("{}", rot_end);
 
             let trans_end = trans_anim_buf.len();
             let t_end = t_anim_buf.len();
@@ -180,7 +177,7 @@ impl RdGltfBuilder {
 
             let rot_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -212,7 +209,7 @@ impl RdGltfBuilder {
 
             let trans_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -244,7 +241,7 @@ impl RdGltfBuilder {
 
             let time_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: 0,
+                byte_offset: None,
                 count: count as u32,
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
@@ -515,7 +512,7 @@ impl RdGltfBuilder {
                     .zip(global_bind_matrices.iter())
                     .enumerate()
                 {
-                    if joint.parent == 255 || joint.locked {
+                    if joint.parent == u32::MAX {
                         children_of_root_node.push(json::Index::new(i as u32));
                         // Skip to the next iteration because without a parent: global transform == local transform
                         continue;
@@ -665,7 +662,7 @@ impl RdGltfBuilder {
     }
 
     fn put_material(&mut self) {
-        let material_len = MeshInstance::get_max_material(&self.rdm.mesh_info) as usize + 1;
+        let material_len = MeshInfo::get_max_material(&self.rdm.mesh_info) as usize + 1;
         // get_max_material returns the max value used to index the material vec
         let mut texture_info_descriptors = vec![None; material_len];
         if let Some(mats) = self.rdm.mat.as_ref() {
@@ -818,7 +815,7 @@ impl RdGltfBuilder {
 
         let normals_acc = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_views_idx)),
-            byte_offset: 0,
+            byte_offset: None,
             count: count.unwrap_or(vattr_len),
             component_type: Valid(json::accessor::GenericComponentType(component_type)),
             extensions: Default::default(),
@@ -906,7 +903,7 @@ impl RdGltfBuilder {
         let mut accessor_idx_meshes = Vec::with_capacity(self.rdm.mesh_info.len());
         for submesh in self.rdm.mesh_info.iter() {
             let mut buff = BytesMut::with_capacity(submesh.index_count as usize);
-            let r = (submesh.start_index_location as usize / 3) as usize
+            let r = (submesh.start_index_location / 3) as usize
                 ..((submesh.start_index_location / 3) + submesh.index_count / 3) as usize;
             unsafe { buff.put_slice(self.rdm.triangle_indices[r].align_to::<u8>().1) }
             bytes.push((BufferContainer::Bytes(buff.freeze()), submesh.index_count));
@@ -1032,7 +1029,7 @@ impl RdGltfBuilder {
 
         for view in self.buffer_views.iter_mut() {
             let n = view_off_mapping[view.buffer.value()];
-            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n as u32);
+            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n);
             view.buffer = json::Index::new(0);
         }
 

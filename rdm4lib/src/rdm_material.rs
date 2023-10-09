@@ -48,16 +48,16 @@ impl RdMaterial {
             }
 
             let output = Command::new("texconv.exe")
-                .arg(&ab_path.as_os_str())
+                .arg(ab_path.as_os_str())
                 .arg(r"-o")
-                .arg(&ab_dst.as_os_str())
+                .arg(ab_dst.as_os_str())
                 .arg(r"-ft")
                 .arg(r"png")
                 .output()
                 .expect("failed to execute texconv.exe");
-            trace!("{:?}", &ab_path.to_str().unwrap()[4..]);
-            trace!("{:?}", &ab_dst.to_str().unwrap()[4..]);
-            trace!("{:?}", output);
+            debug!("{:?}", &ab_path.to_str().unwrap()[4..]);
+            debug!("{:?}", &ab_dst.to_str().unwrap()[4..]);
+            debug!("{:?}", output);
         }
     }
 }

@@ -2,9 +2,6 @@ use rdm4lib::RdModell;
 
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RdAnim;
-use rdm4lib::rdm_writer::RdWriter;
-
-use rdm4lib::rdm_anim_writer::RdAnimWriter;
 
 use rdm4lib::gltf_reader;
 
@@ -16,7 +13,10 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdm4lib::rdm_data_anim::RdAnimWriter2;
+    use rdm4lib::rdm_data_main::RdWriter2;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
+    use sha2::{Digest, Sha256};
     use std::convert::TryFrom;
     use std::fs;
     use std::path::PathBuf;
@@ -24,19 +24,23 @@ mod tests {
     #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
 
+    pub fn check_hash(path: &Path, expected: &str) {
+        let hash = Sha256::new()
+            .chain_update(fs::read(path).unwrap())
+            .finalize();
+
+        let calc_hash = base16ct::lower::encode_string(&hash);
+        assert_eq!(expected, calc_hash);
+    }
+
     #[test]
     #[cfg_attr(miri, ignore)]
     fn fishery_others_lod2() {
         let rdm = RdModell::from("rdm/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.vertex.len(), 3291);
-        assert_eq!(rdm.triangles_idx_count, 7473);
+        assert_eq!(rdm.triangle_indices.len() * 3, 7473);
         assert_eq!(rdm.mesh_info.len(), 2);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -47,11 +51,6 @@ mod tests {
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.vertex.get_size(), 28);
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         rdm.add_skin();
 
@@ -177,14 +176,9 @@ mod tests {
     fn fishery_others_cutout_lod0() {
         let rdm = RdModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertex.len(), 32);
-        assert_eq!(rdm.triangles_idx_count, 78);
+        assert_eq!(rdm.triangle_indices.len() * 3, 78);
         assert_eq!(rdm.vertex.to_string(), "P4h");
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -195,11 +189,6 @@ mod tests {
         // TODO: cfg says P4h_N4b_T2h_C4c
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
         assert_eq!(rdm.mesh_info.len(), 1);
-
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
     }
 
     #[test]
@@ -211,15 +200,14 @@ mod tests {
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
         assert_eq!(rdm.mesh_info.len(), 1);
 
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
-
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "2f6993eb99b4a0c89ee9723c822d18034cc772900331d1cb80e403b96339d398",
+        );
     }
 
     #[test]
@@ -236,10 +224,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let jj = rdm.joints.clone().unwrap();
         let mut anims =
@@ -276,15 +260,16 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
+        assert_eq!(rdm.joints.as_ref().unwrap().len(), 72);
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "242c11e5a71a85fd25c5a398374cac4da6575e73b6f8abc963b05dc7f1fdd5db",
+        );
     }
 
     #[test]
@@ -301,10 +286,6 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
         let jj = &rdm.joints.unwrap();
         let mut anims =
@@ -312,7 +293,7 @@ mod tests {
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
-        let exp_rdm = RdAnimWriter::from(anim);
+        let exp_rdm = RdAnimWriter2::new(anim);
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_anim_rdm(Some(dir_dst), false);
@@ -330,21 +311,21 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
         let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "8f08378928a2d5cfc80d10a54c7cde05644de7d9977f0eb262ecb6adcd37aa4e",
+        );
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     #[ignore]
-    fn read_gltf_no_skin2() {
+    fn read_gltf_no_skin2_triangle() {
         // no normals so ignore it !
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf")).unwrap(),
@@ -355,71 +336,15 @@ mod tests {
             None,
         );
         assert_eq!(rdm.vertex.len(), 3);
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
 
-        let exp_rdm = RdWriter::from(rdm);
+        let exp_rdm = RdWriter2::new(rdm);
 
-        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2");
+        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2_triangle");
         std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_rdm(Some(dir_dst), false);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    #[ignore]
-    fn matrix_rel_calc() {
-        use nalgebra::*;
-        let global_parent_translation = Translation3::new(-1.0, 2.0, 0.0);
-        let global_child_translation = Translation3::new(1.0, 2.0, 3.0);
-
-        let c: Matrix4<f32> = global_child_translation.to_homogeneous();
-        let p: Matrix4<f32> = global_parent_translation.to_homogeneous();
-
-        let local: Matrix4<f32> = p.try_inverse().unwrap() * c;
-        println!("{}", local);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    #[ignore]
-    fn interpolation_test() {
-        use nalgebra::Vector3;
-
-        let input_time = vec![0.0f32, 0.8, 1.6, 2.4, 3.2];
-        let output_values = vec![
-            Vector3::new(10.0f32, 5.0, -5.0),
-            Vector3::new(14.0f32, 3.0, -2.0),
-            Vector3::new(18.0f32, 1.0, 1.0),
-            Vector3::new(24.0f32, -1.0, 4.0),
-            Vector3::new(31.0f32, -3.0, 7.0),
-        ];
-
-        assert_eq!(input_time.len(), output_values.len());
-
-        fn interpolate(
-            current_time: f32,
-            input_time: &[f32],
-            output_values: &[Vector3<f32>],
-        ) -> Vector3<f32> {
-            let next_idx = input_time.iter().position(|t| t > &current_time).unwrap();
-            let previous_idx = next_idx - 1;
-
-            let previous_time = input_time[previous_idx];
-            let next_time = input_time[next_idx];
-
-            let previous_translation = output_values[previous_idx];
-            let next_translation = output_values[next_idx];
-
-            let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
-
-            let current_translation = previous_translation
-                + interpolation_value * (next_translation - previous_translation);
-            current_translation
-        }
-
-        dbg!(interpolate(1.2f32, &&input_time, &output_values));
+        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        check_hash(
+            &dest_path,
+            "f456d4418387e5bcbe4522064f5fdb75bd67b762793489ad6220a9718d431e3c",
+        );
     }
 }

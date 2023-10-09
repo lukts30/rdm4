@@ -1,10 +1,15 @@
 use bytes::{Buf, Bytes};
+use rdm_derive::RdmStructSize;
 use std::{fmt, str::FromStr};
 
-use crate::*;
+use crate::{rdm_data_main::RdmFile, *};
+use binrw::binrw;
 
 #[repr(C)]
 #[derive(Clone, Debug)]
+#[binrw]
+#[bw(import_raw(end: &mut u64))]
+#[derive(RdmStructSize)]
 pub struct VertexIdentifier {
     pub uniq: UniqueIdentifier,
     pub unit_size: IdentifierSize,
@@ -28,6 +33,8 @@ impl fmt::Display for VertexIdentifier {
 
 #[repr(u32)]
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[binrw]
+#[brw(repr(u32))]
 pub enum UniqueIdentifier {
     Position = 0x0,
     Normal = 0x1,
@@ -37,7 +44,7 @@ pub enum UniqueIdentifier {
     C4c = 0x5,
     I4b = 0x7,
     W4b = 0x6,
-    Invalid = 0x128,
+    Invalid = 0xFF,
 }
 
 impl UniqueIdentifier {
@@ -169,11 +176,9 @@ impl<const I: u32, const N: usize> Normalise for AnnoData<f32, I, N> {
 
 #[derive(Debug)]
 pub struct VertexFormat2 {
-    identifiers: Box<[VertexIdentifier]>,
+    pub identifiers: Box<[VertexIdentifier]>,
     offsets: Box<[usize]>,
     text: String,
-    #[allow(dead_code)]
-    vertex_offset: Option<NonZeroU32>,
     pub vertex_count: u32,
     size: u32,
     vertex_buffer: Bytes,
@@ -226,7 +231,6 @@ impl VertexFormat2 {
         identifiers: Box<[VertexIdentifier]>,
         vertex_count: u32,
         vertex_size: u32,
-        vertex_offset: Option<NonZeroU32>,
         vertex_buffer: Bytes,
     ) -> Self {
         let mut offsets = Vec::with_capacity(identifiers.len());
@@ -251,58 +255,28 @@ impl VertexFormat2 {
             text,
             vertex_count,
             size: off as u32,
-            vertex_offset,
             vertex_buffer,
             weight_sum: None,
         }
     }
 
-    pub fn read_format(mut buf: Bytes, rdm_size: u32) -> Self {
-        buf.advance(32);
-        let meta_deref = buf.get_u32_le();
-        buf.seek(meta_deref, rdm_size);
-        buf.advance(4);
+    pub fn read_format_via_data(rdm: &RdmFile) -> Self {
+        let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
+        let format_identifiers = &meta.format_identifiers;
 
-        let format_identifiers_ptr = buf.get_u32_le();
-        buf.advance((RdModell::VERTEX_META - 8) as usize);
-        let vertex_offset = buf.get_u32_le();
+        let ids = &format_identifiers.rdm_container;
+        assert_eq!(ids.info.part_size, 16);
 
-        buf.seek(format_identifiers_ptr, rdm_size);
+        let vec: Vec<VertexIdentifier> = ids.iter().cloned().collect();
 
-        let format_identifiers = buf.get_u32_le();
-        assert_eq!(
-            format_identifiers,
-            (rdm_size - buf.remaining() as u32) - 4 + 8 + 24
-        );
+        let vertex_count = meta.vertex.info.count;
+        let vertex_size = meta.vertex.info.part_size;
+        let vertex_buffer = Bytes::from(meta.vertex.iter().map(|x| x.0).collect::<Vec<u8>>());
 
-        buf.seek(format_identifiers - RdModell::META_COUNT, rdm_size);
-        let num = buf.get_u32_le();
-        let size = buf.get_u32_le();
-        assert_eq!(size, 0x10);
-
-        let mut vec: Vec<VertexIdentifier> = Vec::with_capacity(num as usize);
-
-        for _ in 0..num {
-            let dst = VertexIdentifier {
-                uniq: UniqueIdentifier::from(buf.get_u32_le()),
-                unit_size: IdentifierSize::from(buf.get_u32_le()),
-                interpretation: buf.get_u32_le(),
-                count: buf.get_u32_le(),
-            };
-            trace!("{}", dst.get_size());
-            trace!("{}", dst.to_string());
-            vec.push(dst);
-        }
-        buf.seek(vertex_offset - RdModell::META_COUNT, rdm_size);
-        let vertex_count = buf.get_u32_le();
-        let vertex_size = buf.get_u32_le();
-        let mut vertex_buffer = buf;
-        vertex_buffer.truncate((vertex_size * vertex_count) as usize);
         Self::new(
             vec.into_boxed_slice(),
             vertex_count,
             vertex_size,
-            NonZeroU32::new(vertex_offset),
             vertex_buffer,
         )
     }
@@ -367,7 +341,7 @@ impl VertexFormat2 {
         assert_eq!(self.vertex_count, n);
 
         vbuffer.advance(offset);
-        let it: _ = std::iter::from_fn(move || {
+        let it = std::iter::from_fn(move || {
             let ret = if count < n {
                 if need_convert {
                     Some(T::from(<Z as GetVertex>::get_unit(&mut vbuffer)))
@@ -395,6 +369,8 @@ impl VertexFormat2 {
     }
 }
 
+#[binrw]
+#[brw(repr(u32))]
 #[repr(u32)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum IdentifierSize {

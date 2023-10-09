@@ -1,5 +1,6 @@
-use bytes::{Buf, Bytes};
-use std::num::NonZeroU32;
+use binrw::BinReaderExt;
+use rdm_data_main::*;
+use rdm_data_main::{MeshInfo, RdmFile};
 use std::path::Path;
 
 use std::fs::File;
@@ -18,46 +19,28 @@ extern crate approx;
 
 pub mod gltf_export;
 pub mod gltf_reader;
+pub mod gltf_reader_vertex;
 pub mod rdm_anim;
-pub mod rdm_anim_writer;
 pub mod rdm_material;
-pub mod rdm_writer;
 pub mod vertex;
 use crate::rdm_anim::RdAnim;
 use rdm_material::RdMaterial;
 
 use vertex::VertexFormat2;
 
-#[derive(Debug)]
+pub mod rdm_container;
+pub mod rdm_data_anim;
+pub mod rdm_data_main;
+
 pub struct RdModell {
-    size: u32,
-    buffer: Bytes,
-    pub mesh_info: Vec<MeshInstance>,
+    rdmf: Option<RdmFile>,
+    pub mesh_info: Vec<MeshInfo>,
     pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
 
-    #[allow(dead_code)]
-    meta: Option<NonZeroU32>,
     pub vertex: VertexFormat2,
-
-    #[allow(dead_code)]
-    triangles_offset: Option<NonZeroU32>,
-    pub triangles_idx_count: u32,
-
     anim: Option<RdAnim>,
     pub mat: Option<RdMaterial>,
-}
-
-trait Seek {
-    fn seek(&mut self, from_start: u32, file_size: u32);
-}
-
-impl Seek for Bytes {
-    fn seek(&mut self, offset_from_start: u32, file_size: u32) {
-        let already_read = file_size - self.remaining() as u32;
-        let cnt: usize = (offset_from_start.checked_sub(already_read).unwrap()) as usize;
-        self.advance(cnt);
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -65,31 +48,10 @@ pub struct RdJoint {
     name: String,
     transition: [f32; 3],
     quaternion: [f32; 4],
-    parent: u8,
-    locked: bool,
+    parent: u32,
 }
 
-#[derive(Debug)]
-pub struct MeshInstance {
-    start_index_location: u32,
-    index_count: u32,
-    material: u32,
-}
-
-impl MeshInstance {
-    pub fn get_max_material(instances: &[MeshInstance]) -> u32 {
-        instances.iter().map(|e| e.material).max().unwrap()
-    }
-}
-
-#[allow(dead_code)]
 impl RdModell {
-    const META_OFFSET: u32 = 32;
-    const META_COUNT: u32 = 8; //neg
-    const META_SIZE: u32 = 4; //neg
-    const VERTEX_META: u32 = 12;
-    const TRIANGLES_META: u32 = 16;
-
     pub fn has_skin(&self) -> bool {
         self.joints.is_some()
     }
@@ -98,83 +60,21 @@ impl RdModell {
         self.anim = Some(anim);
     }
 
-    pub fn check_has_magic_byte(bytes: &[u8]) {
-        static MAGIC: &[u8] = &[0x52, 0x44, 0x4D, 0x01];
-        assert_eq!(
-            &bytes[0..4],
-            MAGIC,
-            "Magic Bytes 0x52, 0x44, 0x4D, 0x01, 0x14 not found !"
-        );
-    }
-
-    pub fn check_multi_mesh(
-        mut multi_buffer: Bytes,
-        meta_deref: u32,
-        size: u32,
-    ) -> Vec<MeshInstance> {
-        multi_buffer.seek(meta_deref + 20, size);
-        let first_instance = multi_buffer.get_u32_le();
-
-        multi_buffer.seek(first_instance - RdModell::META_COUNT, size);
-        let mesh_count = multi_buffer.get_u32_le();
-        assert_eq!(multi_buffer.get_u32_le(), 28);
-        info!("mesh_count: {}", mesh_count);
-        let mut v = Vec::with_capacity(mesh_count as usize);
-        for _ in 0..mesh_count {
-            v.push(MeshInstance {
-                start_index_location: multi_buffer.get_u32_le(),
-                index_count: multi_buffer.get_u32_le(),
-                material: multi_buffer.get_u32_le(),
-            });
-            multi_buffer.advance(28 - 12);
-        }
-        info!("meshes: {:?}", v);
-        assert!(!v.is_empty());
-        v
-    }
-
     pub fn add_skin(&mut self) {
-        let mut skin_buffer = self.buffer.clone();
-        skin_buffer.advance(40);
-        let skin_offset = skin_buffer.get_u32_le();
-        assert!(skin_offset != 0, "File does not contain a skin !");
+        let rdm = self.rdmf.as_ref().unwrap();
 
-        skin_buffer.seek(skin_offset, self.size);
+        let raw_joints = &***rdm.header1.skin.joint;
+        let mut joints_vec = vec![];
 
-        let first_skin_offset = skin_buffer.get_u32_le();
-        let joint_count_ptr = first_skin_offset - RdModell::META_COUNT;
+        for raw_joint in raw_joints {
+            let tx = raw_joint.t[0];
+            let ty = raw_joint.t[1];
+            let tz = raw_joint.t[2];
 
-        skin_buffer.seek(joint_count_ptr, self.size);
-
-        let joint_count = skin_buffer.get_u32_le();
-        let joint_size = skin_buffer.get_u32_le();
-
-        let mut joints_vec: Vec<RdJoint> = Vec::with_capacity(joint_count as usize);
-
-        let mut joint_name_buffer = skin_buffer.clone();
-
-        let len_first_joint_name_ptr = joint_name_buffer.get_u32_le() - RdModell::META_COUNT;
-        joint_name_buffer.seek(len_first_joint_name_ptr, self.size);
-
-        assert_eq!(joint_size, 84);
-        for _ in 0..joint_count {
-            let len_joint_name = joint_name_buffer.get_u32_le();
-            assert_eq!(joint_name_buffer.get_u32_le(), 1);
-            let name = str::from_utf8(&joint_name_buffer[..len_joint_name as usize]).unwrap();
-            let joint_name = String::from(name);
-
-            let nameptr = skin_buffer.get_u32_le();
-            assert_eq!(nameptr, self.size - joint_name_buffer.len() as u32);
-            joint_name_buffer.advance(len_joint_name as usize);
-
-            let tx = skin_buffer.get_f32_le();
-            let ty = skin_buffer.get_f32_le();
-            let tz = skin_buffer.get_f32_le();
-
-            let rx = skin_buffer.get_f32_le();
-            let ry = skin_buffer.get_f32_le();
-            let rz = skin_buffer.get_f32_le();
-            let rw = skin_buffer.get_f32_le();
+            let rx = raw_joint.r[0];
+            let ry = raw_joint.r[1];
+            let rz = raw_joint.r[2];
+            let rw = raw_joint.r[3];
 
             let quaternion = Quaternion::new(rw, rx, ry, rz);
             let unit_quaternion = UnitQuaternion::from_quaternion(quaternion);
@@ -186,10 +86,8 @@ impl RdModell {
             let v: Vector3<f32> = Vector3::new(tx, ty, tz);
             let v_transformed = unit_quaternion.transform_vector(&v).scale(-1.0);
 
-            let parent_id = skin_buffer.get_u8();
-
             let joint = RdJoint {
-                name: joint_name,
+                name: String::from(raw_joint.name.as_ascii()),
                 transition: [v_transformed.x, v_transformed.y, v_transformed.z],
                 quaternion: [
                     quaternion_mat4.x,
@@ -197,85 +95,44 @@ impl RdModell {
                     quaternion_mat4.z,
                     quaternion_mat4.w,
                 ],
-                parent: parent_id,
-                locked: false,
+                parent: raw_joint.parent_id,
             };
-
             joints_vec.push(joint);
-            skin_buffer.advance(84 - 33);
         }
 
         self.joints = Some(joints_vec);
     }
 
     fn new(buf: Vec<u8>) -> Self {
-        RdModell::check_has_magic_byte(&buf);
+        let mut reader = std::io::Cursor::new(&buf);
+        let rdm: RdmFile = reader.read_ne().unwrap();
 
-        let size = buf.len() as u32;
-        let buffer = Bytes::from(buf);
-        let vvert = VertexFormat2::read_format(buffer.clone(), size);
-
+        let vvert = VertexFormat2::read_format_via_data(&rdm);
         info!(
             "Read {} vertices of type {} ({} bytes)",
             vvert.len(),
             vvert,
             vvert.get_size()
         );
-        let mut nbuffer = buffer.clone();
 
-        nbuffer.advance(RdModell::META_OFFSET as usize);
-        let meta = nbuffer.get_u32_le();
-
-        nbuffer.get_u32_le();
-
-        let _skin_there = nbuffer.get_u32_le() > 0;
-        let mesh_info = RdModell::check_multi_mesh(buffer.clone(), meta, size);
-
-        nbuffer.seek(meta, size);
-        nbuffer.advance(RdModell::VERTEX_META as usize);
-        let vertex_offset = nbuffer.get_u32_le();
-
-        let triangles_offset = nbuffer.get_u32_le();
-
-        let vertex_count_off = vertex_offset - RdModell::META_COUNT;
-        info!("off : {}", vertex_count_off);
-        nbuffer.seek(vertex_count_off, size);
-
-        let triangles_count_off = triangles_offset - RdModell::META_COUNT;
-        nbuffer.seek(triangles_count_off, size);
-        let triangles_idx_count = nbuffer.get_u32_le();
-        let triangles_idx_size = nbuffer.get_u32_le();
-
-        // read indices for triangles
-        assert_eq!(triangles_idx_size, 2);
-        assert_eq!(triangles_idx_count % 3, 0);
-
-        //let mut triangles_idx_buffer = nbuffer.clone();
-        let mut triangles_idx_buffer = nbuffer;
-        triangles_idx_buffer.truncate((triangles_idx_size * triangles_idx_count) as usize);
+        let triangles_idx_count = rdm.header1.meta.0.triangles.len() as u32;
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
-        for _ in 0..triangles_real_count {
+        for x in rdm.header1.meta.0.triangles.chunks(3) {
             let t = Triangle {
-                indices: [
-                    triangles_idx_buffer.get_u16_le(),
-                    triangles_idx_buffer.get_u16_le(),
-                    triangles_idx_buffer.get_u16_le(),
-                ],
+                indices: [x[0].0, x[1].0, x[2].0],
             };
             triangles.push(t);
         }
 
+        let mesh_info = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
+
         RdModell {
-            size,
-            buffer,
+            rdmf: Some(rdm),
             mesh_info,
             joints: None,
             triangle_indices: triangles,
-            meta: NonZeroU32::new(meta),
             vertex: vvert,
-            triangles_offset: NonZeroU32::new(triangles_count_off),
-            triangles_idx_count,
             anim: None,
             mat: None,
         }
@@ -307,6 +164,8 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 
 #[cfg(test)]
 mod tests_intern {
+    use crate::rdm_container::RdmString;
+
     use super::*;
 
     #[test]
@@ -318,11 +177,23 @@ mod tests_intern {
         let rdm = RdModell::new(v);
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.vertex.get_size(), 8);
-        assert_eq!(rdm.triangles_idx_count, 78);
+        assert_eq!(rdm.triangle_indices.len() * 3, 78);
+    }
 
-        assert_eq!(
-            rdm.triangles_idx_count as usize,
-            rdm.triangle_indices.len() * 3
-        );
+    use crate::rdm_container::AnnoPtr;
+    use binrw::binread;
+    use rdm_derive::RdmStructSize;
+
+    #[derive(RdmStructSize)]
+    #[binread]
+    struct MyStruct {
+        _my_number: f32,
+        _my_other_number: [u8; 16],
+        _name: AnnoPtr<RdmString>,
+    }
+
+    #[test]
+    fn test() {
+        dbg!(MyStruct::get_struct_byte_size());
     }
 }

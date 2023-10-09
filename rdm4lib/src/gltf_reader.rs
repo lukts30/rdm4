@@ -1,7 +1,9 @@
+use crate::rdm_data_anim::Frame;
+use crate::rdm_data_main::MeshInfo;
 use crate::vertex::*;
-use crate::{rdm_writer::PutVertex, RdJoint};
+use crate::RdModell;
+use crate::{gltf_reader_vertex::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
-use crate::{MeshInstance, RdModell};
 
 use gltf::animation::Channel;
 use gltf::Node;
@@ -9,7 +11,7 @@ use nalgebra::*;
 
 use half::f16;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 
 use crate::rdm_anim::*;
 use gltf::animation::util::ReadOutputs::*;
@@ -116,42 +118,6 @@ fn read_animation_channel(buffers: &[gltf::buffer::Data], channel: Channel) -> V
         }
         Translations(trans) => extract_translations(time, Default::default(), trans),
         _ => unreachable!(),
-    }
-}
-
-fn interpolate_translation_on_rotation(translation: &[Frame], rotation: &mut [Frame]) {
-    fn interpolate(
-        current_time: f32,
-        input_time: &[f32],
-        output_values: &[Vector3<f32>],
-    ) -> Vector3<f32> {
-        let next_idx = input_time
-            .iter()
-            .position(|t| t > &current_time)
-            .unwrap_or(input_time.len() - 1);
-        let previous_idx = next_idx - 1;
-
-        let previous_time = input_time[previous_idx];
-        let next_time = input_time[next_idx];
-
-        let previous_translation = output_values[previous_idx];
-        let next_translation = output_values[next_idx];
-
-        let interpolation_value = (current_time - previous_time) / (next_time - previous_time);
-
-        previous_translation + interpolation_value * (next_translation - previous_translation)
-    }
-    assert!(translation.len() <= rotation.len());
-
-    let input_time: Vec<f32> = translation.iter().map(|t| t.time).collect();
-    let output_values: Vec<Vector3<f32>> = translation
-        .iter()
-        .map(|t| Vector3::from(t.translation))
-        .collect();
-
-    for rot in rotation {
-        let raw = interpolate(rot.time, &input_time, &output_values);
-        rot.translation = [raw.x, raw.y, raw.z];
     }
 }
 
@@ -347,14 +313,7 @@ impl<'a> ImportedGltf {
             }
 
             // TODO: finish interpolate
-            for (name, (t, mut r)) in interpolate_channel.drain() {
-                let max_time_t = t.iter().map(|f| f.time).reduce(f32::max).unwrap();
-                let max_time_r = r.iter().map(|f| f.time).reduce(f32::max).unwrap();
-                assert_relative_eq!(max_time_t, max_time_r);
-                error!("{} {} {}", name, max_time_t, max_time_r);
-                warn!("{} {} {}", name, t.len(), r.len());
-                interpolate_translation_on_rotation(&t, &mut r);
-                translation_map.insert(name, r);
+            if interpolate_channel.drain().next().is_some() {
                 unimplemented!("{}", interpolate_error_message);
             }
 
@@ -394,13 +353,14 @@ impl<'a> ImportedGltf {
             let mut frame_collections: Vec<FrameCollection> = Vec::new();
             for (node_str, frames) in translation_map.drain() {
                 frame_collections.push(FrameCollection {
-                    len: frames.len() as u32,
                     frames,
                     name: node_str.to_string(),
                 })
             }
 
             assert_eq!(joints.len() - frame_collections.len(), 0);
+
+            frame_collections.sort_by(|a, b| a.name.cmp(&b.name));
 
             let name = format!("anim_{}", anim_idx);
             rd_animations.push(RdAnim {
@@ -433,11 +393,8 @@ impl<'a> ImportedGltf {
                 overide_mesh_idx,
             )
             .unwrap();
-        let size = 0;
         let vertices = gltf_imp.1;
         let triangles = gltf_imp.2;
-
-        let triangles_idx_count = triangles.len() as u32 * 3;
 
         let joints_vec = if load_skin {
             self.check_node_name_uniqueness();
@@ -449,17 +406,11 @@ impl<'a> ImportedGltf {
         // todo!("TODO : FIX ME !!!");
         let mesh_info_vec = gltf_imp.4;
         RdModell {
-            size,
-            buffer: Bytes::new(),
+            rdmf: None,
             mesh_info: mesh_info_vec,
             joints: joints_vec,
             triangle_indices: triangles,
-            meta: None,
             vertex: vertices,
-
-            triangles_offset: None,
-            triangles_idx_count,
-
             anim: None,
             mat: None,
         }
@@ -481,7 +432,7 @@ impl<'a> ImportedGltf {
 
             debug!("{:?}", node_names_vec);
             // parentless nodes have 255 as "index"
-            let mut node_vec: Vec<u8> = vec![255; skin.joints().count()];
+            let mut node_vec: Vec<u32> = vec![u32::MAX; skin.joints().count()];
 
             for (i, node) in skin.joints().enumerate() {
                 for child in node.children() {
@@ -489,7 +440,7 @@ impl<'a> ImportedGltf {
                     let c_name = self.node_get_name(&child);
 
                     let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
-                    node_vec[child_idx] = i as u8;
+                    node_vec[child_idx] = i as u32;
                     debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
                 }
             }
@@ -529,14 +480,14 @@ impl<'a> ImportedGltf {
         let mut node_converted_to_joints = Vec::new();
         let mut has_converted = false;
         debug!("check_all_node_in_skin");
-        for j in rdjoint.iter_mut().filter(|k| k.parent == 255) {
+        for j in rdjoint.iter_mut().filter(|k| k.parent == u32::MAX) {
             for n in self.gltf.nodes() {
                 if n.children().any(|n| self.node_get_name(&n) == j.name) {
                     let did = node_converted_to_joints
                         .iter()
                         .position(|o: &RdJoint| o.name == self.node_get_name(&n));
                     match did {
-                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap(),
+                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap().into(),
                         None => {
                             info!("Promoting (non skin) node: {}", n.index());
                             j.parent = l;
@@ -546,7 +497,7 @@ impl<'a> ImportedGltf {
                             node_converted_to_joints.push(create_joint(
                                 mat4_init,
                                 self.node_get_name(&n),
-                                255,
+                                u32::MAX,
                             ));
                         }
                     }
@@ -612,7 +563,7 @@ impl<'a> ImportedGltf {
             };
             let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
-            let mut mesh_info: Vec<MeshInstance> = Vec::new();
+            let mut mesh_info: Vec<MeshInfo> = Vec::new();
             let mut merged_triangle_vec = Vec::new();
             let mut vertices_count: u32 = 0;
             let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
@@ -699,13 +650,13 @@ impl<'a> ImportedGltf {
                 info!("dst_format: {:?}", dst_format);
                 //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
-                trace!("vertex read loop");
+                debug!("vertex read loop");
                 let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
 
                 let pre_vertices_added = verts_vec.len();
 
                 while count > 0 {
-                    trace!("count {}", count);
+                    debug!("count {}", count);
                     let vertex_position = position_iter.next().unwrap();
                     let vertex =
                         Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
@@ -778,7 +729,7 @@ impl<'a> ImportedGltf {
 
                     let normal = Vector3::new(nx, ny, nz);
                     let tangent = Vector3::new(tx, ty, tz);
-                    trace!("normal.dot(&tangent): {}", normal.dot(&tangent));
+                    debug!("normal.dot(&tangent): {}", normal.dot(&tangent));
 
                     let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 
@@ -895,13 +846,14 @@ impl<'a> ImportedGltf {
                     triangle_vec.push(t);
                 }
 
-                mesh_info.push(MeshInstance {
+                mesh_info.push(MeshInfo {
                     start_index_location: merged_triangle_vec.len() as u32 * 3,
                     index_count: triangle_vec.len() as u32 * 3,
                     material: match overide_mesh_idx.as_ref() {
                         Some(j) => j[i],
                         None => i.try_into().unwrap(),
                     },
+                    _padding: Default::default(),
                 });
 
                 merged_triangle_vec.append(&mut triangle_vec);
@@ -913,7 +865,6 @@ impl<'a> ImportedGltf {
                 ident.into_boxed_slice(),
                 vertices_count,
                 vertsize,
-                None,
                 verts_vec.freeze(),
             );
             return Some((
@@ -929,7 +880,7 @@ impl<'a> ImportedGltf {
 }
 
 #[inline]
-fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoint {
+fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u32) -> RdJoint {
     // may perform expensive checks ...
     debug!("node_to_joint mat4_init: {}", mat4_init);
     mat4_init.m44 = 1.0;
@@ -944,7 +895,6 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
 
     RdJoint {
         name,
-        locked: false,
         parent,
         quaternion: [
             quaternion_raw.x,
@@ -956,7 +906,7 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u8) -> RdJoin
     }
 }
 
-type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInstance>)>;
+type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInfo>)>;
 
 fn find_first_mesh_instantiating_node(gltf: &gltf::Document, mesh_idx: usize) -> Option<usize> {
     for (i, node) in gltf.nodes().enumerate() {
