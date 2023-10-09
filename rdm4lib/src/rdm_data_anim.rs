@@ -50,13 +50,15 @@ pub struct Frame {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[br(assert(_unknown0_84 == 84))]
+#[br(assert(meta_main == 0))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1b {
     _unknown0_84: u32,
-    _unknown1: [u8; 12],
+    meta_main: u32,
+    _unknown1: [u8; 8],
 
     #[bw(args_raw = end)]
-    pub meta: AnnoPtr<RdmTypedT<AnimMeta>>,
+    pub meta_anim: AnnoPtr<RdmTypedT<AnimMeta>>,
     _padding: [u8; 28],
 }
 
@@ -79,6 +81,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn rdm_anim_serialisation_roundtrip() {
         let data = fs::read("rdm/basalt_crusher_others_work01.rdm").unwrap();
         //let data = fs::read("rdm/basalt_crusher_others_idle01.rdm").unwrap();
@@ -99,6 +102,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn run_conv() {
         let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
         let rdaw = RdAnimWriter2::new(anim);
@@ -162,10 +166,8 @@ impl RdAnimWriter2 {
             }),
         };
 
-        dbg!(&anim.header2.export_name1);
-
         let model_str: &[u8; 26] = br"basalt_crusher_others_lod0";
-        anim.header1.meta.name.0 = binrw::FilePtr32 {
+        anim.header1.meta_anim.name.0 = binrw::FilePtr32 {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -178,7 +180,8 @@ impl RdAnimWriter2 {
             }),
         };
 
-        anim.header1.meta.time_max = anim_input.time_max;
+        anim.header1.meta_anim.time_max = anim_input.time_max;
+        info!("SEQUENCE EndTime (Max): {}", anim_input.time_max);
 
         let mut anim_data: Vec<AnimInner> = vec![];
         for x in anim_input.anim_vec {
@@ -209,8 +212,8 @@ impl RdAnimWriter2 {
             };
             anim_data.push(o);
         }
-        anim.header1.meta.anims.info.count = anim_data.len() as u32;
-        anim.header1.meta.anims.storage.items = anim_data;
+        anim.header1.meta_anim.anims.info.count = anim_data.len() as u32;
+        anim.header1.meta_anim.anims.storage.items = anim_data;
 
         RdAnimWriter2 {
             name: anim_input.name,

@@ -55,9 +55,9 @@ impl RdMaterial {
                 .arg(r"png")
                 .output()
                 .expect("failed to execute texconv.exe");
-            trace!("{:?}", &ab_path.to_str().unwrap()[4..]);
-            trace!("{:?}", &ab_dst.to_str().unwrap()[4..]);
-            trace!("{:?}", output);
+            debug!("{:?}", &ab_path.to_str().unwrap()[4..]);
+            debug!("{:?}", &ab_dst.to_str().unwrap()[4..]);
+            debug!("{:?}", output);
         }
     }
 }

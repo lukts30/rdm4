@@ -330,7 +330,7 @@ where
             0u32.write_options(writer, endian, ()).unwrap();
             return Ok(());
         }
-        dbg!(*args);
+        debug!("write_options_args {:?}", *args);
         let _ptrptr: u64 = writer.stream_position().unwrap();
         (*args as u32 + 8)
             .write_options(writer, endian, ())

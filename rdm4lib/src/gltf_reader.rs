@@ -650,13 +650,13 @@ impl<'a> ImportedGltf {
                 info!("dst_format: {:?}", dst_format);
                 //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
-                trace!("vertex read loop");
+                debug!("vertex read loop");
                 let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
 
                 let pre_vertices_added = verts_vec.len();
 
                 while count > 0 {
-                    trace!("count {}", count);
+                    debug!("count {}", count);
                     let vertex_position = position_iter.next().unwrap();
                     let vertex =
                         Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
@@ -729,7 +729,7 @@ impl<'a> ImportedGltf {
 
                     let normal = Vector3::new(nx, ny, nz);
                     let tangent = Vector3::new(tx, ty, tz);
-                    trace!("normal.dot(&tangent): {}", normal.dot(&tangent));
+                    debug!("normal.dot(&tangent): {}", normal.dot(&tangent));
 
                     let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
 

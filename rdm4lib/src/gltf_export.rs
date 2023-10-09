@@ -153,8 +153,8 @@ impl RdGltfBuilder {
             debug!("time_1000_f32_max: {}", time_1000_f32_max);
 
             let rot_end = rot_anim_buf.len();
-            trace!("{}", rot_start);
-            trace!("{}", rot_end);
+            debug!("{}", rot_start);
+            debug!("{}", rot_end);
 
             let trans_end = trans_anim_buf.len();
             let t_end = t_anim_buf.len();

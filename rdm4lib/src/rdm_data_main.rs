@@ -71,9 +71,9 @@ pub struct Meta {
     unknown: AnnoPtr<RdmTypedT<MetaUnknown>>,
 
     #[bw(args_raw = {
-        dbg!("v" , &end);
+        debug!("{:?}", &end);
         *end += mesh_info.get_direct_and_pointed_data_size();
-        dbg!("v" , &end);
+        debug!("{:?}", &end);
         end
     })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
@@ -91,7 +91,7 @@ pub struct Meta {
     #[bw(calc = {
         let off = vertex.get_direct_and_pointed_data_size() + triangles.get_direct_and_pointed_data_size();
         *end += off;
-        dbg!("reset to end" , &end); 
+        debug!("reset to end {:?}",&end);
     })]
     d: (),
 
@@ -114,9 +114,9 @@ struct RdmBlobToMat {
 #[derive(RdmStructSize)]
 struct RdmMat {
     #[bw(args_raw = end)]
-    name: AnnoPtr<RdmString>,
+    name: NullableAnnoPtr<RdmString>,
     #[bw(args_raw = end)]
-    png: AnnoPtr<RdmString>,
+    png: NullableAnnoPtr<RdmString>,
     _padding: [u8; 40],
 }
 
@@ -145,19 +145,19 @@ pub struct RdmJoint {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[br(assert(_unknown0_84 == 84))]
-#[br(assert(meta.ptr != 0))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1 {
     _unknown0_84: u32,
     #[bw(args_raw = end)]
+    #[br(err_context("the input file is not a rdm mesh!"))]
     pub meta: AnnoPtr<RdmTypedT<Meta>>,
     #[bw(args_raw = end)]
-    rdm_blob_to_mat: AnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
+    rdm_blob_to_mat: NullableAnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
 
     #[bw(args_raw = end)]
     pub skin: NullableAnnoPtr<RdmTypedT<RdmBlobToJoint>>,
-
-    _data: [u8; 48 - 4 * 4],
+    meta_anim: u32,
+    _data: [u8; 48 - 5 * 4],
 }
 
 #[binrw]
@@ -353,8 +353,6 @@ impl RdWriter2 {
 
         let export_name = br"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
 
-        dbg!(&rdm.header2.export_name1);
-
         rdm.header2.export_name1.0 = binrw::FilePtr32 {
             ptr: 0,
             value: Some(RdmContainer {
@@ -423,12 +421,17 @@ impl RdWriter2 {
                 },
                 storage: rdm_container::VectorN {
                     items: {
+                        let mut p = 0;
                         let mut o = Vec::new();
                         for x in &rdm_in.triangle_indices {
                             o.push(AnnoU16(x.indices[0]));
                             o.push(AnnoU16(x.indices[1]));
                             o.push(AnnoU16(x.indices[2]));
+                            p = p.max(x.indices[0]);
+                            p = p.max(x.indices[1]);
+                            p = p.max(x.indices[2]);
                         }
+                        info!("Max Triangle List Index: {}", p);
                         o
                     },
                 },

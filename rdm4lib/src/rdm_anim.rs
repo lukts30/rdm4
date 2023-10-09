@@ -22,9 +22,9 @@ impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut reader = std::io::Cursor::new(&buffer);
         let rdmm: RdmAnimFile = reader.read_ne().unwrap();
-        let v = &rdmm.header1.meta.anims;
+        let v = &rdmm.header1.meta_anim.anims;
 
-        let time_max = rdmm.header1.meta.time_max;
+        let time_max = rdmm.header1.meta_anim.time_max;
         // let name_anim = rdmm.header1.meta.name.as_ascii().into();
 
         let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(v.len());
