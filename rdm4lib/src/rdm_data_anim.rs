@@ -49,11 +49,11 @@ pub struct Frame {
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_header2_84 == 84))]
 #[br(assert(meta_main == 0))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1b {
-    _header2_84: u32,
+    #[bw(args_raw = end)]
+    pub header2: AnnoPtr<RdmTypedT<RdmHeader2>>,
     meta_main: u32,
     _unknown1: [u8; 8],
 
@@ -65,13 +65,9 @@ pub struct RdmHeader1b {
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmAnimFile {
-    #[bw(args_raw = RdmContainerArgs { end_offset: crate::rdm_data_main::DataAndPointedToSize::get_direct_and_pointed_data_size(header2)})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
+    #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     pub header1: RdmTypedT<RdmHeader1b>,
-
-    #[bw(args_raw = RdmContainerArgs::default())]
-    #[brw(seek_before = SeekFrom::Start(0x0000004C))]
-    pub header2: RdmTypedT<RdmHeader2>,
 }
 
 #[cfg(test)]
@@ -153,7 +149,7 @@ impl RdAnimWriter2 {
 
         let export_name = br"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max";
 
-        anim.header2.export_name1.0 = binrw::FilePtr32 {
+        anim.header1.header2.export_name1.0 = binrw::FilePtr32 {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {

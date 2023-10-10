@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_variables)]
-
 use std::{
     fs::{self, OpenOptions},
     io::SeekFrom,
@@ -146,7 +144,8 @@ pub struct RdmJoint {
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1 {
-    _header2_84: u32,
+    #[bw(args_raw = end)]
+    pub header2: AnnoPtr<RdmTypedT<RdmHeader2>>,
     #[bw(args_raw = end)]
     // #[br(err_context("the input file is not a rdm mesh!"))]
     pub meta: AnnoPtr<RdmTypedT<Meta>>,
@@ -173,15 +172,10 @@ pub struct RdmHeader2 {
 #[binrw]
 #[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmFile {
-    #[bw(args_raw = RdmContainerArgs {end_offset: header2.get_direct_and_pointed_data_size()})]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
-    #[br(assert(header1._header2_84 == 36 + header1.info.part_size))]
+    #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     // RdmHeader1 usually 48 but sometimes 52
     pub header1: RdmTypedT<RdmHeader1>,
-
-    #[bw(args_raw = RdmContainerArgs::default())]
-    #[brw(seek_before = SeekFrom::Start(0x0000001C + header1.info.part_size as u64))]
-    pub header2: RdmTypedT<RdmHeader2>,
 }
 
 pub trait DataAndPointedToSize {
@@ -283,21 +277,6 @@ mod tests {
 
         let rdm: RdmFile = reader.read_ne().unwrap();
 
-        dbg!(rdm.header2.get_direct_and_pointed_data_size());
-
-        let negative_off = rdm
-            .header1
-            .meta
-            .mesh_info
-            .get_direct_and_pointed_data_size()
-            + rdm.header1.meta.vertex.get_direct_and_pointed_data_size()
-            + rdm
-                .header1
-                .meta
-                .triangles
-                .get_direct_and_pointed_data_size();
-        dbg!(negative_off);
-
         let mut dst = Vec::new();
         let mut writer = std::io::Cursor::new(&mut dst);
 
@@ -354,7 +333,7 @@ impl RdWriter2 {
 
         let export_name = br"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
 
-        rdm.header2.export_name1.0 = binrw::FilePtr32 {
+        rdm.header1.header2.export_name1.0 = binrw::FilePtr32 {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -461,7 +440,7 @@ impl RdWriter2 {
         let dummy_png_path = br"d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png";
 
         let mut mats = vec![];
-        for i in 0..MeshInfo::get_max_material(&rdm_in.mesh_info) + 1 {
+        for _ in 0..MeshInfo::get_max_material(&rdm_in.mesh_info) + 1 {
             let dummy_mat = RdmBlobToMat {
                 mat: AnnoPtr2(binrw::FilePtr32 {
                     ptr: 0,

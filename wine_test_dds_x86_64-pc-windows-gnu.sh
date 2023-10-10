@@ -11,3 +11,4 @@ WINEPATH=$(winepath -w $(pwd)) cargo test --all --target=x86_64-pc-windows-gnu -
 
 
 # fd -e rdm --full-path --exclude "*anim*" -x ~/Dokumente/rdm4/target/debug/rdm4-bin --force -i 2> log
+# cat log  | grep Error | grep --invert-match -E "Meta|U16"

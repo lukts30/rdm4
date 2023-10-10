@@ -337,7 +337,6 @@ where
             return Ok(());
         }
         debug!("write_options_args {:?}", *args);
-        let _ptrptr: u64 = writer.stream_position().unwrap();
         (*args as u32 + 8)
             .write_options(writer, endian, ())
             .unwrap();
@@ -345,18 +344,12 @@ where
         let pos_end = writer.stream_position().unwrap();
         writer.seek(SeekFrom::Start(*args)).unwrap();
         let pointed_to_data = self.deref().deref();
-        pointed_to_data
-            .write_options(writer, endian, RdmContainerArgs { end_offset: 0 })
-            .unwrap();
+        pointed_to_data.write_options(writer, endian, ()).unwrap();
         *args = writer.stream_position().unwrap();
         writer.seek(SeekFrom::Start(pos_end)).unwrap();
 
         Ok(())
     }
-}
-#[derive(Default)]
-pub struct RdmContainerArgs {
-    pub end_offset: u64,
 }
 
 impl<const N: bool, C, T> BinWrite for RdmContainer<N, C, T>
@@ -367,18 +360,18 @@ where
     T: RdmRead,
     T: RdmContainerWrite,
 {
-    type Args<'a> = RdmContainerArgs;
+    type Args<'a> = ();
 
     fn write_options<W: Write + Seek>(
         &self,
         writer: &mut W,
         endian: binrw::Endian,
-        args: Self::Args<'_>,
+        _args: Self::Args<'_>,
     ) -> binrw::BinResult<()> {
         self.info.write_options(writer, endian, ())?;
 
         let pos_start = writer.stream_position().unwrap();
-        let mut end = args.end_offset + pos_start + (self.info.count * self.info.part_size) as u64;
+        let mut end = pos_start + (self.info.count * self.info.part_size) as u64;
 
         assert!(self.storage.len() == self.info.count || !N);
         if self.storage.len() != self.info.count && N {
@@ -386,11 +379,6 @@ where
         }
 
         self.storage.write_options(writer, endian, &mut end)?;
-        /*
-        for x in p.into_iter() {
-            x.write_options(writer, endian, &mut end)?;
-        }
-        */
 
         let pos_end = writer.stream_position().unwrap();
 
@@ -400,7 +388,6 @@ where
         );
 
         writer.seek(SeekFrom::Start(end)).unwrap();
-
         Ok(())
     }
 }
@@ -421,8 +408,6 @@ where
         for x in self.items.iter() {
             x.write_options(writer, endian, args)?;
         }
-        // self.items.write_options(writer, endian, ())?;
-
         Ok(())
     }
 }

@@ -297,6 +297,11 @@ mod tests {
         let dir_dst = PathBuf::from("rdm_out/stormtrooper");
         std::fs::create_dir_all(&dir_dst).unwrap();
         exp_rdm.write_anim_rdm(Some(dir_dst), false);
+
+        check_hash(
+            &PathBuf::from("rdm_out/stormtrooper/anim_0.rdm"),
+            "c2183cd7d5c342a6e6e1c8260b5ab93503fe2ad282d851bbee791bf3a1d6c3f1",
+        );
     }
 
     #[test]
