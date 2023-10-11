@@ -116,12 +116,13 @@ impl RdModell {
             vvert.get_size()
         );
 
-        let triangles_idx_count = rdm.header1.meta.0.triangles.len() as u32;
+        let triangles_idx_count = rdm.header1.meta.triangle_list_len();
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
-        for x in rdm.header1.meta.0.triangles.chunks(3) {
+        let ts: Vec<_> = rdm.header1.meta.triangle_list().collect();
+        for x in ts.chunks(3) {
             let t = Triangle {
-                indices: [x[0].0, x[1].0, x[2].0],
+                indices: [x[0], x[1], x[2]],
             };
             triangles.push(t);
         }
@@ -143,7 +144,7 @@ impl RdModell {
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Triangle {
-    indices: [u16; 3],
+    indices: [u32; 3],
 }
 
 impl<P: AsRef<Path>> From<P> for RdModell {

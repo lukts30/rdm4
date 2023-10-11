@@ -78,10 +78,10 @@ pub struct Meta {
     })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
     #[bw(args_raw = end)]
-    pub triangles: AnnoPtr<RdmTypedContainer<AnnoU16>>,
+    pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
     #[bw(args_raw = {
-        let negative_off = mesh_info.get_direct_and_pointed_data_size() + vertex.get_direct_and_pointed_data_size() + triangles.get_direct_and_pointed_data_size();
+        let negative_off = mesh_info.get_direct_and_pointed_data_size() + vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
         *end -= negative_off;
         end
     })]
@@ -89,7 +89,7 @@ pub struct Meta {
 
     #[br(ignore)]
     #[bw(calc = {
-        let off = vertex.get_direct_and_pointed_data_size() + triangles.get_direct_and_pointed_data_size();
+        let off = vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
         *end += off;
         debug!("reset to end {:?}",&end);
     })]
@@ -98,6 +98,39 @@ pub struct Meta {
     _padding_ff: u32, // 0x_FF_FF_FF_FF or 0x0
     _unknown_box: [u8; 24],
     _padding_zero: [u8; 40],
+}
+
+impl Meta {
+    pub fn triangle_list_len(&self) -> u32 {
+        self.triangle_list.info.count
+    }
+
+    pub fn triangle_list(&self) -> impl Iterator<Item = u32> + '_ {
+        let part_size = self.triangle_list.info.part_size as usize;
+        let convert = match part_size {
+            2 => |chunk: &[AnnoU8]| -> u32 {
+                let chunk: [u8; 2] = [chunk[0].0, chunk[1].0];
+                let value: u32 = u16::from_le_bytes(chunk).into();
+                value
+            },
+            4 => |chunk: &[AnnoU8]| -> u32 {
+                let chunk: [u8; 4] = [chunk[0].0, chunk[1].0, chunk[2].0, chunk[3].0];
+                let value: u32 = u32::from_le_bytes(chunk);
+                value
+            },
+            _ => {
+                panic!("Unexpected indices part_size: {}", part_size)
+            }
+        };
+
+        let result = self
+            .triangle_list
+            .storage
+            .items
+            .chunks_exact(part_size)
+            .map(convert);
+        result
+    }
 }
 
 #[binrw]
@@ -407,7 +440,7 @@ impl RdWriter2 {
             0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
         ];
 
-        rdm.header1.meta.triangles.0 = binrw::FilePtr32 {
+        rdm.header1.meta.triangle_list.0 = binrw::FilePtr32 {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -419,15 +452,20 @@ impl RdWriter2 {
                         let mut p = 0;
                         let mut o = Vec::new();
                         for x in &rdm_in.triangle_indices {
-                            o.push(AnnoU16(x.indices[0]));
-                            o.push(AnnoU16(x.indices[1]));
-                            o.push(AnnoU16(x.indices[2]));
+                            o.push(AnnoU16(u16::try_from(x.indices[0]).unwrap()));
+                            o.push(AnnoU16(u16::try_from(x.indices[1]).unwrap()));
+                            o.push(AnnoU16(u16::try_from(x.indices[2]).unwrap()));
                             p = p.max(x.indices[0]);
                             p = p.max(x.indices[1]);
                             p = p.max(x.indices[2]);
                         }
                         info!("Max Triangle List Index: {}", p);
-                        o
+
+                        o.iter()
+                            .map(|x| x.0)
+                            .flat_map(u16::to_le_bytes)
+                            .map(AnnoU8)
+                            .collect()
                     },
                 },
             }),

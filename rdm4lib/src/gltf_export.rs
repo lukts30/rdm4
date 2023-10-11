@@ -912,7 +912,7 @@ impl RdGltfBuilder {
             let acc = self.put_attr(
                 b.0,
                 json::accessor::Type::Scalar,
-                json::accessor::ComponentType::U16,
+                json::accessor::ComponentType::U32,
                 Some(b.1),
                 None,
                 None,

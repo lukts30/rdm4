@@ -828,17 +828,17 @@ impl<'a> ImportedGltf {
                     let t = if negative_x_and_v0v2v1 {
                         Triangle {
                             indices: [
-                                u16::try_from(start_vertices_count + v0).unwrap(),
-                                u16::try_from(start_vertices_count + v2).unwrap(),
-                                u16::try_from(start_vertices_count + v1).unwrap(),
+                                start_vertices_count + v0,
+                                start_vertices_count + v2,
+                                start_vertices_count + v1,
                             ],
                         }
                     } else {
                         Triangle {
                             indices: [
-                                u16::try_from(start_vertices_count + v0).unwrap(),
-                                u16::try_from(start_vertices_count + v1).unwrap(),
-                                u16::try_from(start_vertices_count + v2).unwrap(),
+                                start_vertices_count + v0,
+                                start_vertices_count + v1,
+                                start_vertices_count + v2,
                             ],
                         }
                     };

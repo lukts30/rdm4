@@ -448,6 +448,12 @@ pub struct AnnoU8(pub u8);
 #[derive(RdmStructSize)]
 pub struct AnnoU16(pub u16);
 
+#[binrw]
+#[bw(import_raw(_dst: &mut u64))]
+#[repr(transparent)]
+#[derive(RdmStructSize)]
+pub struct AnnoU32(pub u16);
+
 pub type RdmTypedT<T> = RdmContainer<true, Fixed2, T>;
 pub type RdmTypedContainer<T> = RdmContainer<true, Dynamic2, T>;
 pub type RdmUntypedContainer = RdmContainer<false, Dynamic2, AnnoU8>;
