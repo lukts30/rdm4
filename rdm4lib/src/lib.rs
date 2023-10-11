@@ -33,7 +33,7 @@ pub mod rdm_data_anim;
 pub mod rdm_data_main;
 
 pub struct RdModell {
-    rdmf: Option<RdmFile>,
+    rdmf: Option<RdmFile<RdmKindMesh>>,
     pub mesh_info: Vec<MeshInfo>,
     pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
@@ -105,7 +105,8 @@ impl RdModell {
 
     fn new(buf: Vec<u8>) -> Self {
         let mut reader = std::io::Cursor::new(&buf);
-        let rdm: RdmFile = reader.read_ne().unwrap();
+
+        let rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
 
         let vvert = VertexFormat2::read_format_via_data(&rdm);
         info!(

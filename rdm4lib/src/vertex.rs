@@ -260,7 +260,7 @@ impl VertexFormat2 {
         }
     }
 
-    pub fn read_format_via_data(rdm: &RdmFile) -> Self {
+    pub fn read_format_via_data(rdm: &RdmFile<RdmKindMesh>) -> Self {
         let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
         let format_identifiers = &meta.format_identifiers;
 

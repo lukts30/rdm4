@@ -1,8 +1,10 @@
 use binrw::BinReaderExt;
 use std::path::Path;
 
-use crate::rdm_data_anim::Frame;
-use crate::rdm_data_anim::RdmAnimFile;
+use crate::{
+    rdm_data_anim::Frame,
+    rdm_data_main::{RdmFile, RdmKindAnim},
+};
 use std::fs::File;
 
 #[derive(Debug, Clone)]
@@ -21,7 +23,7 @@ pub struct RdAnim {
 impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut reader = std::io::Cursor::new(&buffer);
-        let rdmm: RdmAnimFile = reader.read_ne().unwrap();
+        let rdmm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
         let v = &rdmm.header1.meta_anim.anims;
 
         let time_max = rdmm.header1.meta_anim.time_max;

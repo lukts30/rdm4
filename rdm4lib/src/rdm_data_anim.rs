@@ -1,15 +1,15 @@
-#![allow(dead_code, unused_variables)]
-
 use binrw::{binrw, BinWriterExt};
 use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},
-    io::SeekFrom,
     path::PathBuf,
 };
 
-use crate::RDMStructSizeTr;
-use crate::{rdm_anim::RdAnim, rdm_container::*, rdm_data_main::RdmHeader2};
+use crate::{rdm_anim::RdAnim, rdm_container::*};
+use crate::{
+    rdm_data_main::{RdmFile, RdmKindAnim},
+    RDMStructSizeTr,
+};
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
@@ -47,29 +47,6 @@ pub struct Frame {
     pub time: f32,
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
-#[br(assert(meta_main == 0))]
-#[derive(RdmStructSize)]
-pub struct RdmHeader1b {
-    #[bw(args_raw = end)]
-    pub header2: AnnoPtr<RdmTypedT<RdmHeader2>>,
-    meta_main: u32,
-    _unknown1: [u8; 8],
-
-    #[bw(args_raw = end)]
-    pub meta_anim: AnnoPtr<RdmTypedT<AnimMeta>>,
-    _padding: [u8; 28],
-}
-
-#[binrw]
-#[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
-pub struct RdmAnimFile {
-    #[brw(seek_before = SeekFrom::Start(0x00000014))]
-    #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
-    pub header1: RdmTypedT<RdmHeader1b>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,11 +56,13 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn rdm_anim_serialisation_roundtrip() {
+        use crate::rdm_data_main::{RdmFile, RdmKindAnim};
+
         let data = fs::read("rdm/basalt_crusher_others_work01.rdm").unwrap();
         //let data = fs::read("rdm/basalt_crusher_others_idle01.rdm").unwrap();
 
         let mut reader = std::io::Cursor::new(&data);
-        let rdm: RdmAnimFile = reader.read_ne().unwrap();
+        let rdm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
 
         let mut dst = Vec::new();
         let mut writer = std::io::Cursor::new(&mut dst);
@@ -108,7 +87,7 @@ mod tests {
 
 pub struct RdAnimWriter2 {
     name: String,
-    export: RdmAnimFile,
+    export: RdmFile<RdmKindAnim>,
 }
 
 impl RdAnimWriter2 {
@@ -145,7 +124,7 @@ impl RdAnimWriter2 {
 
         let data = include_bytes!("../rdm/basalt_crusher_others_idle01.rdm");
         let mut reader = std::io::Cursor::new(&data);
-        let mut anim: RdmAnimFile = reader.read_ne().unwrap();
+        let mut anim: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
 
         let export_name = br"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max";
 
