@@ -123,6 +123,10 @@ pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
 pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::Joint as u32 }, 4>;
 pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
 
+
+pub(crate) type C4b = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
+pub(crate) type C4c = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
+
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
         Self {
@@ -604,7 +608,7 @@ impl FromStr for TargetVertexFormat {
 pub trait VertexFormatProperties {
     fn has_weights(vertex_format: &TargetVertexFormat) -> bool;
     fn has_joints(vertex_format: &TargetVertexFormat) -> bool;
-    fn has_color(vertex_format: &TargetVertexFormat) -> bool;
+    fn has_colors(vertex_format: &TargetVertexFormat) -> bool;
 
     //this is for later when we want to implementmultiple indices and weights 
     fn weight_count() -> u8; 
@@ -614,15 +618,28 @@ pub trait VertexFormatProperties {
 
 impl VertexFormatProperties for TargetVertexFormat {
     fn has_weights(vertex_format: &TargetVertexFormat) -> bool {
-        false
+        match vertex_format {
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => false,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
+        }
     }
 
     fn has_joints(vertex_format: &TargetVertexFormat) -> bool {
-        false
+        match vertex_format {
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => true,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => false,
+        }
     }
 
-    fn has_color(vertex_format: &TargetVertexFormat) -> bool {
-        false
+    fn has_colors(vertex_format: &TargetVertexFormat) -> bool {
+        match vertex_format {
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
+            _ => false
+        }
     }
 
     fn weight_count() -> u8 {

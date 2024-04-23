@@ -513,7 +513,7 @@ impl<'a> ImportedGltf {
     fn read_mesh(
         &self,
         dst_format: TargetVertexFormat,
-        read_joints: bool,
+        load_skin: bool,
         mut negative_x_and_v0v2v1: bool,
         no_transform: bool,
         overide_mesh_idx: Option<Vec<u32>>,
@@ -624,6 +624,8 @@ impl<'a> ImportedGltf {
                 };
                 let mut tex_iter = p.into_iter().cycle();
 
+                let read_joints = TargetVertexFormat::has_joints(&dst_format);
+
                 //JOINTS
                 let jvecarr: Vec<[u16; 4]> = match reader.read_joints(0) {
                     Some(joints) if read_joints => {
@@ -633,7 +635,7 @@ impl<'a> ImportedGltf {
                     }
                     _ => {
                         warn!("No joints in glTF file !");
-                        if read_joints {
+                        if load_skin {
                             panic!("No joints in glTF file but --skeleton flag was set!")
                         }
                         vec![[0, 0, 0, 0]]
@@ -643,22 +645,40 @@ impl<'a> ImportedGltf {
                 let mut joints_iter: std::iter::Cycle<std::vec::IntoIter<[u16; 4]>> =
                     jvecarr.into_iter().cycle();
 
+                let read_weights = TargetVertexFormat::has_weights(&dst_format);
+
                 //WEIGHTS
                 let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
-                    Some(weight) if read_joints => {
+                    Some(weight) if read_weights => {
                         let j: Vec<[f32; 4]> = weight.into_f32().collect();
                         assert_eq!(count, j.len());
                         j
                     }
                     _ => {
                         warn!("No weights in glTF file !");
-                        if read_joints {
+                        if load_skin {
                             panic!("No joints/weights in glTF file but --skeleton flag was set!")
                         }
                         vec![[0.0, 0.0, 0.0, 0.0]]
                     }
                 };
                 let mut weights_iter = wvecarr.into_iter().cycle();
+
+                //COLORS
+                let read_colors = TargetVertexFormat::has_colors(&dst_format);
+                let color_it = match reader.read_colors(0) { //currently hardcoded 0 for only first color set
+                    Some(r_colors) => {
+                        r_colors.into_rgba_u8().collect()
+                    },
+                    _ => {
+                        if read_colors
+                        {
+                            warn!("Model has no colors! Enable vertex attribute export in Blender! Non existing color values will cause zero values!");
+                        }
+                        vec![[0, 0, 0, 0]]
+                    }
+                };
+                let mut color_iter = color_it.into_iter().cycle();
 
                 info!("dst_format: {:?}", dst_format);
                 //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
@@ -685,14 +705,17 @@ impl<'a> ImportedGltf {
                     let tex = tex_iter.next().unwrap();
 
                     let mut weight: Option<[f32; 4]> = None;
-                    let joint;
-                    let color: [u8; 4];
+                    let mut joint: Option<[u16; 4]> = None;
+                    let mut color: Option<[u8; 4]> = None;
 
                     if TargetVertexFormat::has_weights(&dst_format) {
                         weight = weights_iter.next();
                     }
                     if TargetVertexFormat::has_joints(&dst_format) {
-                        joint = joints_iter.next().unwrap();
+                        joint = joints_iter.next();
+                    }
+                    if TargetVertexFormat::has_colors(&dst_format) {
+                        color = color_iter.next();
                     }
 
                     let tangent_w: f32 = if negative_x_and_v0v2v1 {
@@ -719,6 +742,10 @@ impl<'a> ImportedGltf {
                             verts_vec.put_vertex_data(&g4b(vec_tangent));
                             verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
                             verts_vec.put_vertex_data(&t2h(tex));
+                            match joint {
+                                Some(_j) => verts_vec.put_vertex_data(&i4b(_j)),
+                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires Joints to be present!")
+                            } 
                         }
                         TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
                             verts_vec.put_vertex_data(&p4h(vec_position));
@@ -726,6 +753,15 @@ impl<'a> ImportedGltf {
                             verts_vec.put_vertex_data(&g4b(vec_tangent));
                             verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
                             verts_vec.put_vertex_data(&t2h(tex));
+
+                            match joint {
+                                Some(_j) => verts_vec.put_vertex_data(&i4b(_j)),
+                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires Joints to be present!")
+                            } 
+                            match weight {
+                                Some(_w) => verts_vec.put_vertex_data(&w4b(_w)),
+                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires weights to be present!")
+                            }
                         }
                         TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
                             verts_vec.put_vertex_data(&p3f(vec_position));
@@ -733,7 +769,12 @@ impl<'a> ImportedGltf {
                             verts_vec.put_vertex_data(&g3f(vec_tangent));
                             verts_vec.put_vertex_data(&b3f(vec_tangent, vec_normal, tangent_w));
                             verts_vec.put_vertex_data(&t2f(tex));
-                            verts_vec.put_vertex_data(&n4b(vec_normal));
+
+                            match color {
+                                //intentional use of w4b as we just treat weight as vertexcolor
+                                Some(x) => verts_vec.put_vertex_data(&c4b(x)),
+                                None => error!("No weights left in gltf! P3f_N3f_G3f_B3f_T2f_C4b requires weights to be present!")
+                            } 
                         }
                     }
 

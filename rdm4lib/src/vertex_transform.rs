@@ -187,3 +187,9 @@ pub fn w4b(weight: [f32; 4]) -> W4b {
         ],
     }
 }
+
+pub fn c4b(color: [u8; 4]) -> C4b {
+    C4b {
+        data: color,
+    }
+}
