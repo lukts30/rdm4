@@ -1,6 +1,6 @@
 [package]
 name = "rdm4-bin"
-version = "0.10.0-cloth-taub
+version = "0.10.0-cloth-taub"
 publish = false
 authors = ["lukts30 <llukas21307@gmail.com>"]
 edition = "2021"
