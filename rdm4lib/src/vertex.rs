@@ -57,7 +57,7 @@ impl UniqueIdentifier {
             0x3 => UniqueIdentifier::Bitangent,
             0x4 => UniqueIdentifier::Texcoord,
             0x5 => UniqueIdentifier::Color,
-            0x7 => UniqueIdentifier::I4b,
+            0x7 => UniqueIdentifier::Joint,
             0x6 => UniqueIdentifier::Weight,
             _ => UniqueIdentifier::Invalid,
         }
@@ -120,7 +120,7 @@ pub(crate) type B4b = AnnoData<u8, { UniqueIdentifier::Bitangent as u32 }, 4>;
 pub(crate) type T2f = AnnoData<f32, { UniqueIdentifier::Texcoord as u32 }, 2>;
 pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
 
-pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::I4b as u32 }, 4>;
+pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::Joint as u32 }, 4>;
 pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
 
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
@@ -498,7 +498,7 @@ impl VertexIdentifier {
 
     pub const fn i4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::I4b,
+            uniq: UniqueIdentifier::Joint,
             unit_size: IdentifierSize::U32,
             interpretation: 0x0,
             count: 1,
