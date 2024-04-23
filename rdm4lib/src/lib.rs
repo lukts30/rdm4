@@ -23,6 +23,7 @@ pub mod gltf_reader_vertex;
 pub mod rdm_anim;
 pub mod rdm_material;
 pub mod vertex;
+pub mod vertex_transform;
 use crate::rdm_anim::RdAnim;
 use rdm_material::RdMaterial;
 

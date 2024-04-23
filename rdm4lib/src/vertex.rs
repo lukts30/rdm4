@@ -1,4 +1,5 @@
 use bytes::{Buf, Bytes};
+use gltf::animation::Target;
 use rdm_derive::RdmStructSize;
 use std::{fmt, str::FromStr};
 
@@ -41,9 +42,9 @@ pub enum UniqueIdentifier {
     GTangent = 0x2,
     Bitangent = 0x3,
     Texcoord = 0x4,
-    C4c = 0x5,
-    I4b = 0x7,
-    W4b = 0x6,
+    Color = 0x5,
+    Joint = 0x7,
+    Weight = 0x6,
     Invalid = 0xFF,
 }
 
@@ -55,9 +56,9 @@ impl UniqueIdentifier {
             0x2 => UniqueIdentifier::GTangent,
             0x3 => UniqueIdentifier::Bitangent,
             0x4 => UniqueIdentifier::Texcoord,
-            0x5 => UniqueIdentifier::C4c,
+            0x5 => UniqueIdentifier::Color,
             0x7 => UniqueIdentifier::I4b,
-            0x6 => UniqueIdentifier::W4b,
+            0x6 => UniqueIdentifier::Weight,
             _ => UniqueIdentifier::Invalid,
         }
     }
@@ -80,18 +81,18 @@ impl From<u32> for UniqueIdentifier {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct AnnoData<T, const I: u32, const N: usize> {
-    pub data: [T; N],
+pub struct AnnoData<DataType, const IDENTIFIER: u32, const DATA_SIZE: usize> {
+    pub data: [DataType; DATA_SIZE],
 }
 
-impl<T: Default + Copy, const I: u32, const N: usize> AnnoData<T, I, N> {
-    const TYPE: UniqueIdentifier = UniqueIdentifier::from(I);
+impl<DataType: Default + Copy, const IDENTIFIER: u32, const DATA_SIZE: usize> AnnoData<DataType, IDENTIFIER, DATA_SIZE> {
+    const TYPE: UniqueIdentifier = UniqueIdentifier::from(IDENTIFIER);
 
     #[inline]
     /// Will call f N times to fill the struct's data array.
-    fn from_fn_generic<F>(mut f: F) -> AnnoData<T, I, N>
+    fn from_fn_generic<F>(mut f: F) -> AnnoData<DataType, IDENTIFIER, DATA_SIZE>
     where
-        F: FnMut(usize) -> T,
+        F: FnMut(usize) -> DataType,
     {
         let mut data = Self::default();
         for (i, dst) in data.data.iter_mut().enumerate() {
@@ -104,17 +105,23 @@ impl<T: Default + Copy, const I: u32, const N: usize> AnnoData<T, I, N> {
 // rust const generics enum are unstable
 pub(crate) type P3f = AnnoData<f32, { UniqueIdentifier::Position as u32 }, 3>;
 pub(crate) type P4h = AnnoData<f16, { UniqueIdentifier::Position as u32 }, 4>;
+
 pub(crate) type N3f = AnnoData<f32, { UniqueIdentifier::Normal as u32 }, 3>;
 pub(crate) type N4b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 4>;
+#[allow(dead_code)]
+pub(crate) type N3b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 3>; 
+
 pub(crate) type G3f = AnnoData<f32, { UniqueIdentifier::GTangent as u32 }, 3>;
 pub(crate) type G4b = AnnoData<u8, { UniqueIdentifier::GTangent as u32 }, 4>;
 #[allow(dead_code)]
 pub(crate) type B3f = AnnoData<f32, { UniqueIdentifier::Bitangent as u32 }, 3>;
 pub(crate) type B4b = AnnoData<u8, { UniqueIdentifier::Bitangent as u32 }, 4>;
+
 pub(crate) type T2f = AnnoData<f32, { UniqueIdentifier::Texcoord as u32 }, 2>;
 pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
+
 pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::I4b as u32 }, 4>;
-pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::W4b as u32 }, 4>;
+pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
 
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
@@ -206,7 +213,7 @@ impl VertexFormat2 {
 
     // TODO: remove for_each?
     pub fn set_weight_sum(&mut self) {
-        let n = self.find_component_offsets(UniqueIdentifier::W4b).count();
+        let n = self.find_component_offsets(UniqueIdentifier::Weight).count();
         if n == 0 {
             self.weight_sum = Some(vec![255; self.len() as usize]);
         } else {
@@ -408,6 +415,15 @@ impl VertexIdentifier {
         }
     }
 
+    pub const fn p3f() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::Position,
+            unit_size: IdentifierSize::F32,
+            interpretation: 0,
+            count: 3
+        }
+    }
+
     pub const fn n4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Normal,
@@ -417,12 +433,30 @@ impl VertexIdentifier {
         }
     }
 
+    pub const fn n3f() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::Normal,
+            unit_size: IdentifierSize::F32,
+            interpretation: 0x0,
+            count: 3
+        }
+    }
+
     pub const fn g4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::GTangent,
             unit_size: IdentifierSize::U32,
             interpretation: 0x6,
             count: 1,
+        }
+    }
+    
+    pub const fn g3f() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::GTangent,
+            unit_size: IdentifierSize::F32,
+            interpretation: 0x0,
+            count: 3
         }
     }
 
@@ -435,12 +469,30 @@ impl VertexIdentifier {
         }
     }
 
+    pub const fn b3f() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::Bitangent,
+            unit_size: IdentifierSize::U32,
+            interpretation: 0x0,
+            count: 3
+        }
+    }
+
     pub const fn t2h() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Texcoord,
             unit_size: IdentifierSize::U16,
             interpretation: 0x0,
             count: 2,
+        }
+    }
+
+    pub const fn t2f() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::Texcoord, 
+            unit_size: IdentifierSize::F32,
+            interpretation: 0x0, 
+            count: 2
         }
     }
 
@@ -455,9 +507,18 @@ impl VertexIdentifier {
 
     pub const fn w4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::W4b,
+            uniq: UniqueIdentifier::Weight,
             unit_size: IdentifierSize::U32,
             interpretation: 0x2,
+            count: 1,
+        }
+    }
+
+    pub const fn c4b() -> Self {
+        VertexIdentifier {
+            uniq: UniqueIdentifier::Color,
+            unit_size: IdentifierSize::U32,
+            interpretation: 0x4,
             count: 1,
         }
     }
@@ -496,12 +557,35 @@ pub const fn p4h_n4b_g4b_b4b_t2h() -> [VertexIdentifier; 5] {
     ]
 }
 
+pub const fn p3f_n3f_g3f_b3f_t2f_c4b() -> [VertexIdentifier; 6] {
+    [
+        VertexIdentifier::p3f(),
+        VertexIdentifier::n3f(),
+        VertexIdentifier::g3f(),
+        VertexIdentifier::b3f(),
+        VertexIdentifier::t2f(),
+        VertexIdentifier::c4b(),
+    ]
+}
+
+/* 
+pub const fn p4h_t2h_c4c() -> [VertexIdentifier; 3] 
+{
+    [
+        VertexIdentifier::p4h(),
+        VertexIdentifier::t2h(),
+        VertexIdentifier::c4b(),
+    ]
+}
+*/
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum TargetVertexFormat {
     P4h_N4b_G4b_B4b_T2h,
     P4h_N4b_G4b_B4b_T2h_I4b,
     P4h_N4b_G4b_B4b_T2h_I4b_W4b,
+    P3f_N3f_G3f_B3f_T2f_C4b
 }
 impl FromStr for TargetVertexFormat {
     type Err = String;
@@ -511,8 +595,46 @@ impl FromStr for TargetVertexFormat {
             "P4h_N4b_G4b_B4b_T2h" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
             "P4h_N4b_G4b_B4b_T2h_I4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
             "P4h_N4b_G4b_B4b_T2h_I4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b),
+            "P3f_N3f_G3f_B3f_T2f_C4b" => Ok(TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b),
             _ => Err(format!("Invalid value for VertexFormat: {}", input)),
         }
+    }
+}
+
+pub trait VertexFormatProperties {
+    fn has_weights(vertex_format: &TargetVertexFormat) -> bool;
+    fn has_joints(vertex_format: &TargetVertexFormat) -> bool;
+    fn has_color(vertex_format: &TargetVertexFormat) -> bool;
+
+    //this is for later when we want to implementmultiple indices and weights 
+    fn weight_count() -> u8; 
+    fn joint_count() -> u8;
+    fn color_count() -> u8;  
+}
+
+impl VertexFormatProperties for TargetVertexFormat {
+    fn has_weights(vertex_format: &TargetVertexFormat) -> bool {
+        false
+    }
+
+    fn has_joints(vertex_format: &TargetVertexFormat) -> bool {
+        false
+    }
+
+    fn has_color(vertex_format: &TargetVertexFormat) -> bool {
+        false
+    }
+
+    fn weight_count() -> u8 {
+        1
+    }
+
+    fn joint_count() -> u8 {
+        1
+    }
+
+    fn color_count() -> u8 {
+        1
     }
 }
 
