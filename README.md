@@ -39,7 +39,7 @@ OPTIONS:
 GLTF TO RDM OPTIONS:
     -g, --gltf <VertexFormat>
             VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b |
-            P4h_N4b_G4b_B4b_T2h_I4b_W4b
+            P4h_N4b_G4b_B4b_T2h_I4b_W4b | P3f_N3f_G3f_B3f_T2f_C4b
 
         --gltf-mesh-index <GLTF_MESH_INDEX>
             glTF mesh index to convert to rdm [default: 0]
@@ -84,11 +84,8 @@ Can be shortened to:
 $ ./rdm4-bin.exe -i rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship_tycoons_idle01.rdm
 ```
 
-
 ## Example usage glTF 2.0 🠚 rdm
-**Flag --gltf or the alias -g must be used !**
-- *Possible values are: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b*
-- If you are not converting an animated glTF use `-g=P4h_N4b_G4b_B4b_T2h`!
+**Flag --gltf or the alias -g must be used! See the section on vertex formats below**
 - **Note**: the example given here uses `-g=P4h_N4b_G4b_B4b_T2h_I4b_W4b` and `-sa` since it converts an animated glTF to rdm with anim files.
 <details>
 <summary>Click to expand</summary>
@@ -369,6 +366,20 @@ $ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i untitled.gltf -sa
 ```
 
 </details>
+
+## Setting Vertex Formats for glTF 2.0 🠚 rdm
+
+**-g sets your vertex format
+
+### `P4h_N4b_G4b_B4b_T2h`: Vertex Format for standard meshes
+### `P4h_N4b_G4b_B4b_T2h_I4b`: Vertex Format with unweighted Joints
+- This needs at least Joint Data exported to the gltf.
+### `P4h_N4b_G4b_B4b_T2h_I4b_W4b`: Vertex Format with weighted Joints, i.e. Portraits
+- This needs Joint and Weight Data exported to the gltf.
+### `P3f_N3f_G3f_B3f_T2f_C4b`: Cloth
+- Needs vertex colors in the export. If you don't have an idea how to create them in blender, refer to [this video](https://www.youtube.com/watch?v=8mNk6r_bwxI)
+
+> TLDR, if you just want a standard model, use `-g=P4h_N4b_G4b_B4b_T2h`!
 
 ---
 
