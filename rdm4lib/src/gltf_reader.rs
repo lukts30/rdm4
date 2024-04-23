@@ -1,6 +1,7 @@
 use crate::rdm_data_anim::Frame;
 use crate::rdm_data_main::MeshInfo;
 use crate::vertex::*;
+use crate::vertex_transform::*;
 use crate::RdModell;
 use crate::{gltf_reader_vertex::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
@@ -560,6 +561,9 @@ impl<'a> ImportedGltf {
                 TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
                     crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
                 }
+                TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
+                    crate::vertex::p3f_n3f_g3f_b3f_t2f_c4b().to_vec()
+                }
             };
             let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
@@ -577,8 +581,13 @@ impl<'a> ImportedGltf {
                 info!("- Primitive #{}", primitive.index());
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
+                /* -------- # READ STUFF FROM GLTF # ------------ */
+
+                //POSITIONS
                 let mut position_iter = reader.read_positions().unwrap();
                 let mut count = position_iter.len();
+
+                //NORMALS
                 let normal_it = match reader.read_normals() {
                     Some(iter) => iter.collect(),
                     None => {
@@ -588,6 +597,7 @@ impl<'a> ImportedGltf {
                 };
                 let mut normal_iter = normal_it.into_iter().cycle();
 
+                //TANGENTS
                 let tangent_it = match reader.read_tangents() {
                     Some(iter) => iter.collect(),
                     None => {
@@ -597,6 +607,7 @@ impl<'a> ImportedGltf {
                 };
                 let mut tangent_iter = tangent_it.into_iter().cycle();
 
+                //TEXTURES
                 let tex_iter1 = reader.read_tex_coords(0);
                 let p: Vec<[f32; 2]> = match tex_iter1 {
                     Some(tex) => {
@@ -613,6 +624,7 @@ impl<'a> ImportedGltf {
                 };
                 let mut tex_iter = p.into_iter().cycle();
 
+                //JOINTS
                 let jvecarr: Vec<[u16; 4]> = match reader.read_joints(0) {
                     Some(joints) if read_joints => {
                         let j: Vec<[u16; 4]> = joints.into_u16().collect();
@@ -628,8 +640,10 @@ impl<'a> ImportedGltf {
                     }
                 };
 
-                let mut joints_iter = jvecarr.into_iter().cycle();
+                let mut joints_iter: std::iter::Cycle<std::vec::IntoIter<[u16; 4]>> =
+                    jvecarr.into_iter().cycle();
 
+                //WEIGHTS
                 let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
                     Some(weight) if read_joints => {
                         let j: Vec<[f32; 4]> = weight.into_f32().collect();
@@ -644,7 +658,6 @@ impl<'a> ImportedGltf {
                         vec![[0.0, 0.0, 0.0, 0.0]]
                     }
                 };
-
                 let mut weights_iter = wvecarr.into_iter().cycle();
 
                 info!("dst_format: {:?}", dst_format);
@@ -655,135 +668,73 @@ impl<'a> ImportedGltf {
 
                 let pre_vertices_added = verts_vec.len();
 
+                // ------------- Transform Vertex Data to RDM and write to vertex buffer ----------- //
+
+                //build context
+                let mut context = TransformContext {
+                    base: base,
+                    transpose_inv_transform_mat3: transpose_inv_transform_mat3,
+                };
+
                 while count > 0 {
                     debug!("count {}", count);
-                    let vertex_position = position_iter.next().unwrap();
-                    let vertex =
-                        Point3::new(vertex_position[0], vertex_position[1], vertex_position[2]);
-                    let transformed_vertex = base.transform_point(&vertex);
 
-                    let p4h = P4h {
-                        data: [
-                            f16::from_f32(1.0 * transformed_vertex[0]),
-                            f16::from_f32(1.0 * transformed_vertex[1]),
-                            f16::from_f32(1.0 * transformed_vertex[2]),
-                            f16::from_f32(0.0),
-                        ],
-                    };
-
-                    let normals = normal_iter.next().unwrap();
-                    let normv: Vector3<f32> = Vector3::new(normals[0], normals[1], normals[2]);
-                    let transformed_normals: Vector3<f32> = transpose_inv_transform_mat3 * normv;
-
-                    let mut nx = transformed_normals[0];
-                    let mut ny = transformed_normals[1];
-                    let mut nz = transformed_normals[2];
-                    //dbg!(((nx * nx) + (ny * ny) + (nz * nz)).sqrt());
-
-                    let len = ((nx * nx) + (ny * ny) + (nz * nz)).sqrt();
-
-                    nx /= len;
-                    ny /= len;
-                    nz /= len;
-
-                    let n4b = N4b {
-                        data: [
-                            (((nx + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((ny + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((nz + 1.0) / 2.0) * 255.0).round() as u8,
-                            0,
-                        ],
-                    };
-
-                    let tangents = tangent_iter.next().unwrap();
-                    let tangv = Vector3::new(tangents[0], tangents[1], tangents[2]);
-                    let transformed_tangents = transpose_inv_transform_mat3 * tangv;
-
-                    let mut tx = transformed_tangents[0];
-                    let mut ty = transformed_tangents[1];
-                    let mut tz = transformed_tangents[2];
-
-                    //let tlen = -1.0f32*((tx * tx) + (ty * ty) + (tz * tz)).sqrt();
-                    //dbg!(((tx * tx) + (ty * ty) + (tz * tz)).sqrt());
-                    let tlen = -1.0;
-
-                    tx /= tlen;
-                    ty /= tlen;
-                    tz /= tlen;
-
-                    let tw = if negative_x_and_v0v2v1 {
-                        tangents[3]
-                    } else {
-                        -tangents[3]
-                    };
-                    //assert_relative_eq!(tw.abs(), 1.0);
-
-                    let g4b = G4b {
-                        data: [
-                            (((tx + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((ty + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((tz + 1.0) / 2.0) * 255.0).round() as u8,
-                            0,
-                        ],
-                    };
-
-                    let normal = Vector3::new(nx, ny, nz);
-                    let tangent = Vector3::new(tx, ty, tz);
-                    debug!("normal.dot(&tangent): {}", normal.dot(&tangent));
-
-                    let b: Matrix3x1<f32> = (normal.cross(&tangent)) * (tw);
-
-                    let b4b = B4b {
-                        data: [
-                            (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
-                            (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
-                            0,
-                        ],
-                    };
-
-                    // tex
-
+                    let position = position_iter.next().unwrap();
+                    let normal = normal_iter.next().unwrap();
+                    let tangent = tangent_iter.next().unwrap();
                     let tex = tex_iter.next().unwrap();
-                    //let tex = [0.0, 0.0];
-                    let t2h = T2h {
-                        data: [f16::from_f32(tex[0]), f16::from_f32(tex[1])],
-                    };
 
-                    verts_vec.put_vertex_data(&p4h);
-                    verts_vec.put_vertex_data(&n4b);
-                    verts_vec.put_vertex_data(&g4b);
-                    verts_vec.put_vertex_data(&b4b);
-                    verts_vec.put_vertex_data(&t2h);
-                    // TODO clean up checks
-                    if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b
-                        || dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b
-                    {
-                        // joints idx
-                        let joint = joints_iter.next().unwrap();
+                    let mut weight: Option<[f32; 4]> = None;
+                    let joint;
+                    let color: [u8; 4];
 
-                        let i4b = I4b {
-                            data: [
-                                joint[0] as u8,
-                                joint[1] as u8,
-                                joint[2] as u8,
-                                joint[3] as u8,
-                            ],
-                        };
-                        verts_vec.put_vertex_data(&i4b);
+                    if TargetVertexFormat::has_weights(&dst_format) {
+                        weight = weights_iter.next();
+                    }
+                    if TargetVertexFormat::has_joints(&dst_format) {
+                        joint = joints_iter.next().unwrap();
                     }
 
-                    if dst_format == TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b {
-                        let weight = weights_iter.next().unwrap();
-                        let w4b = W4b {
-                            data: [
-                                (weight[0] * 255.0).round() as u8,
-                                (weight[1] * 255.0).round() as u8,
-                                (weight[2] * 255.0).round() as u8,
-                                (weight[3] * 255.0).round() as u8,
-                            ],
-                        };
-                        verts_vec.put_vertex_data(&w4b);
+                    let tangent_w: f32 = if negative_x_and_v0v2v1 {
+                        tangent[3]
+                    } else {
+                        -tangent[3]
+                    };
+
+                    let vec_normal = context.transform_normal(normal);
+                    let vec_tangent = context.transform_tangent(tangent);
+                    let vec_position = context.transform_position(position);
+
+                    match dst_format {
+                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
+                            verts_vec.put_vertex_data(&p4h(vec_position));
+                            verts_vec.put_vertex_data(&n4b(vec_normal));
+                            verts_vec.put_vertex_data(&g4b(vec_tangent));
+                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
+                            verts_vec.put_vertex_data(&t2h(tex));
+                        }
+                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
+                            verts_vec.put_vertex_data(&p4h(vec_position));
+                            verts_vec.put_vertex_data(&n4b(vec_normal));
+                            verts_vec.put_vertex_data(&g4b(vec_tangent));
+                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
+                            verts_vec.put_vertex_data(&t2h(tex));
+                        }
+                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
+                            verts_vec.put_vertex_data(&p4h(vec_position));
+                            verts_vec.put_vertex_data(&n4b(vec_normal));
+                            verts_vec.put_vertex_data(&g4b(vec_tangent));
+                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
+                            verts_vec.put_vertex_data(&t2h(tex));
+                        }
+                        TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
+                            verts_vec.put_vertex_data(&p3f(vec_position));
+                            verts_vec.put_vertex_data(&n3f(vec_normal));
+                            verts_vec.put_vertex_data(&g3f(vec_tangent));
+                            verts_vec.put_vertex_data(&b3f(vec_tangent, vec_normal, tangent_w));
+                            verts_vec.put_vertex_data(&t2f(tex));
+                            verts_vec.put_vertex_data(&n4b(vec_normal));
+                        }
                     }
 
                     count -= 1;
@@ -814,6 +765,8 @@ impl<'a> ImportedGltf {
                 }
 
                 //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
+
+                //---------------- # Write Face Data # ------------------//
 
                 let mut triangle_iter = reader.read_indices().unwrap().into_u32();
                 let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
