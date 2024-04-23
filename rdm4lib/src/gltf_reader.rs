@@ -564,6 +564,9 @@ impl<'a> ImportedGltf {
                 TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
                     crate::vertex::p3f_n3f_g3f_b3f_t2f_c4b().to_vec()
                 }
+                TargetVertexFormat::P4h_T2h_C4b => {                    
+                    crate::vertex::p4h_t2h_c4c().to_vec()
+                },
             };
             let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
@@ -773,9 +776,18 @@ impl<'a> ImportedGltf {
                             match color {
                                 //intentional use of w4b as we just treat weight as vertexcolor
                                 Some(x) => verts_vec.put_vertex_data(&c4b(x)),
-                                None => error!("No weights left in gltf! P3f_N3f_G3f_B3f_T2f_C4b requires weights to be present!")
+                                None => error!("No Colors left in gltf! P3f_N3f_G3f_B3f_T2f_C4b requires weights to be present!")
                             } 
                         }
+                        TargetVertexFormat::P4h_T2h_C4b => {                            
+                            verts_vec.put_vertex_data(&p4h(vec_position));
+                            verts_vec.put_vertex_data(&t2h(tex));
+                            match color {
+                                //intentional use of w4b as we just treat weight as vertexcolor
+                                Some(x) => verts_vec.put_vertex_data(&c4c(x)),
+                                None => error!("No Colors left in gltf! P4h_T2h_C4b requires weights to be present!")
+                            } 
+                        },
                     }
 
                     count -= 1;

@@ -14,6 +14,14 @@ impl<const I: u32, const N: usize> PutVertex<u8, I, N> for BytesMut {
     }
 }
 
+impl<const I: u32, const N: usize> PutVertex<i8, I, N> for BytesMut {
+    fn put_vertex_data(&mut self, input: &AnnoData<i8, I, N>) {
+        for e in input.data.iter() {
+            self.put_i8(*e);
+        }
+    }
+}
+
 impl<const I: u32, const N: usize> PutVertex<f16, I, N> for BytesMut {
     fn put_vertex_data(&mut self, input: &AnnoData<f16, I, N>) {
         for e in input.data.iter() {

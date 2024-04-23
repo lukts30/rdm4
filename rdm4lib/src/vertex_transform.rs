@@ -193,3 +193,14 @@ pub fn c4b(color: [u8; 4]) -> C4b {
         data: color,
     }
 }
+
+pub fn c4c(color: [u8; 4]) -> C4c {
+    C4c {
+        data: [
+            (color[0] as i16 - 128) as i8,
+            (color[1] as i16 - 128) as i8,
+            (color[2] as i16 - 128) as i8,
+            (color[3] as i16 - 128) as i8,
+        ],
+    }
+}

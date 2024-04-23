@@ -125,7 +125,7 @@ pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
 
 
 pub(crate) type C4b = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
-pub(crate) type C4c = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
+pub(crate) type C4c = AnnoData<i8, { UniqueIdentifier::Color as u32 }, 4>;
 
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
@@ -572,16 +572,13 @@ pub const fn p3f_n3f_g3f_b3f_t2f_c4b() -> [VertexIdentifier; 6] {
     ]
 }
 
-/* 
-pub const fn p4h_t2h_c4c() -> [VertexIdentifier; 3] 
-{
+pub const fn p4h_t2h_c4c() -> [VertexIdentifier; 3] {
     [
         VertexIdentifier::p4h(),
         VertexIdentifier::t2h(),
         VertexIdentifier::c4b(),
     ]
 }
-*/
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(non_camel_case_types)]
@@ -589,7 +586,8 @@ pub enum TargetVertexFormat {
     P4h_N4b_G4b_B4b_T2h,
     P4h_N4b_G4b_B4b_T2h_I4b,
     P4h_N4b_G4b_B4b_T2h_I4b_W4b,
-    P3f_N3f_G3f_B3f_T2f_C4b
+    P3f_N3f_G3f_B3f_T2f_C4b,
+    P4h_T2h_C4b
 }
 impl FromStr for TargetVertexFormat {
     type Err = String;
@@ -600,6 +598,7 @@ impl FromStr for TargetVertexFormat {
             "P4h_N4b_G4b_B4b_T2h_I4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
             "P4h_N4b_G4b_B4b_T2h_I4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b),
             "P3f_N3f_G3f_B3f_T2f_C4b" => Ok(TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b),
+            "P4h_T2h_C4b" => Ok(TargetVertexFormat::P4h_T2h_C4b),
             _ => Err(format!("Invalid value for VertexFormat: {}", input)),
         }
     }
@@ -623,6 +622,7 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => false,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
+            TargetVertexFormat::P4h_T2h_C4b => false,
         }
     }
 
@@ -631,13 +631,15 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => true,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => false,
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => 
+            false,TargetVertexFormat::P4h_T2h_C4b => false,
         }
     }
 
     fn has_colors(vertex_format: &TargetVertexFormat) -> bool {
         match vertex_format {
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
+            TargetVertexFormat::P4h_T2h_C4b => true,
             _ => false
         }
     }
