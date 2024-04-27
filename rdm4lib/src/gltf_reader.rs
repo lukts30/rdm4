@@ -6,6 +6,7 @@ use crate::RdModell;
 use crate::{gltf_reader_vertex::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 
+use gltf::accessor::Iter;
 use gltf::animation::Channel;
 use gltf::Node;
 use nalgebra::*;
@@ -567,6 +568,9 @@ impl<'a> ImportedGltf {
                 TargetVertexFormat::P4h_T2h_C4b => {                    
                     crate::vertex::p4h_t2h_c4c().to_vec()
                 },
+                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => {
+                    crate::vertex::p4h_n4b_g4b_b4b_t2h_c4b_c4b().to_vec()
+                }
             };
             let vertsize = ident.iter().map(|x| x.get_size()).sum();
 
@@ -669,19 +673,25 @@ impl<'a> ImportedGltf {
 
                 //COLORS
                 let read_colors = TargetVertexFormat::has_colors(&dst_format);
-                let color_it = match reader.read_colors(0) { //currently hardcoded 0 for only first color set
-                    Some(r_colors) => {
-                        r_colors.into_rgba_u8().collect()
-                    },
-                    _ => {
-                        if read_colors
-                        {
-                            warn!("Model has no colors! Enable vertex attribute export in Blender! Non existing color values will cause zero values!");
+                let color_count: u32 = TargetVertexFormat::color_count(&dst_format);
+                let mut color_iterators = Vec::new();
+
+                for color_index in 0..color_count {
+                    let color_it = match reader.read_colors(color_index) { //currently hardcoded 0 for only first color set
+                        Some(r_colors) => {
+                            r_colors.into_rgba_u8().collect()
+                        },
+                        _ => {
+                            if read_colors
+                            {
+                                warn!("Model has no colors in Channel {}! Enable vertex attribute export in Blender! Non existing color values will cause zero values!", color_index);
+                            }
+                            vec![[255,255,255,0]]
                         }
-                        vec![[0, 0, 0, 0]]
-                    }
-                };
-                let mut color_iter = color_it.into_iter().cycle();
+                    };
+                color_iterators.push(color_it.into_iter().cycle());
+                }
+
 
                 info!("dst_format: {:?}", dst_format);
                 //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
@@ -709,7 +719,7 @@ impl<'a> ImportedGltf {
 
                     let mut weight: Option<[f32; 4]> = None;
                     let mut joint: Option<[u16; 4]> = None;
-                    let mut color: Option<[u8; 4]> = None;
+                    let mut colors: Vec<[u8; 4]> = Vec::new();
 
                     if TargetVertexFormat::has_weights(&dst_format) {
                         weight = weights_iter.next();
@@ -718,7 +728,7 @@ impl<'a> ImportedGltf {
                         joint = joints_iter.next();
                     }
                     if TargetVertexFormat::has_colors(&dst_format) {
-                        color = color_iter.next();
+                        colors = color_iterators.iter_mut().map(|color_it| color_it.next().unwrap()).collect();
                     }
 
                     let tangent_w: f32 = if negative_x_and_v0v2v1 {
@@ -772,21 +782,21 @@ impl<'a> ImportedGltf {
                             verts_vec.put_vertex_data(&g3f(vec_tangent));
                             verts_vec.put_vertex_data(&b3f(vec_tangent, vec_normal, tangent_w));
                             verts_vec.put_vertex_data(&t2f(tex));
-
-                            match color {
-                                //intentional use of w4b as we just treat weight as vertexcolor
-                                Some(x) => verts_vec.put_vertex_data(&c4b(x)),
-                                None => error!("No Colors left in gltf! P3f_N3f_G3f_B3f_T2f_C4b requires weights to be present!")
-                            } 
+                            verts_vec.put_vertex_data(&c4b(colors[0]));
                         }
                         TargetVertexFormat::P4h_T2h_C4b => {                            
                             verts_vec.put_vertex_data(&p4h(vec_position));
                             verts_vec.put_vertex_data(&t2h(tex));
-                            match color {
-                                //intentional use of w4b as we just treat weight as vertexcolor
-                                Some(x) => verts_vec.put_vertex_data(&c4c(x)),
-                                None => error!("No Colors left in gltf! P4h_T2h_C4b requires weights to be present!")
-                            } 
+                            verts_vec.put_vertex_data(&c4c(colors[0]));
+                        },
+                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => {
+                            verts_vec.put_vertex_data(&p4h(vec_position));
+                            verts_vec.put_vertex_data(&n4b(vec_normal));
+                            verts_vec.put_vertex_data(&g4b(vec_tangent));
+                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
+                            verts_vec.put_vertex_data(&t2h(tex));
+                            verts_vec.put_vertex_data(&c4b(colors[0]));
+                            verts_vec.put_vertex_data(&c4b(colors[1]));
                         },
                     }
 
