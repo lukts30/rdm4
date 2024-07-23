@@ -85,7 +85,9 @@ pub struct AnnoData<DataType, const IDENTIFIER: u32, const DATA_SIZE: usize> {
     pub data: [DataType; DATA_SIZE],
 }
 
-impl<DataType: Default + Copy, const IDENTIFIER: u32, const DATA_SIZE: usize> AnnoData<DataType, IDENTIFIER, DATA_SIZE> {
+impl<DataType: Default + Copy, const IDENTIFIER: u32, const DATA_SIZE: usize>
+    AnnoData<DataType, IDENTIFIER, DATA_SIZE>
+{
     const TYPE: UniqueIdentifier = UniqueIdentifier::from(IDENTIFIER);
 
     #[inline]
@@ -109,7 +111,7 @@ pub(crate) type P4h = AnnoData<f16, { UniqueIdentifier::Position as u32 }, 4>;
 pub(crate) type N3f = AnnoData<f32, { UniqueIdentifier::Normal as u32 }, 3>;
 pub(crate) type N4b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 4>;
 #[allow(dead_code)]
-pub(crate) type N3b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 3>; 
+pub(crate) type N3b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 3>;
 
 pub(crate) type G3f = AnnoData<f32, { UniqueIdentifier::GTangent as u32 }, 3>;
 pub(crate) type G4b = AnnoData<u8, { UniqueIdentifier::GTangent as u32 }, 4>;
@@ -122,7 +124,6 @@ pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
 
 pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::IJoint as u32 }, 4>;
 pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
-
 
 pub(crate) type C4b = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
 pub(crate) type C4c = AnnoData<i8, { UniqueIdentifier::Color as u32 }, 4>;
@@ -217,7 +218,9 @@ impl VertexFormat2 {
 
     // TODO: remove for_each?
     pub fn set_weight_sum(&mut self) {
-        let n = self.find_component_offsets(UniqueIdentifier::Weight).count();
+        let n = self
+            .find_component_offsets(UniqueIdentifier::Weight)
+            .count();
         if n == 0 {
             self.weight_sum = Some(vec![255; self.len() as usize]);
         } else {
@@ -424,7 +427,7 @@ impl VertexIdentifier {
             uniq: UniqueIdentifier::Position,
             unit_size: IdentifierSize::F32,
             interpretation: 0,
-            count: 3
+            count: 3,
         }
     }
 
@@ -442,7 +445,7 @@ impl VertexIdentifier {
             uniq: UniqueIdentifier::Normal,
             unit_size: IdentifierSize::F32,
             interpretation: 0x0,
-            count: 3
+            count: 3,
         }
     }
 
@@ -454,13 +457,13 @@ impl VertexIdentifier {
             count: 1,
         }
     }
-    
+
     pub const fn g3f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::GTangent,
             unit_size: IdentifierSize::F32,
             interpretation: 0x0,
-            count: 3
+            count: 3,
         }
     }
 
@@ -478,7 +481,7 @@ impl VertexIdentifier {
             uniq: UniqueIdentifier::Bitangent,
             unit_size: IdentifierSize::U32,
             interpretation: 0x0,
-            count: 3
+            count: 3,
         }
     }
 
@@ -493,10 +496,10 @@ impl VertexIdentifier {
 
     pub const fn t2f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Texcoord, 
+            uniq: UniqueIdentifier::Texcoord,
             unit_size: IdentifierSize::F32,
-            interpretation: 0x0, 
-            count: 2
+            interpretation: 0x0,
+            count: 2,
         }
     }
 
@@ -526,7 +529,7 @@ impl VertexIdentifier {
             count: 1,
         }
     }
-    
+
     pub const fn c4b_interpret2() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Color,
@@ -586,10 +589,9 @@ pub const fn p4h_n4b_g4b_b4b_t2h_c4b_c4b() -> [VertexIdentifier; 7] {
         VertexIdentifier::b4b(),
         VertexIdentifier::t2h(),
         VertexIdentifier::c4b_interpret2(),
-        VertexIdentifier::c4b_interpret6()
+        VertexIdentifier::c4b_interpret6(),
     ]
 }
-
 
 pub const fn p3f_n3f_g3f_b3f_t2f_c4b() -> [VertexIdentifier; 6] {
     [
@@ -618,7 +620,7 @@ pub enum TargetVertexFormat {
     P4h_N4b_G4b_B4b_T2h_I4b_W4b,
     P3f_N3f_G3f_B3f_T2f_C4b,
     P4h_N4b_G4b_B4b_T2h_C4b_C4b,
-    P4h_T2h_C4b
+    P4h_T2h_C4b,
 }
 impl FromStr for TargetVertexFormat {
     type Err = String;
@@ -641,10 +643,10 @@ pub trait VertexFormatProperties {
     fn has_joints(vertex_format: &TargetVertexFormat) -> bool;
     fn has_colors(vertex_format: &TargetVertexFormat) -> bool;
 
-    //this is for later when we want to implementmultiple indices and weights 
-    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32; 
+    //this is for later when we want to implementmultiple indices and weights
+    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32;
     fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32;
-    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32;  
+    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32;
 }
 
 impl VertexFormatProperties for TargetVertexFormat {
@@ -664,8 +666,8 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => true,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => 
-            false,TargetVertexFormat::P4h_T2h_C4b => false,
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => false,
+            TargetVertexFormat::P4h_T2h_C4b => false,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => false,
         }
     }
@@ -675,34 +677,31 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
             TargetVertexFormat::P4h_T2h_C4b => true,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => true,
-            _ => false
+            _ => false,
         }
     }
 
     fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32 {
-        match vertex_format
-        {
+        match vertex_format {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
-            _ => 0
+            _ => 0,
         }
     }
 
     fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32 {
-        match vertex_format
-        {
+        match vertex_format {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => 1,
-            _ => 0
+            _ => 0,
         }
     }
 
-    fn color_component_count(vertex_format: &TargetVertexFormat)-> u32 {
-        match vertex_format
-        {
+    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32 {
+        match vertex_format {
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => 1,
             TargetVertexFormat::P4h_T2h_C4b => 1,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => 2,
-            _ => 0
+            _ => 0,
         }
     }
 }
