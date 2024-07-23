@@ -103,7 +103,7 @@ impl RdGltfBuilder {
         for (i, joint) in p.iter().enumerate() {
             modell_nodes.insert(joint.name.clone(), i);
         }
-        for (_, janim) in anim_vec.iter().enumerate() {
+        for janim in anim_vec.iter() {
             let target_node_idx = match modell_nodes.get(&janim.name) {
                 Some(idx) => *idx as u32,
                 None => {
@@ -357,7 +357,7 @@ impl RdGltfBuilder {
         let n = self
             .rdm
             .vertex
-            .find_component_offsets(UniqueIdentifier::I4b)
+            .find_component_offsets(UniqueIdentifier::IJoint)
             .count();
         let mut ibuffers = Vec::with_capacity(n);
         let mut wbuffers = Vec::with_capacity(n);
