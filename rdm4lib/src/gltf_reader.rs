@@ -652,7 +652,8 @@ impl<'a> ImportedGltf {
                 let mut joints_iter: std::iter::Cycle<std::vec::IntoIter<[u16; 4]>> =
                     jvecarr.into_iter().cycle();
 
-                let read_weights = TargetVertexFormat::has_weights(&dst_format);
+                // always read the weight data when reading the joints, even if we end up discarding them.
+                let read_weights = read_joints;
 
                 //WEIGHTS
                 let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
@@ -673,7 +674,7 @@ impl<'a> ImportedGltf {
 
                 //COLORS
                 let read_colors = TargetVertexFormat::has_colors(&dst_format);
-                let color_count: u32 = TargetVertexFormat::color_count(&dst_format);
+                let color_count: u32 = TargetVertexFormat::color_component_count(&dst_format);
                 let mut color_iterators = Vec::new();
 
                 for color_index in 0..color_count {

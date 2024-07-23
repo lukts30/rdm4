@@ -642,9 +642,9 @@ pub trait VertexFormatProperties {
     fn has_colors(vertex_format: &TargetVertexFormat) -> bool;
 
     //this is for later when we want to implementmultiple indices and weights 
-    fn weight_count(vertex_format: &TargetVertexFormat) -> u32; 
-    fn joint_count(vertex_format: &TargetVertexFormat) -> u32;
-    fn color_count(vertex_format: &TargetVertexFormat) -> u32;  
+    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32; 
+    fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32;
+    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32;  
 }
 
 impl VertexFormatProperties for TargetVertexFormat {
@@ -679,7 +679,7 @@ impl VertexFormatProperties for TargetVertexFormat {
         }
     }
 
-    fn weight_count(vertex_format: &TargetVertexFormat) -> u32 {
+    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32 {
         match vertex_format
         {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
@@ -687,7 +687,7 @@ impl VertexFormatProperties for TargetVertexFormat {
         }
     }
 
-    fn joint_count(vertex_format: &TargetVertexFormat) -> u32 {
+    fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32 {
         match vertex_format
         {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
@@ -696,7 +696,7 @@ impl VertexFormatProperties for TargetVertexFormat {
         }
     }
 
-    fn color_count(vertex_format: &TargetVertexFormat)-> u32 {
+    fn color_component_count(vertex_format: &TargetVertexFormat)-> u32 {
         match vertex_format
         {
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => 1,
