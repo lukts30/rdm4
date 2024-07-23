@@ -6,12 +6,9 @@ use crate::RdModell;
 use crate::{gltf_reader_vertex::PutVertex, RdJoint};
 use crate::{vertex::TargetVertexFormat, Triangle};
 
-use gltf::accessor::Iter;
 use gltf::animation::Channel;
 use gltf::Node;
 use nalgebra::*;
-
-use half::f16;
 
 use bytes::BytesMut;
 
@@ -24,7 +21,6 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::str::FromStr;
-use std::u16;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -211,7 +207,7 @@ impl<'a> ImportedGltf {
             let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
 
             debug!("animation: {}", animation.name().unwrap_or("default"));
-            for (_, channel) in animation.channels().enumerate() {
+            for channel in animation.channels() {
                 let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
                 let time = reader.read_inputs().unwrap();
                 let output = reader.read_outputs().unwrap();
@@ -233,7 +229,7 @@ impl<'a> ImportedGltf {
                         .unwrap()
                         .as_array()
                         .unwrap()
-                        .get(0)
+                        .first()
                         .unwrap()
                         .as_f64()
                         .unwrap(),
@@ -701,8 +697,8 @@ impl<'a> ImportedGltf {
 
                 //build context
                 let mut context = TransformContext {
-                    base: base,
-                    transpose_inv_transform_mat3: transpose_inv_transform_mat3,
+                    base,
+                    transpose_inv_transform_mat3,
                 };
 
                 while count > 0 {

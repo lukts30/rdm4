@@ -13,7 +13,7 @@ pub struct TransformContext {
 impl TransformContext {
     pub fn transform_position(&mut self, position: [f32; 3]) -> Point<f32, 3> {
         let vertex = Point3::new(position[0], position[1], position[2]);
-        return self.base.transform_point(&vertex);
+        self.base.transform_point(&vertex)
     }
 
     pub fn transform_tangent(&mut self, tangents: [f32; 4]) -> Vector3<f32> {
@@ -28,7 +28,7 @@ impl TransformContext {
         ty /= tlen;
         tz /= tlen;
 
-        return Vector3::new(tx, ty, tz);
+        Vector3::new(tx, ty, tz)
     }
 
     pub fn transform_normal(&mut self, normal: [f32; 3]) -> Vector3<f32> {
@@ -45,7 +45,7 @@ impl TransformContext {
         ny /= len;
         nz /= len;
 
-        return Vector3::new(nx, ny, nz);
+        Vector3::new(nx, ny, nz)
     }
 }
 

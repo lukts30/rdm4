@@ -1,5 +1,4 @@
 use bytes::{Buf, Bytes};
-use gltf::animation::Target;
 use rdm_derive::RdmStructSize;
 use std::{fmt, str::FromStr};
 
@@ -673,12 +672,12 @@ impl VertexFormatProperties for TargetVertexFormat {
     }
 
     fn has_colors(vertex_format: &TargetVertexFormat) -> bool {
-        match vertex_format {
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
-            TargetVertexFormat::P4h_T2h_C4b => true,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => true,
-            _ => false,
-        }
+        matches!(
+            vertex_format,
+            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b
+                | TargetVertexFormat::P4h_T2h_C4b
+                | TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b
+        )
     }
 
     fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32 {

@@ -1,4 +1,3 @@
-use byteorder::LittleEndian;
 use bytes::{BufMut, BytesMut};
 use half::f16;
 
