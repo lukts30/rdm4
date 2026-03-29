@@ -567,7 +567,7 @@ impl RdWriter2 {
                         ptr: 0,
                         value: Some(RdmContainer {
                             info: RdmContainerPrefix {
-                                count: j.name.as_bytes().len() as u32,
+                                count: j.name.len() as u32,
                                 part_size: 1,
                             },
                             storage: rdm_container::VectorN {

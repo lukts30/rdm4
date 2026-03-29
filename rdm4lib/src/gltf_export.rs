@@ -1110,7 +1110,7 @@ impl BufferContainer {
     fn get_padded_added(&self) -> usize {
         let real_len = self.get_bytes_len_real();
         assert_ne!(real_len, 0);
-        if real_len % 4 == 0 {
+        if real_len.is_multiple_of(4) {
             0
         } else {
             4 - (real_len % 4)
