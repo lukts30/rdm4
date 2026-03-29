@@ -26,7 +26,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResolveNodeName {
     UnstableIndex,
     UniqueName,
