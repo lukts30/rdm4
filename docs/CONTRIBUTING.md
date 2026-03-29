@@ -20,11 +20,11 @@ optional.
 | ------------ | ------------------------------------------------------- |
 | **feat**     | A new feature                                           |
 | **fix**      | A bug fix                                               |
+| **build**    | Changes to the build system or dependencies             |
 | **docs**     | Documentation only changes                              |
 | **style**    | Formatting, whitespace, etc. (no logic changes)         |
 | **refactor** | Code change that neither fixes a bug nor adds a feature |
 | **test**     | Adding missing tests or correcting existing tests       |
-| **build**    | Changes to the build system or dependencies             |
 | **ci**       | Changes to CI configuration and scripts                 |
 | **perf**     | A code change that improves performance                 |
 | **chore**    | Other changes that don't modify src or test files       |
