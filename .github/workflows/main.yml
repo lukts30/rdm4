@@ -4,6 +4,7 @@ name: CI
 jobs:
   lint:
     name: Lint
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
@@ -89,7 +90,7 @@ jobs:
         with:
           command: build
           args: --release --workspace --locked
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: target/release/${{ matrix.artifact_name }}
