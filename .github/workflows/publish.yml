@@ -2,9 +2,7 @@ on:
   push:
     tags:
       - "v*"
-
 name: Create Release
-
 jobs:
   deploy:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -21,7 +19,6 @@ jobs:
           workflow: main.yml
           workflow_conclusion: success
           commit: ${{ github.sha }}
-
       - name: Package
         run: |
           sudo apt-get -qq update
@@ -30,7 +27,6 @@ jobs:
           ls -lah
           bsdtar -caf ./package/rdm4-windows-x64.zip rdm4-windows-x64
           bsdtar -caf ./package/rdm4-linux-x64.zip rdm4-linux-x64
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
