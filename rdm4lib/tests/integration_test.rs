@@ -59,15 +59,18 @@ mod tests {
 
         gltf_export::build(rdm, None, false, GltfExportFormat::GltfSeparate);
 
+        let args = ["-ar", "gltf_out/out.gltf"];
         let output = if cfg!(target_os = "windows") {
-            Command::new("..\\gltf_validator.exe")
-                .args(&["-ar", "gltf_out/out.gltf"])
+            Command::new("gltf_validator.exe")
+                .args(&args)
                 .output()
+                .or_else(|_| Command::new("..\\gltf_validator.exe").args(&args).output())
                 .expect("failed to execute process")
         } else {
-            Command::new("../gltf_validator")
-                .args(&["-ar", "gltf_out/out.gltf"])
+            Command::new("gltf_validator")
+                .args(&args)
                 .output()
+                .or_else(|_| Command::new("../gltf_validator").args(&args).output())
                 .expect("failed to execute process")
         };
 

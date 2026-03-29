@@ -46,6 +46,26 @@
         }:
         let
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+          gltfValidatorVersion = "2.0.0-dev.3.3";
+          gltfValidatorBin = pkgs.stdenvNoCC.mkDerivation {
+            pname = "gltf_validator-bin";
+            version = gltfValidatorVersion;
+
+            src = pkgs.fetchurl {
+              url = "https://github.com/KhronosGroup/glTF-Validator/releases/download/${gltfValidatorVersion}/gltf_validator-${gltfValidatorVersion}-linux64.tar.xz";
+              hash = "sha256-+Afr011Gu1E8q4ipIOY6wMM1t33PS5HNjQnqZhszW80=";
+            };
+
+            dontConfigure = true;
+            dontBuild = true;
+            sourceRoot = ".";
+
+            installPhase = ''
+              runHook preInstall
+              install -Dm755 gltf_validator $out/bin/gltf_validator
+              runHook postInstall
+            '';
+          };
         in
         {
           treefmt = {
@@ -83,6 +103,14 @@
           };
 
           packages = {
+            gltf_validator = pkgs.buildFHSEnv {
+              name = "gltf_validator";
+              targetPkgs = pkgs: [
+                pkgs.stdenv.cc.cc.lib
+              ];
+              runScript = "${gltfValidatorBin}/bin/gltf_validator";
+            };
+
             rdm4-bin = pkgs.rustPlatform.buildRustPackage {
               pname = cargoToml.package.name;
               version = cargoToml.package.version;
@@ -102,6 +130,7 @@
               rust-analyzer
               clippy
               rustfmt
+              config.packages.gltf_validator
             ];
             shellHook = ''
               ${config.pre-commit.installationScript}
