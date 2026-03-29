@@ -44,6 +44,9 @@
           config,
           ...
         }:
+        let
+          cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+        in
         {
           treefmt = {
             projectRootFile = "flake.nix";
@@ -77,6 +80,16 @@
                 };
               };
             };
+          };
+
+          packages = {
+            rdm4-bin = pkgs.rustPlatform.buildRustPackage {
+              pname = cargoToml.package.name;
+              version = cargoToml.package.version;
+              src = ./.;
+              cargoLock.lockFile = ./Cargo.lock;
+            };
+            default = config.packages.rdm4-bin;
           };
 
           devShells.default = pkgs.mkShell {
