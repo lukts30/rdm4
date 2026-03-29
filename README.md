@@ -1,14 +1,13 @@
-# rdm4: rdm ⇄ glTF 2.0 Converter 
+# rdm4: rdm ⇄ glTF 2.0 Converter
 
 ## Windows Explorer right-click menu
 
 It is possible to use parts of the converter functionality via a context menu in Windows Explorer. Not all features of the converter are available in this context menu notably non of the animation support (if you want to convert animations you must use the command-line interface!).
 
-Create the folder C:\tools. Copy rdm4-bin.exe to C:\tools. Choose one of the reg files. Save it and apply it.
+Create the folder C:\\tools. Copy rdm4-bin.exe to C:\\tools. Choose one of the reg files. Save it and apply it.
 
 - [rdm4.reg](https://gist.github.com/lukts30/f38f1b9675a084c869e8a59c746d2504#file-rdm4-reg): Abort/Crashes if a output file already exist.
 - [rdm4-force.reg](https://gist.github.com/lukts30/f38f1b9675a084c869e8a59c746d2504#file-rdm4_force-reg): Will override any already existing output file.
-
 
 <img src="https://user-images.githubusercontent.com/24390575/124466252-c1221000-dd96-11eb-8feb-6786d7730bc1.png" width=40% height=40%>
 
@@ -71,22 +70,29 @@ RDM TO GLTF OPTIONS:
 ```
 
 ## Example usage (rdm 🠚 glTF 2.0)
+
 ```console
 $ ./rdm4-bin.exe --input rdm/container_ship_tycoons_lod1.rdm
 ```
 
 ### Usage with animation (rdm 🠚 glTF 2.0)
+
 ```console
 $ ./rdm4-bin.exe --input rdm/container_ship_tycoons_lod1.rdm --skeleton --animation --rdanimation anim/container_ship_tycoons_idle01.rdm
 ```
+
 Can be shortened to:
+
 ```console
 $ ./rdm4-bin.exe -i rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship_tycoons_idle01.rdm
 ```
 
 ## Example usage glTF 2.0 🠚 rdm
+
 **Flag --gltf or the alias -g must be used! See the section on vertex formats below**
+
 - **Note**: the example given here uses `-g=P4h_N4b_G4b_B4b_T2h_I4b_W4b` and `-sa` since it converts an animated glTF to rdm with anim files.
+
 <details>
 <summary>Click to expand</summary>
 
@@ -374,52 +380,58 @@ $ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i untitled.gltf -sa
 **`P4h_N4b_G4b_B4b_T2h`**: Vertex Format for standard meshes
 
 **`P4h_N4b_G4b_B4b_T2h_I4b`**: Vertex Format with unweighted Joints
+
 - This needs at least Joint Data exported to the gltf.
 
 **`P4h_N4b_G4b_B4b_T2h_I4b_W4b`**: Vertex Format with weighted Joints, i.e. Portraits
+
 - This needs Joint and Weight Data exported to the gltf.
 
 **`P3f_N3f_G3f_B3f_T2f_C4b`**: Cloth
+
 - Needs vertex colors in the export. If you don't have an idea how to create them in blender, refer to [this video](https://www.youtube.com/watch?v=8mNk6r_bwxI)
 
 **`P4h_N4b_G4b_B4b_T2h_C4b_C4b`**: Plants
+
 - Needs two channels of vertex colors in the export. Refer to the tutorial linked in cloth rdms, and also Blenders GLTF exporter doesn't export it correctly on 4.2 at least.
 - The plant rdms are still very usable though.
 
 **`P4h_T2h_C4b`**: Decal Detail
+
 - Needs vertex colors in the export.
 - Anno uses the vertex color for deviation in luminosity.
 - Use gray=0.5 as your standard color, then paint darker and brighter spots.
+
 > TLDR, if you just want a standard model, use `-g=P4h_N4b_G4b_B4b_T2h`!
 
----
+______________________________________________________________________
 
 ## rdm4 current limitations
 
 - gltf -> rdm: gltf file needs to include normals and **tangents**. they are not computed in the converter !
-    - see [Blender glTF export](#Blender)
+  - see [Blender glTF export](#Blender)
 - glTF 2.0 🠚 rdm with animation
-    - glTF node names are not necessarily unique but this converter uses them by default for rdm bone names. This might cause problems.
-        - Use the option `--gltf-node-joint-name-src`.
-        - [#50](https://github.com/lukts30/rdm4/issues/50)
-    - Must not require interpolation e.g. rotation t=[0,2,6] while translation t=[0,7]. Bypassed by using Blenders 'Always Sample Animation' export option.
-    - channel.path: `translation` and `rotation` are supported. 
-        - channel.path: `scale` is unsupported! 
-    - Morph Targets: `scale` and `weights` are unsupported! 
-        - To my knowledge impossible to implement since rdanimation "units" are 32 bytes large = 4\*4 rotation + 3\*4 translation + 1\*4 time
+  - glTF node names are not necessarily unique but this converter uses them by default for rdm bone names. This might cause problems.
+    - Use the option `--gltf-node-joint-name-src`.
+    - [#50](https://github.com/lukts30/rdm4/issues/50)
+  - Must not require interpolation e.g. rotation t=[0,2,6] while translation t=[0,7]. Bypassed by using Blenders 'Always Sample Animation' export option.
+  - channel.path: `translation` and `rotation` are supported.
+    - channel.path: `scale` is unsupported!
+  - Morph Targets: `scale` and `weights` are unsupported!
+    - To my knowledge impossible to implement since rdanimation "units" are 32 bytes large = 4\*4 rotation + 3\*4 translation + 1\*4 time
 
----
+______________________________________________________________________
 
-# Blender 
+# Blender
 
-## Export glTF vertex tangents with mesh 
+## Export glTF vertex tangents with mesh
 
 - The exported glTF file must have tangents data. This is not the default option for the blender glTF exporter!
-    - after selecting export on right side click on "geometry" and ENABLE "tangents".
+  - after selecting export on right side click on "geometry" and ENABLE "tangents".
 
 <img src="https://user-images.githubusercontent.com/24390575/124466344-ddbe4800-dd96-11eb-93bf-d567b18eee5e.png" width=20% height=20%>
 
 - Format can be glTF Binary/glTF Separate/glTF Embedded
-    - There should not be a functional difference between these formats. They are equally supported by rdm4.
-    - If you are unsure select __glTF Binary (.glb)__.
-- Materials may optionally be enabled. If you are experiencing problems with textures test with and without.    
+  - There should not be a functional difference between these formats. They are equally supported by rdm4.
+  - If you are unsure select __glTF Binary (.glb)__.
+- Materials may optionally be enabled. If you are experiencing problems with textures test with and without.
