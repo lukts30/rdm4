@@ -369,23 +369,27 @@ $ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i untitled.gltf -sa
 
 ## Setting Vertex Formats for glTF 2.0 🠚 rdm
 
-**-g sets your vertex format
+**`-g`** sets your vertex format
 
-### `P4h_N4b_G4b_B4b_T2h`: Vertex Format for standard meshes
-### `P4h_N4b_G4b_B4b_T2h_I4b`: Vertex Format with unweighted Joints
+**`P4h_N4b_G4b_B4b_T2h`**: Vertex Format for standard meshes
+
+**`P4h_N4b_G4b_B4b_T2h_I4b`**: Vertex Format with unweighted Joints
 - This needs at least Joint Data exported to the gltf.
-### `P4h_N4b_G4b_B4b_T2h_I4b_W4b`: Vertex Format with weighted Joints, i.e. Portraits
-- This needs Joint and Weight Data exported to the gltf.
-### `P3f_N3f_G3f_B3f_T2f_C4b`: Cloth
-- Needs vertex colors in the export. If you don't have an idea how to create them in blender, refer to [this video](https://www.youtube.com/watch?v=8mNk6r_bwxI)
-### ``P4h_N4b_G4b_B4b_T2h_C4b_C4b`: Plants
-- Needs two channels of vertex colors in the export. Refer to the tutorial linked in cloth rdms, and also Blenders GLTF exporter doesn't export it correctly on 4.2 at least.
-- The plant rdms are still very usable though. 
-### `P4h_T2h_C4b`: Decal Detail 
-- Needs vertex colors in the export.
-- Anno uses the vertex color for deviation in luminosity. 
-- Use gray=0.5 as your standard color, then paint darker and brighter spots. 
 
+**`P4h_N4b_G4b_B4b_T2h_I4b_W4b`**: Vertex Format with weighted Joints, i.e. Portraits
+- This needs Joint and Weight Data exported to the gltf.
+
+**`P3f_N3f_G3f_B3f_T2f_C4b`**: Cloth
+- Needs vertex colors in the export. If you don't have an idea how to create them in blender, refer to [this video](https://www.youtube.com/watch?v=8mNk6r_bwxI)
+
+**`P4h_N4b_G4b_B4b_T2h_C4b_C4b`**: Plants
+- Needs two channels of vertex colors in the export. Refer to the tutorial linked in cloth rdms, and also Blenders GLTF exporter doesn't export it correctly on 4.2 at least.
+- The plant rdms are still very usable though.
+
+**`P4h_T2h_C4b`**: Decal Detail
+- Needs vertex colors in the export.
+- Anno uses the vertex color for deviation in luminosity.
+- Use gray=0.5 as your standard color, then paint darker and brighter spots.
 > TLDR, if you just want a standard model, use `-g=P4h_N4b_G4b_B4b_T2h`!
 
 ---
