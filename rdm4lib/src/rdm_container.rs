@@ -301,10 +301,10 @@ where
                 value: None,
             }))
         } else {
-            return Err(binrw::Error::AssertFail {
+            Err(binrw::Error::AssertFail {
                 message: "null pointer".into(),
                 pos: reader.stream_position().unwrap() - 4,
-            });
+            })
         }
     }
 }

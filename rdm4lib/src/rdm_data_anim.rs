@@ -165,7 +165,7 @@ impl RdAnimWriter2 {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
-                            count: x.name.as_bytes().len() as u32,
+                            count: x.name.len() as u32,
                             part_size: 1,
                         },
                         storage: rdm_container::VectorN {
