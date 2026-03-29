@@ -42,3 +42,15 @@ jobs:
             experimental-features = nix-command flakes
       - name: Build flake treefmt check
         run: nix build -L .#checks.x86_64-linux.treefmt --no-write-lock-file
+  build_rdm4_pkg:
+    name: Build Nix rdm4 package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Build rdm4-bin package
+        run: nix build -L .#packages.x86_64-linux.rdm4-bin --no-write-lock-file
