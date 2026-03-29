@@ -53,6 +53,7 @@
             };
             programs.nixfmt.enable = true;
             programs.yamlfmt.enable = true;
+            programs.actionlint.enable = true;
             programs.mdformat = {
               enable = true;
               plugins = p: [
