@@ -15,6 +15,21 @@ with four crates:
 | `rdm_derive` | `rdm_derive/` | Proc-macro (`RdmStructSize`)  |
 | `cfghelper`  | `cfghelper/`  | Library (XML cfg parser)      |
 
+## Repository Layout
+
+Dependency updates typically touch three `Cargo.toml` files:
+
+- `Cargo.toml` (workspace root / CLI package)
+- `rdm4lib/Cargo.toml` (core conversion logic)
+- `cfghelper/Cargo.toml` (XML cfg parser)
+
+## External Instructions
+
+- `AGENTS.md` references external files; load them with the Read tool when relevant.
+- Do not preemptively load all references; use on-demand loading.
+- Treat loaded instructions as mandatory and higher priority than defaults.
+- CRITICAL: Before any git commit, read `docs/CONTRIBUTING.md` and follow the commit message rules.
+
 ## Build / Lint / Test Commands
 
 ```sh
