@@ -13,17 +13,16 @@ use rdm4lib::{gltf_reader, rdm_material::RdMaterial};
 #[macro_use]
 extern crate log;
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use env_logger::Env;
-use std::ffi::OsStr;
 use std::path::PathBuf;
 
-fn cli_in_is_file(v: &OsStr) -> Result<(), String> {
+fn cli_in_is_file(v: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(v);
     if p.is_file() {
-        Ok(())
+        Ok(p)
     } else {
-        Err(format!("No such file {}", v.to_string_lossy()))
+        Err(format!("No such file {}", v))
     }
 }
 
@@ -31,41 +30,40 @@ static HEADER_GLTF2RDM: &str = "GLTF TO RDM OPTIONS";
 static HEADER_RDM2GLTF: &str = "RDM TO GLTF OPTIONS";
 
 #[derive(Parser)]
-#[clap(
+#[command(
     version = env!("CARGO_PKG_VERSION"),
     author = "lukts30 <https://github.com/lukts30/rdm4>"
 )]
 struct Opts {
     // start of common options
     /// Input file
-    #[clap(
+    #[arg(
         display_order(0),
         short = 'i',
         long = "input",
-        value_name("glTF or rdm FILE"),
-        validator_os(cli_in_is_file),
-        parse(from_str)
+        value_name = "glTF or rdm FILE",
+        value_parser = cli_in_is_file
     )]
     input: PathBuf,
 
     /// Output file or folder. If `--in-is-out-filename` is set this must be a folder!
-    #[clap(display_order(1), short = 'o', long = "outdst", parse(from_str))]
+    #[arg(display_order(1), short = 'o', long = "outdst")]
     out: Option<PathBuf>,
 
     /// Sets output to input file name
-    #[clap(display_order(2), short = 'n', long)]
+    #[arg(display_order(2), short = 'n', long)]
     in_is_out_filename: bool,
 
     /// Override existing files
-    #[clap(display_order(4), long)]
+    #[arg(display_order(4), long)]
     force: bool,
 
     /// Export (available) skin
-    #[clap(display_order(5), short = 's', long = "skeleton")]
+    #[arg(display_order(5), short = 's', long = "skeleton")]
     skeleton: bool,
 
     /// Export (available) animation. RDM to glTF needs external animation file (rdanimation)
-    #[clap(
+    #[arg(
         display_order(6),
         short = 'a',
         long = "animation",
@@ -74,24 +72,24 @@ struct Opts {
     animation: bool,
 
     /// A level of verbosity, and can be used multiple times
-    #[clap(display_order(7), short, long, parse(from_occurrences))]
-    verbose: i32,
+    #[arg(display_order(7), short, long, action = ArgAction::Count)]
+    verbose: u8,
 
     // end of common options
     // start of HEADER_GLTF2RDM
     /// VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
-    #[clap(
+    #[arg(
         display_order(0),
         short = 'g',
         long = "gltf",
-        value_name("VertexFormat"),
+        value_name = "VertexFormat",
         conflicts_with("rdanimation"),
         help_heading = HEADER_GLTF2RDM
     )]
     gltf: Option<TargetVertexFormat>,
 
     /// glTF mesh index to convert to rdm.
-    #[clap(
+    #[arg(
         display_order(1),
         long,
         default_value = "0",
@@ -100,7 +98,7 @@ struct Opts {
     gltf_mesh_index: u32,
 
     /// glTF to rdm: Do not apply node transforms. Recommended to use when working with animations.
-    #[clap(
+    #[arg(
         display_order(2),
         long = "no_transform",
         requires("gltf"),
@@ -109,15 +107,15 @@ struct Opts {
     no_transform: bool,
 
     /// Mirrors the object on the x axis.
-    #[clap(display_order(3),long, conflicts_with_all(&["skeleton", "animation"]),help_heading = HEADER_GLTF2RDM)]
+    #[arg(display_order(3), long, conflicts_with_all = ["skeleton", "animation"], help_heading = HEADER_GLTF2RDM)]
     negative_x_and_v0v2v1: bool,
 
     /// Overrides MeshInstance mesh indcies. Useful to match the material order of an existing cfg.
-    #[clap(display_order(4),long, help_heading = HEADER_GLTF2RDM)]
+    #[arg(display_order(4), long, help_heading = HEADER_GLTF2RDM)]
     overide_mesh_idx: Option<Vec<u32>>,
 
     /// For glTF joint to rdm bone: source for a unique identifier: "UnstableIndex" | "UniqueName"
-    #[clap(
+    #[arg(
         display_order(5),
         long,
         short = 'u',
@@ -129,7 +127,7 @@ struct Opts {
     // end of HEADER_GLTF2RDM
     // start of HEADER_RDM2GLTF
     /// Export format to use for rdm to gltf: "glb", "gltf", "gltfmin"
-    #[clap(
+    #[arg(
         display_order(0),
         short = 'e',
         long,
@@ -139,27 +137,25 @@ struct Opts {
     gltf_export_format: GltfExportFormat,
 
     /// External animation file for rdm
-    #[clap(
+    #[arg(
         short = 'm',
         long = "rdanimation",
         display_order(1),
-        value_name("anim/*.rdm"),
-        validator_os(cli_in_is_file),
-        parse(from_str),
+        value_name = "anim/*.rdm",
+        value_parser = cli_in_is_file,
         conflicts_with("gltf"),
-        requires_all(&["skeleton", "animation"]),
+        requires_all = ["skeleton", "animation"],
         help_heading = HEADER_RDM2GLTF
     )]
     rdanimation: Option<PathBuf>,
 
     /// DiffuseTextures.
-    #[clap(
+    #[arg(
         short = 't',
         long = "diffusetexture",
-        value_name("*.dds"),
+        value_name = "*.dds",
         display_order(2),
-        validator_os(cli_in_is_file),
-        parse(from_str),
+        value_parser = cli_in_is_file,
         help_heading = HEADER_RDM2GLTF
     )]
     diffusetexture: Option<Vec<PathBuf>>,
