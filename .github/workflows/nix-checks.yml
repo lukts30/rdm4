@@ -1,0 +1,44 @@
+name: Nix checks
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+jobs:
+  flake_eval:
+    name: Evaluate flake outputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: nix flake show
+        run: nix flake show --all-systems --no-write-lock-file
+  git_hooks:
+    name: Run git-hooks in dev shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Run pre-commit hooks
+        run: nix develop -L --command pre-commit run --all-files --show-diff-on-failure
+  treefmt_check:
+    name: Run Nix treefmt check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Build flake treefmt check
+        run: nix build -L .#checks.x86_64-linux.treefmt --no-write-lock-file

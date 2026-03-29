@@ -70,7 +70,10 @@
               };
               hooks.clippy = {
                 enable = true;
-                settings.allFeatures = true;
+                settings = {
+                  allFeatures = true;
+                  offline = false;
+                };
               };
             };
           };
