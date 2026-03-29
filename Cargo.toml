@@ -16,8 +16,8 @@ members = [
 [dependencies]
 rdm4lib = { path = "rdm4lib" }
 log = { version = "0.4", features = [] }
-env_logger = "0.9.3"
-clap = { version = "3.2.25", features = ["derive"] }
+env_logger = "0.11"
+clap = { version = "4.5", features = ["derive"] }
 
 
 [profile.release]
