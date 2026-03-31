@@ -1,9 +1,9 @@
 use crate::{rdm_data_main::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
+use gltf::json::validation::USize64;
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
-    convert::TryInto,
     env,
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
@@ -166,8 +166,8 @@ impl RdGltfBuilder {
 
             let rot_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
-                byte_length: rot_real_len as u32,
-                byte_offset: Some(rot_start as u32),
+                byte_length: USize64(rot_real_len as u64),
+                byte_offset: Some(USize64(rot_start as u64)),
                 byte_stride: None,
                 extensions: Default::default(),
                 extras: Default::default(),
@@ -178,7 +178,7 @@ impl RdGltfBuilder {
             let rot_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: None,
-                count: count as u32,
+                count: USize64(count as u64),
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
                 )),
@@ -198,8 +198,8 @@ impl RdGltfBuilder {
 
             let trans_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
-                byte_length: trans_real_len as u32,
-                byte_offset: Some((rot_size + trans_start) as u32),
+                byte_length: USize64(trans_real_len as u64),
+                byte_offset: Some(USize64((rot_size + trans_start) as u64)),
                 byte_stride: None,
                 extensions: Default::default(),
                 extras: Default::default(),
@@ -210,7 +210,7 @@ impl RdGltfBuilder {
             let trans_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: None,
-                count: count as u32,
+                count: USize64(count as u64),
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
                 )),
@@ -230,8 +230,8 @@ impl RdGltfBuilder {
 
             let time_buffer_view = json::buffer::View {
                 buffer: json::Index::new(buffv_idx),
-                byte_length: t_real_len as u32,
-                byte_offset: Some((rot_size + trans_size + t_start) as u32),
+                byte_length: USize64(t_real_len as u64),
+                byte_offset: Some(USize64((rot_size + trans_size + t_start) as u64)),
                 byte_stride: None,
                 extensions: Default::default(),
                 extras: Default::default(),
@@ -242,7 +242,7 @@ impl RdGltfBuilder {
             let time_accessor = json::Accessor {
                 buffer_view: Some(json::Index::new(bv_idx)),
                 byte_offset: None,
-                count: count as u32,
+                count: USize64(count as u64),
                 component_type: Valid(json::accessor::GenericComponentType(
                     json::accessor::ComponentType::F32,
                 )),
@@ -334,7 +334,9 @@ impl RdGltfBuilder {
         assert_eq!(buffv_idx, buffer_result.idx);
 
         let anim_buffer = json::Buffer {
-            byte_length: (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u32,
+            byte_length: USize64(
+                (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u64,
+            ),
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -766,7 +768,7 @@ impl RdGltfBuilder {
     ) -> u32 {
         let buffer_p = inner.push_buffer(buffer);
         let buffer = json::Buffer {
-            byte_length: buffer_p.len,
+            byte_length: USize64(buffer_p.len as u64),
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -816,7 +818,7 @@ impl RdGltfBuilder {
         let normals_acc = json::Accessor {
             buffer_view: Some(json::Index::new(buffer_views_idx)),
             byte_offset: None,
-            count: count.unwrap_or(vattr_len),
+            count: USize64(count.unwrap_or(vattr_len) as u64),
             component_type: Valid(json::accessor::GenericComponentType(component_type)),
             extensions: Default::default(),
             extras: Default::default(),
@@ -1029,11 +1031,13 @@ impl RdGltfBuilder {
 
         for view in self.buffer_views.iter_mut() {
             let n = view_off_mapping[view.buffer.value()];
-            view.byte_offset = Some(view.byte_offset.unwrap_or(0) + n);
+            view.byte_offset = Some(USize64(
+                view.byte_offset.map(|x| x.0).unwrap_or(0) + n as u64,
+            ));
             view.buffer = json::Index::new(0);
         }
 
-        self.buffers[0].byte_length = combined_vec.len().try_into().unwrap();
+        self.buffers[0].byte_length = USize64(combined_vec.len() as u64);
         let padded_combined_vec = BufferContainer::U8(combined_vec);
         debug!(
             "size_merge_buffer: {:#?}",
