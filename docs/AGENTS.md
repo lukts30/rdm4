@@ -165,10 +165,9 @@ comments are sparse. When adding code, at minimum document public API items.
 
 ### Dependencies
 
-Two dependencies are pinned to exact versions (`binrw = "=0.11.2"`,
-`gltf = "=1.3.0"`) because the code relies on specific API details. Do not
-bump these without verifying compatibility. Key crates: `binrw`, `nalgebra`,
-`gltf`, `half`, `clap`, `quick-xml`.
+`binrw = "=0.11.2"` is pinned to an exact version because the code relies
+on specific API details. Do not bump it without verifying compatibility.
+Key crates: `binrw`, `nalgebra`, `gltf`, `half`, `clap`, `quick-xml`.
 
 ## Commit Messages
 
