@@ -23,6 +23,9 @@ Dependency updates typically touch three `Cargo.toml` files:
 - `rdm4lib/Cargo.toml` (core conversion logic)
 - `cfghelper/Cargo.toml` (XML cfg parser)
 
+Note: `rdm4lib` is a **path dependency**, not a workspace member. The
+workspace members are `cfghelper` and `rdm_derive`.
+
 ## External Instructions
 
 - `AGENTS.md` references external files; load them with the Read tool when relevant.
@@ -165,10 +168,88 @@ comments are sparse. When adding code, at minimum document public API items.
 
 ### Dependencies
 
-Two dependencies are pinned to exact versions (`binrw = "=0.11.2"`,
-`gltf = "=1.3.0"`) because the code relies on specific API details. Do not
-bump these without verifying compatibility. Key crates: `binrw`, `nalgebra`,
-`gltf`, `half`, `clap`, `quick-xml`.
+`binrw = "=0.11.2"` is pinned to an exact version because the code relies
+on specific API details. Do not bump it without verifying compatibility.
+Key crates: `binrw`, `nalgebra`, `gltf`, `half`, `clap`, `quick-xml`.
+
+## Architecture
+
+### Conversion Pipelines
+
+**RDM → glTF** (`src/main.rs` without `--gltf` flag):
+`RdModell::from(path)` → optional `add_skin()` / `add_anim()` →
+`gltf_export::build()` → GLB/glTF output
+
+**glTF → RDM** (`src/main.rs` with `--gltf FORMAT`):
+`ImportedGltf::try_import()` → `read_mesh()` / `read_skin()` /
+`read_animation()` → `RdWriter2::new(rdm).write_rdm()` → RDM binary
+
+### Core Types
+
+| Type                 | Module             | Role                                    |
+| -------------------- | ------------------ | --------------------------------------- |
+| `RdModell`           | `lib.rs`           | Central in-memory 3D model              |
+| `RdAnim`             | `rdm_anim.rs`      | Loaded animation data                   |
+| `RdJoint`            | `lib.rs`           | Skeleton bone (name, transform, parent) |
+| `VertexFormat2`      | `vertex.rs`        | Vertex layout descriptor + raw bytes    |
+| `TargetVertexFormat` | `vertex.rs`        | Enum of 6 supported output formats      |
+| `ImportedGltf`       | `gltf_reader.rs`   | Loaded glTF document + buffers          |
+| `RdWriter2`          | `rdm_data_main.rs` | Serializes `RdModell` to RDM binary     |
+| `RdAnimWriter2`      | `rdm_data_anim.rs` | Serializes `RdAnim` to RDM binary       |
+| `RdmFile<T>`         | `rdm_data_main.rs` | Binary RDM file wrapper (mesh or anim)  |
+
+Vertex components are const-generic types: `P4h` (position f16×4), `N4b`
+(normal u8×4), `G4b` (tangent), `B4b` (bitangent), `T2h` (texcoord f16×2),
+`I4b` (joint index), `W4b` (weight), `C4b` (color).
+
+### RdmStructSize Proc Macro
+
+`#[derive(RdmStructSize)]` generates `impl RDMStructSizeTr` by creating a
+shadow `#[repr(C, packed(1))]` struct where all `AnnoPtr<T>` fields are
+replaced with `u32`, then returning `size_of` of the packed struct. Must be
+paired with `#[binrw]` and `#[bw(import_raw(end: &mut u64))]`.
+
+### cfghelper (Deprecated)
+
+The `cfghelper` crate is **deprecated** and will be removed. Avoid adding
+new functionality to it.
+
+## Test Data
+
+- **RDM fixtures**: `rdm4lib/rdm/` — binary `.rdm` files (meshes and
+  animations) at various LOD levels
+- **glTF fixtures**: `rdm4lib/rdm/gltf/` — test glTF files
+  (`stormtrooper.gltf`, `triangle.gltf`)
+- **cfghelper fixtures**: `cfghelper/tests/cfgs/` — XML `.cfg` inputs and
+  `.cfgn` expected outputs
+
+Tests verify correctness via vertex count assertions, format string checks,
+and SHA-256 hash comparison (`check_hash()`). The `gltf_validator` CLI is
+invoked in integration tests and must be on PATH.
+
+## Platform-Specific Behavior
+
+- DDS texture conversion requires **Windows** + `texconv.exe`
+- Some tests are gated with `#[cfg(target_os = "linux")]` or
+  `#[cfg(target_os = "windows")]`
+- CI runs a **Linux + Windows matrix**; both download `gltf_validator`,
+  Windows also downloads `texconv.exe`
+
+## Gotchas
+
+- **No structured error handling**: the codebase uses `unwrap()` / `expect()`
+  pervasively (~130 calls). Errors surface as panics, not `Result` types.
+  There are no `anyhow` / `thiserror` dependencies.
+- **Template-based RDM writing**: `RdWriter2` uses an embedded template
+  (`basalt_crusher_others_lod0.rdm`) and patches specific sections. Changes
+  to the output format must account for this approach.
+- **Animation joint matching**: defaults to matching by unique name
+  (`ResolveNodeName::UniqueName`). Duplicate joint names require fallback
+  to `UnstableIndex`.
+- **`--no_transform` with animations**: omitting this flag when a skeleton
+  is present can cause severe mesh deformation (logged as a warning).
+- **Entire file loaded into memory**: no streaming; unsuitable for very
+  large models.
 
 ## Commit Messages
 
