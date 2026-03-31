@@ -7,8 +7,7 @@ use std::vec::Vec;
 
 use crate::rdm_data_main::{Meta, RdmHeader1};
 use crate::RDMStructSizeTr;
-use binrw::file_ptr::FilePtrArgs;
-use binrw::{binread, binrw, binwrite, BinRead, BinWrite, FilePtr32};
+use binrw::{binread, binrw, binwrite, BinRead, BinWrite};
 use rdm_derive::RdmStructSize;
 
 pub trait RdmRead: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
@@ -231,25 +230,42 @@ impl fmt::Debug for RdmString {
 pub type AnnoPtr<T> = AnnoPtr2<false, T>;
 pub type NullableAnnoPtr<T> = AnnoPtr2<true, T>;
 
-pub struct AnnoPtr2<const PTR_NULLABLE: bool, T>(pub FilePtr32<T>);
+#[derive(Debug)]
+pub struct RdmFilePtr<T> {
+    pub ptr: u32,
+    pub value: Option<T>,
+}
 
-impl<const PTR_NULLABLE: bool, T: BinRead> std::ops::Deref for AnnoPtr2<PTR_NULLABLE, T> {
-    type Target = FilePtr32<T>;
+impl<T> std::ops::Deref for RdmFilePtr<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.value.as_ref().unwrap()
+    }
+}
+
+impl<T> std::ops::DerefMut for RdmFilePtr<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.value.as_mut().unwrap()
+    }
+}
+
+pub struct AnnoPtr2<const PTR_NULLABLE: bool, T>(pub RdmFilePtr<T>);
+
+impl<const PTR_NULLABLE: bool, T> std::ops::Deref for AnnoPtr2<PTR_NULLABLE, T> {
+    type Target = RdmFilePtr<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<const PTR_NULLABLE: bool, T: BinRead> std::ops::DerefMut for AnnoPtr2<PTR_NULLABLE, T> {
+impl<const PTR_NULLABLE: bool, T> std::ops::DerefMut for AnnoPtr2<PTR_NULLABLE, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<const PTR_NULLABLE: bool, T: BinRead + std::fmt::Debug> std::fmt::Debug
-    for AnnoPtr2<PTR_NULLABLE, T>
-{
+impl<const PTR_NULLABLE: bool, T: std::fmt::Debug> std::fmt::Debug for AnnoPtr2<PTR_NULLABLE, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.deref(), f)
     }
@@ -271,32 +287,36 @@ where
         endian: binrw::Endian,
         _args: Self::Args<'_>,
     ) -> binrw::BinResult<Self> {
-        let mut p: FilePtr32<RdmContainer<N, C, T>> =
-            <_>::read_options(reader, endian, FilePtrArgs::default()).unwrap();
-        let saved_ptr = p.ptr;
-        if p.ptr != 0 {
-            p.ptr = p.ptr.saturating_sub(8);
+        let raw_ptr = u32::read_options(reader, endian, ())?;
+        let saved_pos = reader.stream_position().unwrap();
+        if raw_ptr != 0 {
+            let adjusted_ptr = raw_ptr.saturating_sub(8);
 
-            if p.ptr as u64 <= reader.stream_position().unwrap() {
+            if adjusted_ptr as u64 <= reader.stream_position().unwrap() {
                 return Err(binrw::Error::AssertFail {
-                    message: format!("unexpected back-pointer {:#x}", saved_ptr),
+                    message: format!("unexpected back-pointer {:#x}", raw_ptr),
                     pos: reader.stream_position().unwrap() - 4,
                 });
             }
             let file_size = stream_len(reader)?;
 
-            if file_size <= p.ptr.into() {
+            if file_size <= adjusted_ptr.into() {
                 return Err(binrw::Error::AssertFail {
-                    message: format!("out-of-bounds pointer {:#x}", saved_ptr),
+                    message: format!("out-of-bounds pointer {:#x}", raw_ptr),
                     pos: reader.stream_position().unwrap() - 4,
                 });
             }
 
-            p.after_parse(reader, endian, FilePtrArgs::default())?;
+            reader.seek(SeekFrom::Start(adjusted_ptr as u64))?;
+            let value = RdmContainer::<N, C, T>::read_options(reader, endian, ())?;
+            reader.seek(SeekFrom::Start(saved_pos))?;
 
-            Ok(AnnoPtr2(p))
+            Ok(AnnoPtr2(RdmFilePtr {
+                ptr: adjusted_ptr,
+                value: Some(value),
+            }))
         } else if PTR_NULLABLE {
-            Ok(AnnoPtr2(FilePtr32 {
+            Ok(AnnoPtr2(RdmFilePtr {
                 ptr: 0,
                 value: None,
             }))
