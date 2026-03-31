@@ -381,7 +381,7 @@ impl RdWriter2 {
 
         let export_name = br"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
 
-        rdm.header1.header2.export_name1.0 = binrw::FilePtr32 {
+        rdm.header1.header2.export_name1.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -409,7 +409,7 @@ impl RdWriter2 {
             u32::MAX
         };
 
-        rdm.header1.meta.format_identifiers.rdm_container.0 = binrw::FilePtr32 {
+        rdm.header1.meta.format_identifiers.rdm_container.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -422,7 +422,7 @@ impl RdWriter2 {
             }),
         };
 
-        rdm.header1.meta.mesh_info.0 = binrw::FilePtr32 {
+        rdm.header1.meta.mesh_info.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -440,7 +440,7 @@ impl RdWriter2 {
             0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
         ];
 
-        rdm.header1.meta.triangle_list.0 = binrw::FilePtr32 {
+        rdm.header1.meta.triangle_list.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -471,7 +471,7 @@ impl RdWriter2 {
             }),
         };
 
-        rdm.header1.meta.vertex.0 = binrw::FilePtr32 {
+        rdm.header1.meta.vertex.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -495,7 +495,7 @@ impl RdWriter2 {
         let mut mats = vec![];
         for _ in 0..MeshInfo::get_max_material(&rdm_in.mesh_info) + 1 {
             let dummy_mat = RdmBlobToMat {
-                mat: AnnoPtr2(binrw::FilePtr32 {
+                mat: AnnoPtr2(RdmFilePtr {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
@@ -504,7 +504,7 @@ impl RdWriter2 {
                         },
                         storage: rdm_container::Vector1 {
                             item: [RdmMat {
-                                name: AnnoPtr2(binrw::FilePtr32 {
+                                name: AnnoPtr2(RdmFilePtr {
                                     ptr: 0,
                                     value: Some(RdmContainer {
                                         info: RdmContainerPrefix {
@@ -516,7 +516,7 @@ impl RdWriter2 {
                                         },
                                     }),
                                 }),
-                                png: AnnoPtr2(binrw::FilePtr32 {
+                                png: AnnoPtr2(RdmFilePtr {
                                     ptr: 0,
                                     value: Some(RdmContainer {
                                         info: RdmContainerPrefix {
@@ -563,7 +563,7 @@ impl RdWriter2 {
                 let rot = unit_quaternion.quaternion().coords;
 
                 let res = RdmJoint {
-                    name: AnnoPtr2(binrw::FilePtr32 {
+                    name: AnnoPtr2(RdmFilePtr {
                         ptr: 0,
                         value: Some(RdmContainer {
                             info: RdmContainerPrefix {
@@ -587,13 +587,13 @@ impl RdWriter2 {
             rdm.header1.skin.joint.info.count = replacement_raw_joints.len() as u32;
             rdm.header1.skin.joint.storage.items = replacement_raw_joints;
         } else {
-            rdm.header1.skin.0 = binrw::FilePtr32 {
+            rdm.header1.skin.0 = RdmFilePtr {
                 ptr: 0,
                 value: None,
             }
         }
 
-        rdm.header1.rdm_blob_to_mat.0 = binrw::FilePtr32 {
+        rdm.header1.rdm_blob_to_mat.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {

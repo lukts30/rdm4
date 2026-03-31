@@ -128,7 +128,7 @@ impl RdAnimWriter2 {
 
         let export_name = br"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max";
 
-        anim.header1.header2.export_name1.0 = binrw::FilePtr32 {
+        anim.header1.header2.export_name1.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -142,7 +142,7 @@ impl RdAnimWriter2 {
         };
 
         let model_str: &[u8; 26] = br"basalt_crusher_others_lod0";
-        anim.header1.meta_anim.name.0 = binrw::FilePtr32 {
+        anim.header1.meta_anim.name.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
@@ -161,7 +161,7 @@ impl RdAnimWriter2 {
         let mut anim_data: Vec<AnimInner> = vec![];
         for x in anim_input.anim_vec {
             let o: AnimInner = AnimInner {
-                j_name: AnnoPtr2(binrw::FilePtr32 {
+                j_name: AnnoPtr2(RdmFilePtr {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
@@ -173,7 +173,7 @@ impl RdAnimWriter2 {
                         },
                     }),
                 }),
-                j_data: AnnoPtr2(binrw::FilePtr32 {
+                j_data: AnnoPtr2(RdmFilePtr {
                     ptr: 0,
                     value: Some(RdmContainer {
                         info: RdmContainerPrefix {
