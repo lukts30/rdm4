@@ -6,14 +6,13 @@ Guidance for AI coding agents operating in this repository.
 
 **rdm4** is a Rust CLI tool that converts 3D model files between the
 proprietary RDM format (Anno 1800) and glTF 2.0. It is a Cargo workspace
-with four crates:
+with three crates:
 
 | Crate        | Path          | Kind                          |
 | ------------ | ------------- | ----------------------------- |
 | `rdm4-bin`   | `src/main.rs` | Binary (CLI entry point)      |
 | `rdm4lib`    | `rdm4lib/`    | Library (core RDM/glTF logic) |
 | `rdm_derive` | `rdm_derive/` | Proc-macro (`RdmStructSize`)  |
-| `cfghelper`  | `cfghelper/`  | Library (XML cfg parser)      |
 
 ## Repository Layout
 
@@ -21,7 +20,6 @@ Dependency updates typically touch three `Cargo.toml` files:
 
 - `Cargo.toml` (workspace root / CLI package)
 - `rdm4lib/Cargo.toml` (core conversion logic)
-- `cfghelper/Cargo.toml` (XML cfg parser)
 
 Note: `rdm4lib` is a **path dependency**, not a workspace member. The
 workspace members are `cfghelper` and `rdm_derive`.
@@ -51,11 +49,8 @@ cargo test --release --workspace           # release, all crates (as CI)
 
 # Test — single test by name
 cargo test -p rdm4lib -- tests::fishery_others_lod2
-cargo test -p cfghelper -- cfg_xml_tests::test_parse_cfg
-
 # Test — single crate
 cargo test -p rdm4lib
-cargo test -p cfghelper
 
 # Test — integration tests only
 cargo test -p rdm4lib --test integration_test
@@ -112,7 +107,6 @@ only a few functions. When adding new code:
   (e.g., `P4h_N4b_G4b_B4b_T2h`)
 - **Functions**: `snake_case`; short domain helpers like `p4h()`, `n4b()`
 - **Constants**: `UPPER_SNAKE_CASE`
-- **cfghelper structs** use `#[allow(non_snake_case)]` to match XML field names
 
 ### Types and Generics
 
@@ -149,7 +143,6 @@ binary format structs. Other common derives: `Debug`, `Clone`, `Copy`,
 ### Module Structure
 
 File-per-module style (no `mod.rs`). Modules declared flat in `lib.rs`.
-`cfghelper` wraps everything in a `pub mod cfghelper { }` block.
 
 ### Documentation
 
@@ -159,7 +152,7 @@ comments are sparse. When adding code, at minimum document public API items.
 ### Testing
 
 - Unit tests: `#[cfg(test)] mod tests { }` inside source files
-- Integration tests: `rdm4lib/tests/` and `cfghelper/tests/`
+- Integration tests: `rdm4lib/tests/`
 - Tests are data-driven, verifying vertex counts, format strings, and SHA-256
   hashes of output files via `check_hash()`
 - Many tests are gated with `#[cfg_attr(miri, ignore)]` (file I/O)
