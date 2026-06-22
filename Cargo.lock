@@ -130,7 +130,7 @@ dependencies = [
  "owo-colors",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -209,7 +209,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -344,7 +344,7 @@ dependencies = [
  "inflections",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -425,7 +425,7 @@ checksum = "2a8c8b344124222efd714b73bb41f8b5120b27a7cc1c75593a6ff768d9d05aa4"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -656,7 +656,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -723,7 +723,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -788,9 +788,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.117"
+version = "2.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
 dependencies = [
  "proc-macro2",
  "quote",
