@@ -535,7 +535,7 @@ impl<'a> ImportedGltf {
                 negative_x_and_v0v2v1 = false;
             }
 
-            debug!("base: {}", &base);
+            debug!("base: {}", base);
 
             let det = base.determinant();
             if det.is_sign_negative() {
@@ -869,7 +869,7 @@ impl<'a> ImportedGltf {
 
                 merged_triangle_vec.append(&mut triangle_vec);
 
-                info!("{:?}", &mesh_info);
+                info!("{:?}", mesh_info);
                 //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
             }
             let verts = VertexFormat2::new(
@@ -965,7 +965,7 @@ fn build_transform2(gltf: &gltf::Document, mesh_node: usize) -> Matrix4<f32> {
         }
     }
 
-    debug!("tree: {:?}", &tree);
+    debug!("tree: {:?}", tree);
 
     calculate_global_transform(mesh_node, &tree, gltf)
 }

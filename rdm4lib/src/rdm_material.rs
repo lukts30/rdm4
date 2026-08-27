@@ -39,10 +39,10 @@ impl RdMaterial {
             if file_dst.is_file() {
                 match fs::remove_file(&file_dst) {
                     Ok(_) => {
-                        debug!("removed: {:?}", &file_dst)
+                        debug!("removed: {:?}", file_dst)
                     }
                     Err(e) => {
-                        debug!("failed to remove: {:?}, {:?}", &file_dst, e)
+                        debug!("failed to remove: {:?}, {:?}", file_dst, e)
                     }
                 }
             }

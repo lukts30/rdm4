@@ -109,7 +109,7 @@ impl RdGltfBuilder {
                 None => {
                     warn!(
                         "Could not find animation target {:?} in base model {:?}",
-                        &janim.name, p
+                        janim.name, p
                     );
                     //TODO: proper fix for unused animation targets.
                     for _ in 0..janim.frames.len() {
@@ -1225,7 +1225,7 @@ impl RdGltf {
                 };
                 glb.to_writer(writer).expect("I/O error");
                 debug!("json: {}", glb.json.len());
-                debug!("bin: {}", &self.buffers[0].get_bytes_len_padded());
+                debug!("bin: {}", self.buffers[0].get_bytes_len_padded());
             }
             _ => {
                 let vjson = json::serialize::to_vec_pretty(&self.root.unwrap())
@@ -1240,7 +1240,7 @@ impl RdGltf {
                 for (i, bin) in self.buffers.into_iter().enumerate() {
                     let mut file_path = udir.clone();
                     file_path.push(format!("buffer{}.bin", i));
-                    debug!("write_all {:?}", &file_path);
+                    debug!("write_all {:?}", file_path);
                     let mut writer = OpenOptions::new()
                         .write(true)
                         .create(true)
@@ -1259,7 +1259,7 @@ impl RdGltf {
                         src.set_extension("PNG");
                         let mut dst_file = udir.join(e.file_stem().unwrap());
                         dst_file.set_extension("PNG");
-                        debug!("copy: {:?} to {:?}", &src, &dst_file);
+                        debug!("copy: {:?} to {:?}", src, dst_file);
                         fs::copy(src, &dst_file).unwrap();
                     }
                 }

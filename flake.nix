@@ -88,6 +88,9 @@
           pre-commit = {
             check.enable = true;
             settings = {
+              settings.rust.check.cargoDeps = pkgs.rustPlatform.importCargoLock {
+                lockFile = ./Cargo.lock;
+              };
               hooks.treefmt = {
                 enable = true;
                 package = config.treefmt.build.wrapper;
