@@ -101,9 +101,10 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
-            Changes in this Release
-            - First Change
-            - Second Change
+            ## Windows prerequisite
+
+            On Windows, install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) before running rdm4.
+          generate_release_notes: true
           draft: true
           prerelease: true
           files: |

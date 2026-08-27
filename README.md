@@ -1,5 +1,11 @@
 # rdm4: rdm ⇄ glTF 2.0 Converter
 
+## Windows prerequisite
+
+On Windows, install the latest
+[Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe)
+before running rdm4.
+
 ## Windows Explorer right-click menu
 
 It is possible to use parts of the converter functionality via a context menu in Windows Explorer. Not all features of the converter are available in this context menu notably non of the animation support (if you want to convert animations you must use the command-line interface!).
