@@ -20,7 +20,7 @@ pub struct VertexIdentifier {
 impl fmt::Display for VertexIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO: cleanup
-        let tmp = format!("{:?}", &self.uniq);
+        let tmp = format!("{:?}", self.uniq);
         let unit_size = match self.unit_size {
             IdentifierSize::U32 => 'b',
             IdentifierSize::U16 => 'h',
@@ -198,7 +198,7 @@ pub struct VertexFormat2 {
 
 impl fmt::Display for VertexFormat2 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", &self.text)
+        write!(f, "{}", self.text)
     }
 }
 

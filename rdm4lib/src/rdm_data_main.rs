@@ -71,9 +71,9 @@ pub struct Meta {
     unknown: AnnoPtr<RdmTypedT<MetaUnknown>>,
 
     #[bw(args_raw = {
-        debug!("{:?}", &end);
+        debug!("{:?}", end);
         *end += mesh_info.get_direct_and_pointed_data_size();
-        debug!("{:?}", &end);
+        debug!("{:?}", end);
         end
     })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
@@ -91,7 +91,7 @@ pub struct Meta {
     #[bw(calc = {
         let off = vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
         *end += off;
-        debug!("reset to end {:?}",&end);
+        debug!("reset to end {:?}", end);
     })]
     d: (),
 

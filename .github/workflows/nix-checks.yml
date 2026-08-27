@@ -15,7 +15,7 @@ jobs:
         uses: DeterminateSystems/flake-checker-action@v12
         with:
           fail-mode: true
-          condition: supportedRefs.contains(gitRef) && (has(numDaysOld) && numDaysOld < 180) && owner == 'NixOS'
+          condition: supportedRefs.contains(gitRef) && numDaysOld < 180 && owner == 'NixOS'
   flake_eval:
     name: Evaluate flake outputs
     runs-on: ubuntu-latest
