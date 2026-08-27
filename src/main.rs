@@ -191,7 +191,7 @@ fn entry_do_work(mut opts: Opts) {
         }
     }
 
-    info!("overide_mesh_idx: {:?}", &opts.overide_mesh_idx);
+    info!("overide_mesh_idx: {:?}", opts.overide_mesh_idx);
     // Gets a value for config if supplied by user, or defaults to "default.conf"
     info!("Using input file: {:?}", opts.input);
     info!("Export skeleton: {:?}", opts.skeleton);
