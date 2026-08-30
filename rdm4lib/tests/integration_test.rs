@@ -15,14 +15,12 @@ mod tests {
     use super::*;
     use rdm4lib::rdm_data_anim::RdAnimWriter2;
     use rdm4lib::rdm_data_main::RdWriter2;
+    #[cfg(target_os = "windows")]
+    use rdm4lib::rdm_material::RdMaterial;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
     use sha2::{Digest, Sha256};
     use std::convert::TryFrom;
     use std::fs;
-    use std::path::PathBuf;
-
-    #[cfg(target_os = "windows")]
-    use rdm4lib::rdm_material::RdMaterial;
 
     pub fn check_hash(path: &Path, expected: &str) {
         let hash = Sha256::new()
@@ -57,20 +55,38 @@ mod tests {
         let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
         rdm.add_anim(anim);
 
-        gltf_export::build(rdm, None, false, GltfExportFormat::GltfSeparate);
+        let output_dir = tempfile::tempdir().unwrap();
+        gltf_export::build(
+            rdm,
+            Some(output_dir.path().into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
 
-        let args = ["-ar", "gltf_out/out.gltf"];
+        let gltf_path = output_dir.path().join("out.gltf");
         let output = if cfg!(target_os = "windows") {
             Command::new("gltf_validator.exe")
-                .args(&args)
+                .arg("-ar")
+                .arg(&gltf_path)
                 .output()
-                .or_else(|_| Command::new("..\\gltf_validator.exe").args(&args).output())
+                .or_else(|_| {
+                    Command::new("..\\gltf_validator.exe")
+                        .arg("-ar")
+                        .arg(&gltf_path)
+                        .output()
+                })
                 .expect("failed to execute process")
         } else {
             Command::new("gltf_validator")
-                .args(&args)
+                .arg("-ar")
+                .arg(&gltf_path)
                 .output()
-                .or_else(|_| Command::new("../gltf_validator").args(&args).output())
+                .or_else(|_| {
+                    Command::new("../gltf_validator")
+                        .arg("-ar")
+                        .arg(&gltf_path)
+                        .output()
+                })
                 .expect("failed to execute process")
         };
 
@@ -86,7 +102,7 @@ mod tests {
         assert_eq!(r#"Errors: 0"#, info[0]);
         assert_eq!(r#"Warnings: 0"#, info[1]);
 
-        let mut f = File::open("gltf_out/out.gltf.report.json").unwrap();
+        let mut f = File::open(output_dir.path().join("out.gltf.report.json")).unwrap();
         let mut buffer = Vec::new();
         std::io::Read::read_to_end(&mut f, &mut buffer).ok();
 
@@ -138,12 +154,10 @@ mod tests {
         let anim = RdAnim::from("rdm/excavator_tycoons_work02.rdm");
         rdm.add_anim(anim);
 
-        if !Path::new("gltf_out1").exists() {
-            fs::create_dir("gltf_out1").unwrap();
-        }
+        let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build(
             rdm,
-            Some(Path::new("gltf_out1").into()),
+            Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
         );
@@ -163,12 +177,10 @@ mod tests {
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.mesh_info.len(), 3);
 
-        if !Path::new("gltf_out2").exists() {
-            fs::create_dir("gltf_out2").unwrap();
-        }
+        let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build(
             rdm,
-            Some(Path::new("gltf_out2").into()),
+            Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
         );
@@ -204,9 +216,8 @@ mod tests {
         assert_eq!(rdm.mesh_info.len(), 1);
 
         let exp_rdm = RdWriter2::new(rdm);
-        let dir_dst = PathBuf::from("rdm_out/basalt_crusher");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
             "2f6993eb99b4a0c89ee9723c822d18034cc772900331d1cb80e403b96339d398",
@@ -237,12 +248,10 @@ mod tests {
 
         rdm.add_anim(anim);
 
-        if !Path::new("gltf_out3").exists() {
-            fs::create_dir("gltf_out3").unwrap();
-        }
+        let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build(
             rdm,
-            Some(Path::new("gltf_out3").into()),
+            Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
         );
@@ -266,9 +275,8 @@ mod tests {
         assert_eq!(rdm.joints.as_ref().unwrap().len(), 72);
 
         let exp_rdm = RdWriter2::new(rdm);
-        let dir_dst = PathBuf::from("rdm_out/stormtrooper");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
             "242c11e5a71a85fd25c5a398374cac4da6575e73b6f8abc963b05dc7f1fdd5db",
@@ -297,12 +305,11 @@ mod tests {
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
         let exp_rdm = RdAnimWriter2::new(anim);
-        let dir_dst = PathBuf::from("rdm_out/stormtrooper");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        exp_rdm.write_anim_rdm(Some(dir_dst), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        exp_rdm.write_anim_rdm(Some(output_dir.path().into()), false);
 
         check_hash(
-            &PathBuf::from("rdm_out/stormtrooper/anim_0.rdm"),
+            &output_dir.path().join("anim_0.rdm"),
             "c2183cd7d5c342a6e6e1c8260b5ab93503fe2ad282d851bbee791bf3a1d6c3f1",
         );
     }
@@ -321,9 +328,8 @@ mod tests {
         assert_eq!(rdm.vertex.len(), 5184);
 
         let exp_rdm = RdWriter2::new(rdm);
-        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
             "8f08378928a2d5cfc80d10a54c7cde05644de7d9977f0eb262ecb6adcd37aa4e",
@@ -347,9 +353,8 @@ mod tests {
 
         let exp_rdm = RdWriter2::new(rdm);
 
-        let dir_dst = PathBuf::from("rdm_out/read_gltf_no_skin2_triangle");
-        std::fs::create_dir_all(&dir_dst).unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(dir_dst), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
             "f456d4418387e5bcbe4522064f5fdb75bd67b762793489ad6220a9718d431e3c",

@@ -33,3 +33,6 @@ features = []
 
 [dependencies.rdm_derive]
 path = "../rdm_derive"
+
+[dev-dependencies]
+tempfile = "3"
