@@ -22,57 +22,42 @@ Create the folder C:\\tools. Copy rdm4-bin.exe to C:\\tools. Choose one of the r
 ## command-line interface rdm4-bin
 
 ```
-rdm4-bin 0.8.0-alpha.1
-lukts30 <https://github.com/lukts30/rdm4>
+rdm4-bin 0.11.2-alpha.1
 
-USAGE:
-    rdm4-bin [OPTIONS] --input <glTF or rdm FILE>
+Usage: rdm4-bin [OPTIONS] --input <glTF or rdm FILE>
 
-OPTIONS:
-    -i, --input <glTF or rdm FILE>    Input file
-    -o, --outdst <OUT>                Output file or folder. If `--in-is-out-filename` is set this
-                                      must be a folder!
-    -n, --in-is-out-filename          Sets output to input file name
-        --force                       Override existing files
-    -s, --skeleton                    Export (available) skin
-    -a, --animation                   Export (available) animation. RDM to glTF needs external
-                                      animation file (rdanimation)
-    -v, --verbose                     A level of verbosity, and can be used multiple times
-    -h, --help                        Print help information
-    -V, --version                     Print version information
+Options:
+  -i, --input <glTF or rdm FILE>  Input file
+  -o, --outdst <OUT>              Output file or folder. If `--in-is-out-filename` is set this must be a folder!
+  -n, --in-is-out-filename        Sets output to input file name
+      --force                     Override existing files
+  -s, --skeleton                  Export (available) skin
+  -a, --animation                 Export (available) animation. RDM to glTF needs external animation file (rdanimation)
+  -v, --verbose...                A level of verbosity, and can be used multiple times
+  -h, --help                      Print help
+  -V, --version                   Print version
 
 GLTF TO RDM OPTIONS:
-    -g, --gltf <VertexFormat>
-            VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b |
-            P4h_N4b_G4b_B4b_T2h_I4b_W4b | P3f_N3f_G3f_B3f_T2f_C4b | P4h_N4b_G4b_B4b_T2h_C4b_C4b | P4h_T2h_C4b
-
-        --gltf-mesh-index <GLTF_MESH_INDEX>
-            glTF mesh index to convert to rdm [default: 0]
-
-        --no_transform
-            glTF to rdm: Do not apply node transforms. Recommended to use when working with
-            animations
-
-        --negative-x-and-v0v2v1
-            Mirrors the object on the x axis
-
-        --overide-mesh-idx <OVERIDE_MESH_IDX>
-            Overrides MeshInstance mesh indcies. Useful to match the material order of an existing
-            cfg
-
-    -u, --gltf-node-joint-name-src <GLTF_NODE_JOINT_NAME_SRC>
-            For glTF joint to rdm bone: source for a unique identifier: "UnstableIndex" |
-            "UniqueName" [default: UniqueName]
+  -g, --gltf <VertexFormat>
+          VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
+      --gltf-mesh-index <GLTF_MESH_INDEX>
+          glTF mesh index to convert to rdm [default: 0]
+      --no_transform
+          glTF to rdm: Do not apply node transforms. Recommended to use when working with animations
+      --negative-x-and-v0v2v1
+          Mirrors the object on the x axis
+      --overide-mesh-idx <OVERIDE_MESH_IDX>
+          Overrides MeshInstance mesh indcies. Useful to match the material order of an existing cfg
+  -u, --gltf-node-joint-name-src <GLTF_NODE_JOINT_NAME_SRC>
+          For glTF joint to rdm bone: source for a unique identifier: "UnstableIndex" | "UniqueName" [default: UniqueName]
 
 RDM TO GLTF OPTIONS:
-    -e, --gltf-export-format <GLTF_EXPORT_FORMAT>
-            Export format to use for rdm to gltf: "glb", "gltf", "gltfmin" [default: glb]
-
-    -m, --rdanimation <anim/*.rdm>
-            External animation file for rdm
-
-    -t, --diffusetexture <*.dds>
-            DiffuseTextures
+  -e, --gltf-export-format <GLTF_EXPORT_FORMAT>
+          Export format to use for rdm to gltf: "glb", "gltf", "gltfmin" [default: glb]
+  -m, --rdanimation <anim/*.rdm>
+          External animation file for rdm
+  -t, --diffusetexture <*.dds>
+          DiffuseTextures
 ```
 
 ## Example usage (rdm 🠚 glTF 2.0)

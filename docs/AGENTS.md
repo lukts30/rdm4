@@ -16,13 +16,15 @@ with three crates:
 
 ## Repository Layout
 
-Dependency updates typically touch three `Cargo.toml` files:
+Dependency updates may touch three `Cargo.toml` files:
 
 - `Cargo.toml` (workspace root / CLI package)
 - `rdm4lib/Cargo.toml` (core conversion logic)
+- `rdm_derive/Cargo.toml` (proc-macro dependencies)
 
-Note: `rdm4lib` is a **path dependency**, not a workspace member. The
-workspace members are `cfghelper` and `rdm_derive`.
+Cargo recognizes all three crates as workspace members. The root package is
+included implicitly, `rdm_derive` is listed explicitly, and the in-tree
+`rdm4lib` path dependency is included automatically.
 
 ## External Instructions
 
@@ -33,30 +35,35 @@ workspace members are `cfghelper` and `rdm_derive`.
 
 ## Build / Lint / Test Commands
 
+Always run Rust tooling through the provided default Nix development shell.
+Do not invoke a host-installed `cargo`, `rustc`, `rustfmt`, or `clippy` directly.
+The commands below use `nix develop --command` so each invocation is guaranteed
+to use the repository's toolchain and dependencies.
+
 ```sh
 # Build
-cargo build --workspace
-cargo build --release --workspace          # as CI runs it
+nix develop --command cargo build --workspace
+nix develop --command cargo build --release --workspace          # as CI runs it
 
 # Lint
-cargo fmt -- --check                       # check formatting
-cargo fmt                                  # auto-fix formatting
-cargo clippy --tests -- -D warnings        # clippy (CI mode)
+nix develop --command cargo fmt -- --check                       # check formatting
+nix develop --command cargo fmt                                  # auto-fix formatting
+nix develop --command cargo clippy --tests -- -D warnings        # clippy (CI mode)
 
 # Test — all
-cargo test --workspace                     # debug, all crates
-cargo test --release --workspace           # release, all crates (as CI)
+nix develop --command cargo test --workspace                     # debug, all crates
+nix develop --command cargo test --release --workspace           # release, all crates (as CI)
 
 # Test — single test by name
-cargo test -p rdm4lib -- tests::fishery_others_lod2
+nix develop --command cargo test -p rdm4lib -- tests::fishery_others_lod2
 # Test — single crate
-cargo test -p rdm4lib
+nix develop --command cargo test -p rdm4lib
 
 # Test — integration tests only
-cargo test -p rdm4lib --test integration_test
+nix develop --command cargo test -p rdm4lib --test integration_test
 
 # Test — unit tests only
-cargo test -p rdm4lib --lib
+nix develop --command cargo test -p rdm4lib --lib
 ```
 
 CI runs tests in **release mode** with `--locked`. Some integration tests
@@ -65,14 +72,17 @@ require `gltf_validator` on PATH and (on Windows) `texconv.exe`.
 ## Formatting and Linting
 
 All formatting and linting is configured in `flake.nix` (single source of
-truth). The Nix dev shell (`nix develop` / `direnv allow`) installs
-pre-commit hooks that run **clippy** and **treefmt** automatically.
+truth). The Nix dev shell installs pre-commit hooks that run **clippy** and
+**treefmt** automatically. Use `nix develop --command` for one-off commands,
+or enter `nix develop` first and keep all Rust tooling inside that shell.
 
 Formatters managed by treefmt: rustfmt (edition 2021), nixfmt, yamlfmt,
 actionlint, mdformat. Do not add standalone config files (`rustfmt.toml`,
 `clippy.toml`, etc.) — configure via `flake.nix` instead.
 
-Run manually: `treefmt` or `cargo fmt && cargo clippy`.
+Run manually with `nix develop --command treefmt`,
+`nix develop --command cargo fmt`, or
+`nix develop --command cargo clippy`.
 
 ## Code Style
 
@@ -161,9 +171,9 @@ comments are sparse. When adding code, at minimum document public API items.
 
 ### Dependencies
 
-`binrw = "=0.11.2"` is pinned to an exact version because the code relies
+`binrw = "=0.15.2"` is pinned to an exact version because the code relies
 on specific API details. Do not bump it without verifying compatibility.
-Key crates: `binrw`, `nalgebra`, `gltf`, `half`, `clap`, `quick-xml`.
+Key crates: `binrw`, `nalgebra`, `gltf`, `half`, `clap`, `env_logger`.
 
 ## Architecture
 
@@ -202,19 +212,12 @@ shadow `#[repr(C, packed(1))]` struct where all `AnnoPtr<T>` fields are
 replaced with `u32`, then returning `size_of` of the packed struct. Must be
 paired with `#[binrw]` and `#[bw(import_raw(end: &mut u64))]`.
 
-### cfghelper (Deprecated)
-
-The `cfghelper` crate is **deprecated** and will be removed. Avoid adding
-new functionality to it.
-
 ## Test Data
 
 - **RDM fixtures**: `rdm4lib/rdm/` — binary `.rdm` files (meshes and
   animations) at various LOD levels
 - **glTF fixtures**: `rdm4lib/rdm/gltf/` — test glTF files
   (`stormtrooper.gltf`, `triangle.gltf`)
-- **cfghelper fixtures**: `cfghelper/tests/cfgs/` — XML `.cfg` inputs and
-  `.cfgn` expected outputs
 
 Tests verify correctness via vertex count assertions, format string checks,
 and SHA-256 hash comparison (`check_hash()`). The `gltf_validator` CLI is
