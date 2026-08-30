@@ -332,12 +332,14 @@ mod tests {
             .write_type_args(&rdm, binrw::Endian::Little, ())
             .unwrap();
 
-        let mut file = fs::File::create("/tmp/rdm_out.rdm").unwrap();
+        let output_dir = tempfile::tempdir().unwrap();
+        let output_path = output_dir.path().join("rdm_out.rdm");
+        let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
 
         dbg!(file.metadata().unwrap().len());
         dbg!(data.len());
-        assert_eq!(data, fs::read("/tmp/rdm_out.rdm").unwrap())
+        assert_eq!(data, fs::read(output_path).unwrap())
     }
 }
 

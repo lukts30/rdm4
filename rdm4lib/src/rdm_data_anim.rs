@@ -71,9 +71,11 @@ mod tests {
             .write_type_args(&rdm, binrw::Endian::Little, ())
             .unwrap();
 
-        let mut file = fs::File::create("/tmp/anim_out.rdm").unwrap();
+        let output_dir = tempfile::tempdir().unwrap();
+        let output_path = output_dir.path().join("anim_out.rdm");
+        let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
-        assert_eq!(data, fs::read("/tmp/anim_out.rdm").unwrap())
+        assert_eq!(data, fs::read(output_path).unwrap())
     }
 
     #[test]
@@ -81,7 +83,8 @@ mod tests {
     fn run_conv() {
         let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
         let rdaw = RdAnimWriter2::new(anim);
-        rdaw.write_anim_rdm(Some("/tmp/".into()), false);
+        let output_dir = tempfile::tempdir().unwrap();
+        rdaw.write_anim_rdm(Some(output_dir.path().into()), false);
     }
 }
 
