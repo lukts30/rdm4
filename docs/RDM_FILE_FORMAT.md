@@ -61,8 +61,9 @@ because:
 - its record is the entry point of the offset graph.
 
 The root stride covers only the direct root record, not its descendants or the
-remaining file. Most observed root records are 48 bytes wide; 52-byte records
-also exist.
+remaining file. All directly identified samples have a 48-byte root record. A
+52-byte variant was recorded during earlier reverse-engineering, but no
+identifiable sample is retained; see [Evidence](#evidence).
 
 A block following the root is an ordinary referenced block, not a second file
 header.
@@ -100,11 +101,14 @@ next_header        = H + block_size
 size and is not necessarily equal to the native `sizeof` of a corresponding
 language type.
 
+At the physical framing level, the stored `count` and `stride` determine the
+payload extent and the position of the next block. They do not identify a
+record layout or guarantee that a known decoder supports that layout.
+
 Records with the same known interpretation can have different on-disk widths.
 For example, records interpreted as model metadata occur with both 68-byte and
-92-byte strides. The stored `stride` is authoritative. The stored `count` is
-likewise authoritative; a block that usually contains one record may contain
-several.
+92-byte strides. Likewise, a block commonly interpreted as a single record can
+have a `count` greater than one.
 
 The block framing is self-delimiting but not self-describing. `count` and
 `stride` locate the next block, but neither identifies the payload's record
@@ -158,8 +162,9 @@ const RdmBlock *block = container_of(payload, RdmBlock, payload);
 The stored offset addresses the flexible array member. `container_of` recovers
 the preceding count and stride bytes.
 
-A reader must decode those byte arrays using the file byte order and validate
-offsets, bounds, and `count * stride` before accessing a block.
+A reader must decode those byte arrays using the file byte order, compute sizes
+with overflow-checked arithmetic, and validate offsets and bounds before
+accessing a block.
 
 ## Physical block order
 
@@ -239,8 +244,8 @@ requires record-layout knowledge and random access to the file, or a seekable
 input stream. Physical enumeration reveals block boundaries; offset traversal
 reveals known graph edges.
 
-The file does not require each block to have only one incoming offset. Reusing
-one payload offset would create a shared node:
+The offset encoding has no field that enforces one incoming reference per
+block. It could therefore represent a shared node by reusing a payload offset:
 
 ```text
              Root
@@ -250,9 +255,49 @@ one payload offset would create a shared node:
             Shared
 ```
 
-With forward-only offsets this remains a directed acyclic graph. Absolute
-offsets could also represent back-edges or cycles, although none were found in
-the examined files.
+Such sharing would form a directed acyclic graph while all offsets remain
+forward. Absolute offsets could also represent back-edges or cycles. No
+examined file uses sharing or back-edges, and whether game consumers accept
+either is unknown.
+
+## Evidence
+
+The observations in this document were checked against the repository fixtures
+and one external file:
+
+- The 11 files in the [repository fixture directory](../rdm4lib/rdm/) all use
+  `RDM\x01` and a `1 × 48` root block. The eight model fixtures use a `1 × 92`
+  model-metadata block; the three animation fixtures have no model-metadata
+  block.
+
+- One external Anno 2070 model, `n_pearl_reef_lod0.rdm`, was examined directly.
+  Its asset path is
+  `data/graphics/landscape/underwater_terrain/rdm/n_pearl_reef_lod0.rdm`; the
+  exact game build is not recorded. The file is 66,164 bytes and has SHA-256
+  `a72d9fdbbdca039c65f1e2e913978aa5e01210f78dcb005cba5eb9ad9a920e46`.
+  Its first 28 bytes are:
+
+  ```text
+  52 44 4d 00  00 00 00 14  00 00 00 00  00 00 00 04
+  00 00 00 1c  00 00 00 01  00 00 00 30
+  ```
+
+  This establishes `RDM\x00`, big-endian preamble fields, and a `1 × 48` root.
+  Its model-metadata block header at `0x133` is
+  `00 00 00 01 00 00 00 44`, establishing a `1 × 68` variant. A physical scan
+  accounts for all 17 blocks and every byte in the file. The sample is
+  proprietary and is not stored in this repository. See
+  [issue #144](https://github.com/lukts30/rdm4/issues/144) and the associated
+  [big-endian experiment](https://gist.github.com/lukts30/0b9ceef99bcfc0ff80ef22368e5857c5).
+
+The 52-byte root remains an unverified external observation. Support for it was
+introduced in
+[commit `f3ec190`](https://github.com/lukts30/rdm4/commit/f3ec190599e607aebe063b3d13d108657c6161bb),
+but no source filename, game build, or hash was retained. Counts greater than
+one are recorded in [issue #143](https://github.com/lukts30/rdm4/issues/143)
+for model metadata and [issue #169](https://github.com/lukts30/rdm4/issues/169)
+for animation metadata; those external files are likewise not retained in the
+repository.
 
 ## Examined-file invariants
 
