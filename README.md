@@ -1,5 +1,20 @@
 # rdm4: rdm ⇄ glTF 2.0 Converter
 
+## Structural RDM inspector
+
+The workspace also contains `rdm-inspect`, a standalone, meaning-agnostic RDM
+viewer. It discovers the physical block sequence before scanning record
+payloads for offsets to discovered block boundaries. Run it without an output
+flag for an interactive, color-coded hex and graph TUI:
+
+```console
+cargo run -p rdm-inspect -- rdm4lib/rdm/basalt_crusher_others_lod0.rdm
+```
+
+Use `--dump` for the linear block map and inferred edges, `--graph` for an ASCII
+reference graph, or `--dot` for Graphviz output. See
+[`rdm_inspect/README.md`](rdm_inspect/README.md) for details.
+
 ## Windows prerequisite
 
 On Windows, install the latest
