@@ -611,6 +611,24 @@ pub const fn p4h_t2h_c4c() -> [VertexIdentifier; 3] {
     ]
 }
 
+pub const fn P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b() -> [VertexIdentifier; 13] {
+    [
+        VertexIdentifier::p4h(),
+        VertexIdentifier::n4b(),
+        VertexIdentifier::g4b(),
+        VertexIdentifier::b4b(),
+        VertexIdentifier::t2h(),
+        VertexIdentifier::i4b(),
+        VertexIdentifier::i4b(),
+        VertexIdentifier::i4b(),
+        VertexIdentifier::i4b(),        
+        VertexIdentifier::w4b(),      
+        VertexIdentifier::w4b(),      
+        VertexIdentifier::w4b(),      
+        VertexIdentifier::w4b(),
+    ]
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum TargetVertexFormat {
@@ -620,6 +638,7 @@ pub enum TargetVertexFormat {
     P3f_N3f_G3f_B3f_T2f_C4b,
     P4h_N4b_G4b_B4b_T2h_C4b_C4b,
     P4h_T2h_C4b,
+    P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b,
 }
 impl FromStr for TargetVertexFormat {
     type Err = String;
@@ -631,6 +650,7 @@ impl FromStr for TargetVertexFormat {
             "P4h_N4b_G4b_B4b_T2h_I4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b),
             "P3f_N3f_G3f_B3f_T2f_C4b" => Ok(TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b),
             "P4h_N4b_G4b_B4b_T2h_C4b_C4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b),
+            "P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b),
             "P4h_T2h_C4b" => Ok(TargetVertexFormat::P4h_T2h_C4b),
             _ => Err(format!("Invalid value for VertexFormat: {}", input)),
         }
@@ -656,6 +676,7 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
             TargetVertexFormat::P4h_T2h_C4b => false,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b => true,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => false,
         }
     }
@@ -667,6 +688,7 @@ impl VertexFormatProperties for TargetVertexFormat {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
             TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => false,
             TargetVertexFormat::P4h_T2h_C4b => false,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b => true,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => false,
         }
     }
@@ -683,6 +705,7 @@ impl VertexFormatProperties for TargetVertexFormat {
     fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32 {
         match vertex_format {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b => 4,
             _ => 0,
         }
     }
@@ -690,6 +713,7 @@ impl VertexFormatProperties for TargetVertexFormat {
     fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32 {
         match vertex_format {
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
+            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b => 4,
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => 1,
             _ => 0,
         }
