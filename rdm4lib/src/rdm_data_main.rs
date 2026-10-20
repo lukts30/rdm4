@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinWriterExt};
+use binrw::{binrw, BinRead, BinWriterExt};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
@@ -66,6 +66,10 @@ pub(crate) struct IndexFormat {
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
 pub struct Meta {
+    #[br(temp, restore_position, seek_before = SeekFrom::Current(-4))]
+    #[bw(ignore)]
+    part_size: u32,
+
     #[bw(args_raw = end)]
     model_name: AnnoPtr<RdmTypedT<ModelName>>,
     #[bw(args_raw = end)]
@@ -103,7 +107,22 @@ pub struct Meta {
     skeleton_index: i32, // -1 means no skeleton.
     bounds_min: [f32; 3],
     bounds_max: [f32; 3],
+    #[br(parse_with = read_meta_words, args(part_size))]
     _unknown_words: [u32; 10], // 68-byte records store only the first four.
+}
+
+#[binrw::parser(reader, endian)]
+fn read_meta_words(part_size: u32) -> binrw::BinResult<[u32; 10]> {
+    let word_count = match part_size {
+        68 => 4,
+        92 => 10,
+        _ => panic!("Unsupported metadata size: {part_size}"),
+    };
+    let mut words = [0; 10];
+    for word in &mut words[..word_count] {
+        *word = u32::read_options(reader, endian, ())?;
+    }
+    Ok(words)
 }
 
 impl Meta {
@@ -324,6 +343,75 @@ mod tests {
     use super::*;
     use binrw::{BinReaderExt, BinWriterExt};
     use std::fs;
+
+    #[test]
+    fn short_metadata_reads_only_four_words() {
+        for (source, endian) in [
+            (
+                include_bytes!("../rdm/n_nature_small_stone_02_lod0.rdm").as_slice(),
+                binrw::Endian::Big,
+            ),
+            (
+                include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
+                binrw::Endian::Little,
+            ),
+        ] {
+            let mut bytes = source.to_vec();
+            let word = |offset| match endian {
+                binrw::Endian::Big => {
+                    u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap())
+                }
+                _ => u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()),
+            };
+            let meta = word(word(16) as usize + 4) as usize;
+            let encode = |value: u32| match endian {
+                binrw::Endian::Big => value.to_be_bytes(),
+                _ => value.to_le_bytes(),
+            };
+            bytes[meta - 4..meta].copy_from_slice(&encode(68));
+            for i in 0..4 {
+                bytes[meta + 52 + i * 4..meta + 56 + i * 4].copy_from_slice(&encode(i as u32 + 1));
+            }
+            let mut reader = std::io::Cursor::new(bytes);
+            reader.set_position(meta as u64);
+            let value: Meta = reader.read_type(endian).unwrap();
+            assert_eq!(reader.position(), meta as u64 + 68);
+            assert_eq!(value._unknown_words, [1, 2, 3, 4, 0, 0, 0, 0, 0, 0]);
+        }
+    }
+
+    #[test]
+    fn big_endian_short_metadata_converts_to_92_bytes() {
+        use crate::vertex::{N3f, N4b, VertexFormat2};
+        let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
+        let source = model.rdmf.as_ref().unwrap();
+        assert!(source.big_endian);
+        assert_eq!(source.header1.meta.info.part_size, 68);
+        assert_eq!(source.header1.meta._unknown_words, [0; 10]);
+        assert_eq!(model.vertex.len(), 45);
+        assert_eq!(model.triangle_indices.len(), 15);
+        let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
+        for (actual, expected) in normal
+            .data
+            .into_iter()
+            .zip([0.90588236, 0.42745098, 0.03529412])
+        {
+            assert!((actual - expected).abs() < 0.000001);
+        }
+        let bounds = model.vertex.calculate_bounds();
+        let writer = RdWriter2::new(model);
+        let mut output = std::io::Cursor::new(Vec::new());
+        output.write_le(&writer.inner).unwrap();
+        output.set_position(0);
+        let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
+        assert!(!result.big_endian);
+        assert_eq!(result.header1.meta.info.part_size, 92);
+        assert_eq!(result.header1.meta._unknown_words, [0; 10]);
+        assert_eq!(
+            VertexFormat2::read_format_via_data(&result).calculate_bounds(),
+            bounds
+        );
+    }
 
     #[test]
     fn bounds_before_half_float_quantization() {

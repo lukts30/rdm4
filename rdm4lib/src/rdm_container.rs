@@ -158,6 +158,7 @@ where
 {
     #[br(assert(!T_IS_PARTSIZED
         || TypeId::of::<RdmHeader1>() == TypeId::of::<T>() && (info.part_size == 48 || info.part_size == 52)
+        || TypeId::of::<Meta>() == TypeId::of::<T>() && info.part_size == 68
         || info.part_size as usize == T::get_struct_byte_size(),
      "Struct ({}) size mismatch expected {} but got {}",std::any::type_name::<T>(),T::get_struct_byte_size(),info.part_size))
     ]
