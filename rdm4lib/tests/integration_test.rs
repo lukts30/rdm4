@@ -129,6 +129,54 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
+    fn exports_68_byte_mesh_with_60_hz_animation_preserving_keyframe_times() {
+        use binrw::BinReaderExt;
+        use rdm4lib::rdm_data_main::{RdmFile, RdmKindMesh};
+
+        // Original Anno 2070 jellyfish mesh and animation.
+        let mesh_path = "rdm/jellyfish_lod0.rdm";
+        let source: RdmFile<RdmKindMesh> = File::open(mesh_path).unwrap().read_le().unwrap();
+        assert_eq!(source.header1.meta.info.part_size, 68);
+        let anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
+        assert_eq!(anim.sampling_rate, 60);
+        let tracks = anim.anim_vec.clone();
+
+        let mut rdm = RdModell::from(mesh_path);
+        rdm.add_skin();
+        rdm.add_anim(anim);
+        let output_dir = tempfile::tempdir().unwrap();
+        gltf_export::build(
+            rdm,
+            Some(output_dir.path().into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
+
+        let (document, buffers, _) = gltf::import(output_dir.path().join("out.gltf")).unwrap();
+        let animation = document.animations().next().unwrap();
+        assert_eq!(animation.channels().count(), tracks.len() * 2);
+        for channel in animation.channels() {
+            let node = channel.target().node();
+            let track = tracks
+                .iter()
+                .find(|track| Some(track.name.as_str()) == node.name())
+                .unwrap();
+            let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+            assert_eq!(
+                reader.read_inputs().unwrap().collect::<Vec<_>>(),
+                track
+                    .frames
+                    .iter()
+                    .map(|frame| frame.time)
+                    .collect::<Vec<_>>(),
+                "keyframe times for {}",
+                track.name,
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
     fn exports_animated_mesh_with_dds_texture() {
         let mut rdm = RdModell::from("rdm/excavator_tycoons_lod1.rdm");
