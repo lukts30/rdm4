@@ -13,7 +13,6 @@ use crate::{
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[br(assert(_unknown0_15 == 15))]
 #[derive(RdmStructSize)]
 pub struct AnimMeta {
     #[bw(args_raw = end)]
@@ -22,7 +21,8 @@ pub struct AnimMeta {
     #[bw(args_raw = end)]
     pub anims: AnnoPtr<RdmTypedContainer<AnimInner>>,
     pub time_max: u32,
-    _unknown0_15: u32,
+    /// Nominal samples per second.
+    pub sampling_rate: u32,
     _padding: [u8; 32],
 }
 
@@ -76,6 +76,27 @@ mod tests {
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
         assert_eq!(data, fs::read(output_path).unwrap())
+    }
+
+    #[test]
+    fn preserves_sampling_rate_when_loading_and_writing_animation() {
+        for sampling_rate in [1, 30, 60, 78] {
+            let data = include_bytes!("../rdm/basalt_crusher_others_idle01.rdm");
+            let mut reader = std::io::Cursor::new(data);
+            let mut rdm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
+            rdm.header1.meta_anim.sampling_rate = sampling_rate;
+            let mut writer = std::io::Cursor::new(Vec::new());
+            writer.write_le(&rdm).unwrap();
+
+            let anim = RdAnim::new(writer.into_inner(), "idle".into());
+            assert_eq!(anim.sampling_rate, sampling_rate);
+            let output = RdAnimWriter2::new(anim);
+            let mut writer = std::io::Cursor::new(Vec::new());
+            writer.write_le(&output.export).unwrap();
+            writer.set_position(0);
+            let written: RdmFile<RdmKindAnim> = writer.read_le().unwrap();
+            assert_eq!(written.header1.meta_anim.sampling_rate, sampling_rate);
+        }
     }
 
     #[test]
@@ -160,6 +181,7 @@ impl RdAnimWriter2 {
             }),
         };
 
+        anim.header1.meta_anim.sampling_rate = anim_input.sampling_rate;
         anim.header1.meta_anim.time_max = anim_input.time_max;
         info!("SEQUENCE EndTime (Max): {}", anim_input.time_max);
 

@@ -16,6 +16,8 @@ pub struct FrameCollection {
 #[derive(Debug, Clone)]
 pub struct RdAnim {
     pub time_max: u32,
+    /// Nominal samples per second.
+    pub sampling_rate: u32,
     pub name: String,
     pub anim_vec: Vec<FrameCollection>,
 }
@@ -48,6 +50,7 @@ impl RdAnim {
             anim_vec,
             name: name_anim,
             time_max,
+            sampling_rate: rdmm.header1.meta_anim.sampling_rate,
         }
     }
 }
