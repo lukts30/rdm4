@@ -100,9 +100,10 @@ pub struct Meta {
     })]
     d: (),
 
-    _padding_ff: u32, // 0x_FF_FF_FF_FF or 0x0
-    _unknown_box: [u8; 24],
-    _padding_zero: [u8; 40],
+    skeleton_index: i32, // -1 means no skeleton.
+    bounds_min: [f32; 3],
+    bounds_max: [f32; 3],
+    _unknown_words: [u32; 10], // 68-byte records store only the first four.
 }
 
 impl Meta {
@@ -430,11 +431,7 @@ impl RdWriter2 {
         rdm.header1.meta.format_identifiers.unknown_shader_id =
             if rdm_in.has_skin() { 1 } else { 0 };
 
-        rdm.header1.meta._padding_ff = if rdm_in.has_skin() {
-            Default::default()
-        } else {
-            u32::MAX
-        };
+        rdm.header1.meta.skeleton_index = if rdm_in.has_skin() { 0 } else { -1 };
 
         rdm.header1.meta.format_identifiers.rdm_container.0 = RdmFilePtr {
             ptr: 0,
@@ -462,10 +459,8 @@ impl RdWriter2 {
             }),
         };
 
-        rdm.header1.meta._unknown_box = [
-            0x00, 0x80, 0xF8, 0xBF, 0x00, 0x40, 0x22, 0xC0, 0x00, 0x60, 0xF7, 0xBF, 0x00, 0x80,
-            0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
-        ];
+        rdm.header1.meta.bounds_min = [-1.941_406_3, -2.535_156_3, -1.932_617_2];
+        rdm.header1.meta.bounds_max = [1.964_843_8, 1.896_484_4, 1.972_656_3];
 
         rdm.header1.meta.index_format.element_type = StorageType::U16;
         rdm.header1.meta.triangle_list.0 = RdmFilePtr {
