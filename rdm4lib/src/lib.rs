@@ -182,6 +182,23 @@ mod tests_intern {
     use binrw::{BinWriterExt, Endian};
 
     #[test]
+    fn reject_invalid_index_format() {
+        let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
+        let word =
+            |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let meta = word(word(16) + 4);
+        let index_format = word(meta + 8);
+        // Unknown code, mismatched width, and floating-point index types.
+        for code in [99u32, 5, 6, 7] {
+            let mut invalid = bytes.to_vec();
+            invalid[index_format..index_format + 4].copy_from_slice(&code.to_le_bytes());
+            assert!(std::io::Cursor::new(invalid)
+                .read_le::<RdmFile<RdmKindMesh>>()
+                .is_err());
+        }
+    }
+
+    #[test]
     fn big_endian_mesh_matches_little_endian() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
         let expected = RdModell::new(bytes.to_vec());
@@ -201,6 +218,11 @@ mod tests_intern {
                     field.reverse();
                 }
             }
+            meta.index_format.element_type = if index_size == 2 {
+                vertex::StorageType::U16
+            } else {
+                vertex::StorageType::U32
+            };
             meta.triangle_list.info.part_size = index_size;
             meta.triangle_list.storage.items = expected
                 .triangle_indices

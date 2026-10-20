@@ -8,6 +8,7 @@ use std::{
 use binrw::{binrw, BinWriterExt};
 use std::marker::PhantomData;
 
+use crate::vertex::StorageType;
 use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
 use rdm_derive::RdmStructSize;
 
@@ -54,8 +55,10 @@ impl MeshInfo {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
-struct MetaUnknown {
-    _unknown: u32,
+pub(crate) struct IndexFormat {
+    #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
+        "Index format requires U16 or U32"))]
+    pub(crate) element_type: StorageType,
     _padding: [u8; 16],
 }
 
@@ -68,7 +71,7 @@ pub struct Meta {
     #[bw(args_raw = end)]
     pub format_identifiers: AnnoPtr<RdmTypedT<VertId>>,
     #[bw(args_raw = end)]
-    unknown: AnnoPtr<RdmTypedT<MetaUnknown>>,
+    pub(crate) index_format: AnnoPtr<RdmTypedT<IndexFormat>>,
 
     #[bw(args_raw = {
         debug!("{:?}", end);
@@ -78,6 +81,8 @@ pub struct Meta {
     })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
     #[bw(args_raw = end)]
+    #[br(assert(triangle_list.info.part_size == index_format.element_type.byte_size(),
+        "Index type and index-buffer stride disagree"))]
     pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
     #[bw(args_raw = {
@@ -107,21 +112,20 @@ impl Meta {
 
     /// Decode indices using the source file's byte order.
     pub fn triangle_list(&self, big_endian: bool) -> impl Iterator<Item = u32> + '_ {
-        let part_size = self.triangle_list.info.part_size as usize;
-        let convert = match part_size {
-            2 => |chunk: &[AnnoU8]| -> u32 {
+        let index_type = self.index_format.element_type;
+        let part_size = index_type.byte_size() as usize;
+        let convert = match index_type {
+            StorageType::U16 => |chunk: &[AnnoU8]| -> u32 {
                 let chunk: [u8; 2] = [chunk[0].0, chunk[1].0];
                 let value: u32 = u16::from_le_bytes(chunk).into();
                 value
             },
-            4 => |chunk: &[AnnoU8]| -> u32 {
+            StorageType::U32 => |chunk: &[AnnoU8]| -> u32 {
                 let chunk: [u8; 4] = [chunk[0].0, chunk[1].0, chunk[2].0, chunk[3].0];
                 let value: u32 = u32::from_le_bytes(chunk);
                 value
             },
-            _ => {
-                panic!("Unexpected indices part_size: {}", part_size)
-            }
+            _ => panic!("Index format requires U16 or U32"),
         };
 
         let result = self
@@ -131,9 +135,9 @@ impl Meta {
             .chunks_exact(part_size)
             .map(move |chunk| {
                 let value = convert(chunk);
-                match (big_endian, part_size) {
-                    (true, 2) => (value as u16).swap_bytes().into(),
-                    (true, 4) => value.swap_bytes(),
+                match (big_endian, index_type) {
+                    (true, StorageType::U16) => (value as u16).swap_bytes().into(),
+                    (true, StorageType::U32) => value.swap_bytes(),
                     _ => value,
                 }
             });
@@ -463,12 +467,13 @@ impl RdWriter2 {
             0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
         ];
 
+        rdm.header1.meta.index_format.element_type = StorageType::U16;
         rdm.header1.meta.triangle_list.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: rdm_in.triangle_indices.len() as u32 * 3,
-                    part_size: 2,
+                    part_size: StorageType::U16.byte_size(),
                 },
                 storage: rdm_container::VectorN {
                     items: {

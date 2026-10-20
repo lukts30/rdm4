@@ -12,7 +12,9 @@ use binrw::binrw;
 #[derive(RdmStructSize)]
 pub struct VertexIdentifier {
     pub uniq: UniqueIdentifier,
-    pub unit_size: IdentifierSize,
+    #[br(assert(matches!(unit_size, StorageType::U32 | StorageType::F16 | StorageType::F32),
+        "Unsupported vertex storage type"))]
+    pub unit_size: StorageType,
     pub interpretation: u32,
     pub count: u32,
 }
@@ -22,9 +24,10 @@ impl fmt::Display for VertexIdentifier {
         // TODO: cleanup
         let tmp = format!("{:?}", self.uniq);
         let unit_size = match self.unit_size {
-            IdentifierSize::U32 => 'b',
-            IdentifierSize::U16 => 'h',
-            IdentifierSize::F32 => 'f',
+            StorageType::U32 => 'b',
+            StorageType::F16 => 'h',
+            StorageType::F32 => 'f',
+            StorageType::U16 => panic!("Unsupported vertex storage type: U16"),
         };
         let r = if self.count == 0x1 { 4 } else { self.count };
         write!(f, "{}{}{}", tmp.chars().next().unwrap(), r, unit_size)
@@ -291,10 +294,7 @@ impl VertexFormat2 {
             for vertex in vertex_buffer.chunks_exact_mut(vertex_size as usize) {
                 let mut offset = 0;
                 for id in &vec {
-                    let width = match id.unit_size {
-                        IdentifierSize::U16 => 2,
-                        IdentifierSize::U32 | IdentifierSize::F32 => 4,
-                    };
+                    let width = id.unit_size.byte_size() as usize;
                     let end = offset + id.get_size() as usize;
                     for component in vertex[offset..end].chunks_exact_mut(width) {
                         component.reverse();
@@ -361,8 +361,8 @@ impl VertexFormat2 {
 
         let unit = &self.identifiers[offset_idx[set]];
         // TODO: this needs far better checking!
-        let need_convert = unit.unit_size == IdentifierSize::U16
-            || unit.count == 0x1 && unit.interpretation != 0x0;
+        let need_convert =
+            unit.unit_size == StorageType::F16 || unit.count == 0x1 && unit.interpretation != 0x0;
 
         let mut count = 0;
 
@@ -400,40 +400,49 @@ impl VertexFormat2 {
     }
 }
 
+/// Supported RDM scalar storage codes, shared by vertex and index formats.
 #[binrw]
 #[brw(repr(u32))]
 #[repr(u32)]
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum IdentifierSize {
-    U32 = 0x5,
-    U16 = 0x6,
-    F32 = 0x7,
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum StorageType {
+    U16 = 3,
+    U32 = 5,
+    F16 = 6,
+    F32 = 7,
 }
 
-impl From<u32> for IdentifierSize {
+impl StorageType {
+    /// Number of bytes occupied by one scalar or packed word.
+    pub fn byte_size(self) -> u32 {
+        match self {
+            Self::U16 | Self::F16 => 2,
+            Self::U32 | Self::F32 => 4,
+        }
+    }
+}
+
+impl From<u32> for StorageType {
     fn from(i: u32) -> Self {
         match i {
-            0x5 => IdentifierSize::U32,
-            0x6 => IdentifierSize::U16,
-            0x7 => IdentifierSize::F32,
-            _ => todo!(),
+            3 => Self::U16,
+            5 => Self::U32,
+            6 => Self::F16,
+            7 => Self::F32,
+            _ => panic!("Unsupported RDM storage type: {}", i),
         }
     }
 }
 
 impl VertexIdentifier {
     pub fn get_size(&self) -> u32 {
-        match self.unit_size {
-            IdentifierSize::U32 => 4 * self.count,
-            IdentifierSize::U16 => 2 * self.count,
-            IdentifierSize::F32 => 4 * self.count,
-        }
+        self.unit_size.byte_size() * self.count
     }
 
     pub const fn p4h() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Position,
-            unit_size: IdentifierSize::U16,
+            unit_size: StorageType::F16,
             interpretation: 0,
             count: 4,
         }
@@ -442,7 +451,7 @@ impl VertexIdentifier {
     pub const fn p3f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Position,
-            unit_size: IdentifierSize::F32,
+            unit_size: StorageType::F32,
             interpretation: 0,
             count: 3,
         }
@@ -451,7 +460,7 @@ impl VertexIdentifier {
     pub const fn n4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Normal,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x6,
             count: 1,
         }
@@ -460,7 +469,7 @@ impl VertexIdentifier {
     pub const fn n3f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Normal,
-            unit_size: IdentifierSize::F32,
+            unit_size: StorageType::F32,
             interpretation: 0x0,
             count: 3,
         }
@@ -469,7 +478,7 @@ impl VertexIdentifier {
     pub const fn g4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::GTangent,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x6,
             count: 1,
         }
@@ -478,7 +487,7 @@ impl VertexIdentifier {
     pub const fn g3f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::GTangent,
-            unit_size: IdentifierSize::F32,
+            unit_size: StorageType::F32,
             interpretation: 0x0,
             count: 3,
         }
@@ -487,7 +496,7 @@ impl VertexIdentifier {
     pub const fn b4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Bitangent,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x6,
             count: 1,
         }
@@ -496,7 +505,7 @@ impl VertexIdentifier {
     pub const fn b3f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Bitangent,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x0,
             count: 3,
         }
@@ -505,7 +514,7 @@ impl VertexIdentifier {
     pub const fn t2h() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Texcoord,
-            unit_size: IdentifierSize::U16,
+            unit_size: StorageType::F16,
             interpretation: 0x0,
             count: 2,
         }
@@ -514,7 +523,7 @@ impl VertexIdentifier {
     pub const fn t2f() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Texcoord,
-            unit_size: IdentifierSize::F32,
+            unit_size: StorageType::F32,
             interpretation: 0x0,
             count: 2,
         }
@@ -523,7 +532,7 @@ impl VertexIdentifier {
     pub const fn i4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::IJoint,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x0,
             count: 1,
         }
@@ -532,7 +541,7 @@ impl VertexIdentifier {
     pub const fn w4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Weight,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x2,
             count: 1,
         }
@@ -541,7 +550,7 @@ impl VertexIdentifier {
     pub const fn c4b() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Color,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x4,
             count: 1,
         }
@@ -550,7 +559,7 @@ impl VertexIdentifier {
     pub const fn c4b_interpret2() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Color,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x2,
             count: 1,
         }
@@ -558,7 +567,7 @@ impl VertexIdentifier {
     pub const fn c4b_interpret6() -> Self {
         VertexIdentifier {
             uniq: UniqueIdentifier::Color,
-            unit_size: IdentifierSize::U32,
+            unit_size: StorageType::U32,
             interpretation: 0x6,
             count: 1,
         }
