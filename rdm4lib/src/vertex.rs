@@ -284,13 +284,31 @@ impl VertexFormat2 {
 
         let vertex_count = meta.vertex.info.count;
         let vertex_size = meta.vertex.info.part_size;
-        let vertex_buffer = Bytes::from(meta.vertex.iter().map(|x| x.0).collect::<Vec<u8>>());
+        let mut vertex_buffer: Vec<u8> = meta.vertex.iter().map(|x| x.0).collect();
+        if rdm.big_endian {
+            // Normalize to the LE representation used by all vertex consumers.
+            // Packed N4b/I4b/W4b/etc. are U32 words, not four independent bytes.
+            for vertex in vertex_buffer.chunks_exact_mut(vertex_size as usize) {
+                let mut offset = 0;
+                for id in &vec {
+                    let width = match id.unit_size {
+                        IdentifierSize::U16 => 2,
+                        IdentifierSize::U32 | IdentifierSize::F32 => 4,
+                    };
+                    let end = offset + id.get_size() as usize;
+                    for component in vertex[offset..end].chunks_exact_mut(width) {
+                        component.reverse();
+                    }
+                    offset = end;
+                }
+            }
+        }
 
         Self::new(
             vec.into_boxed_slice(),
             vertex_count,
             vertex_size,
-            vertex_buffer,
+            Bytes::from(vertex_buffer),
         )
     }
 

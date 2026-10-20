@@ -105,7 +105,8 @@ impl Meta {
         self.triangle_list.info.count
     }
 
-    pub fn triangle_list(&self) -> impl Iterator<Item = u32> + '_ {
+    /// Decode indices using the source file's byte order.
+    pub fn triangle_list(&self, big_endian: bool) -> impl Iterator<Item = u32> + '_ {
         let part_size = self.triangle_list.info.part_size as usize;
         let convert = match part_size {
             2 => |chunk: &[AnnoU8]| -> u32 {
@@ -128,7 +129,14 @@ impl Meta {
             .storage
             .items
             .chunks_exact(part_size)
-            .map(convert);
+            .map(move |chunk| {
+                let value = convert(chunk);
+                match (big_endian, part_size) {
+                    (true, 2) => (value as u16).swap_bytes().into(),
+                    (true, 4) => value.swap_bytes(),
+                    _ => value,
+                }
+            });
         result
     }
 }
@@ -212,8 +220,19 @@ impl RdmFileType for RdmKindMesh {}
 impl RdmFileType for RdmKindAnim {}
 
 #[binrw]
-#[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
+#[br(magic = b"RDM")]
+#[bw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmFile<T: RdmFileType + 'static> {
+    #[br(temp, assert(byte_order <= 1))]
+    #[bw(ignore)]
+    byte_order: u8,
+    #[br(temp, is_big = byte_order == 0, assert(preamble == [0x14, 0, 4, 0x1c]))]
+    #[bw(ignore)]
+    preamble: [u32; 4],
+    #[br(calc = byte_order == 0)]
+    #[bw(ignore)]
+    pub(crate) big_endian: bool,
+    #[br(is_big = big_endian)]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
     #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     // RdmHeader1 size is usually 48 but sometimes 52

@@ -108,6 +108,10 @@ impl RdModell {
         let mut reader = std::io::Cursor::new(&buf);
 
         let rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
+        info!(
+            "  Endianness: {}",
+            if rdm.big_endian { "big" } else { "little" }
+        );
 
         let vvert = VertexFormat2::read_format_via_data(&rdm);
         info!("  Mesh #0");
@@ -121,7 +125,7 @@ impl RdModell {
         let triangles_idx_count = rdm.header1.meta.triangle_list_len();
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
-        let ts: Vec<_> = rdm.header1.meta.triangle_list().collect();
+        let ts: Vec<_> = rdm.header1.meta.triangle_list(rdm.big_endian).collect();
         for x in ts.chunks(3) {
             let t = Triangle {
                 indices: [x[0], x[1], x[2]],
@@ -175,6 +179,66 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 #[cfg(test)]
 mod tests_intern {
     use super::*;
+    use binrw::{BinWriterExt, Endian};
+
+    #[test]
+    fn big_endian_mesh_matches_little_endian() {
+        let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
+        let expected = RdModell::new(bytes.to_vec());
+        assert_eq!(expected.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
+        for index_size in [2, 4] {
+            let mut raw: RdmFile<RdmKindMesh> = std::io::Cursor::new(bytes).read_le().unwrap();
+            let meta = &mut raw.header1.meta;
+            // Build a BE fixture independently of the reader's normalization.
+            for vertex in meta.vertex.storage.items.chunks_exact_mut(24) {
+                for field in vertex[..8].chunks_exact_mut(2) {
+                    field.reverse();
+                }
+                for field in vertex[8..20].chunks_exact_mut(4) {
+                    field.reverse();
+                }
+                for field in vertex[20..].chunks_exact_mut(2) {
+                    field.reverse();
+                }
+            }
+            meta.triangle_list.info.part_size = index_size;
+            meta.triangle_list.storage.items = expected
+                .triangle_indices
+                .iter()
+                .flat_map(|t| t.indices)
+                .flat_map(|i| i.to_be_bytes()[4 - index_size as usize..].to_vec())
+                .map(rdm_container::AnnoU8)
+                .collect();
+            let mut output = std::io::Cursor::new(Vec::new());
+            output.write_type_args(&raw, Endian::Big, ()).unwrap();
+            let mut output = output.into_inner();
+            // The public writer deliberately continues to emit an LE preamble.
+            output[3] = 0;
+            for word in output[4..20].chunks_exact_mut(4) {
+                word.reverse();
+            }
+            let actual = RdModell::new(output);
+            assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
+            assert_eq!(
+                actual.triangle_indices.len(),
+                expected.triangle_indices.len()
+            );
+            assert!(actual
+                .triangle_indices
+                .iter()
+                .zip(&expected.triangle_indices)
+                .all(|(a, b)| a.indices == b.indices));
+            let normals = |model: &RdModell| {
+                model
+                    .vertex
+                    .iter::<vertex::N4b, vertex::N3f>(0)
+                    .unwrap()
+                    .map(|n| n.data)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(normals(&actual), normals(&expected));
+        }
+    }
 
     #[test]
     fn fishery_others_cutout_lod0() {

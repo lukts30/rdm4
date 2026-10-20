@@ -24,6 +24,10 @@ impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut reader = std::io::Cursor::new(&buffer);
         let rdmm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
+        info!(
+            "  Endianness: {}",
+            if rdmm.big_endian { "big" } else { "little" }
+        );
         let v = &rdmm.header1.meta_anim.anims;
 
         let time_max = rdmm.header1.meta_anim.time_max;
