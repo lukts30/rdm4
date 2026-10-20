@@ -55,8 +55,11 @@ impl<P: AsRef<Path>> From<P> for RdAnim {
         std::io::Read::read_to_end(&mut f, &mut buffer).ok();
 
         let buffer_len = buffer.len();
-        info!("loaded {:?} into buffer", f_path.as_ref().to_str().unwrap());
-        info!("buffer size: {}", buffer_len);
+        info!(
+            "Loaded animation {:?} ({} bytes)",
+            f_path.as_ref(),
+            buffer_len
+        );
 
         RdAnim::new(
             buffer,

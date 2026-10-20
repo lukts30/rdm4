@@ -125,7 +125,7 @@ impl<'a> ImportedGltf {
         mesh_idx: u32,
         joint_name_src: ResolveNodeName,
     ) -> Result<ImportedGltf, gltf::Error> {
-        info!("gltf::import start!");
+        info!("Loading glTF {:?}", f_path);
         let (gltf, buffers, _) = gltf::import(f_path)?;
         let mut res = Self {
             gltf,
@@ -135,7 +135,7 @@ impl<'a> ImportedGltf {
             mesh_node: 0,
         };
         res.change_mesh_index(mesh_idx);
-        info!("gltf::import end!");
+        info!("Loaded glTF: {} mesh(es)", res.gltf.meshes().len());
         Ok(res)
     }
 
@@ -206,7 +206,11 @@ impl<'a> ImportedGltf {
             let mut t_max = 0.0;
             let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
 
-            debug!("animation: {}", animation.name().unwrap_or("default"));
+            info!(
+                "  Animation #{} {:?}",
+                anim_idx,
+                animation.name().unwrap_or("default")
+            );
             for channel in animation.channels() {
                 let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
                 let time = reader.read_inputs().unwrap();
@@ -216,7 +220,7 @@ impl<'a> ImportedGltf {
 
                 debug!("{}", time.len());
                 info!(
-                    "channel: {} | {:?} ",
+                    "    Channel: {} | {:?}",
                     target_node_name_v2,
                     channel.target().property()
                 );
@@ -422,7 +426,7 @@ impl<'a> ImportedGltf {
         {
             let mut node_names_vec: Vec<String> = Vec::new();
 
-            info!("skin #{}", skin.index());
+            info!("  Skin #{}: {} joints", skin.index(), skin.joints().len());
 
             for node in skin.joints() {
                 node_names_vec.push(self.node_get_name(&node));
@@ -518,7 +522,8 @@ impl<'a> ImportedGltf {
         let (gltf, buffers) = (&self.gltf, &self.buffers);
         // only the nth mesh of file gets read
         if let Some(mesh) = gltf.meshes().nth(self.mesh_idx.try_into().unwrap()) {
-            info!("Mesh #{}", mesh.index());
+            info!("Destination vertex format: {:?}", dst_format);
+            info!("  Mesh #{} (node #{})", mesh.index(), self.mesh_node);
 
             let mesh_instantiating_node = self.mesh_node.try_into().unwrap();
             debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
@@ -539,8 +544,7 @@ impl<'a> ImportedGltf {
 
             let det = base.determinant();
             if det.is_sign_negative() {
-                warn!("determinant is negative: {}", det);
-                warn!("negative determinant requires special code path!");
+                warn!("  Mesh #{}: negative determinant {}; reversing triangle winding and adjusting tangent handedness", mesh.index(), det);
                 negative_x_and_v0v2v1 = true;
             }
 
@@ -579,7 +583,7 @@ impl<'a> ImportedGltf {
                 assert_eq!(mesh.primitives().len(), v.len());
             }
             for (i, primitive) in mesh.primitives().enumerate() {
-                info!("- Primitive #{}", primitive.index());
+                info!("    Primitive #{}", primitive.index());
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
                 /* -------- # READ STUFF FROM GLTF # ------------ */
@@ -635,7 +639,7 @@ impl<'a> ImportedGltf {
                         j
                     }
                     _ => {
-                        warn!("No joints in glTF file !");
+                        warn!("      Mesh #{}, primitive #{}: no joint attributes read (missing or unused by destination format)", mesh.index(), primitive.index());
                         if load_skin {
                             panic!("No joints in glTF file but --skeleton flag was set!")
                         }
@@ -657,7 +661,7 @@ impl<'a> ImportedGltf {
                         j
                     }
                     _ => {
-                        warn!("No weights in glTF file !");
+                        warn!("      Mesh #{}, primitive #{}: no weight attributes read (missing or unused by destination format)", mesh.index(), primitive.index());
                         if load_skin {
                             panic!("No joints/weights in glTF file but --skeleton flag was set!")
                         }
@@ -685,7 +689,6 @@ impl<'a> ImportedGltf {
                     color_iterators.push(color_it.into_iter().cycle());
                 }
 
-                info!("dst_format: {:?}", dst_format);
                 //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
 
                 debug!("vertex read loop");
@@ -804,7 +807,10 @@ impl<'a> ImportedGltf {
                 debug!("Primivive {} hash is {:x}.", i, &hash_v);
                 match kown_vbuffers.get(&hash_v) {
                     Some(found_start_vertices_count) => {
-                        info!("found hash {:x}! Buffer already written.", &hash_v);
+                        info!(
+                            "      Reusing vertex buffer: hash {:x}, first vertex: {}",
+                            &hash_v, found_start_vertices_count
+                        );
                         start_vertices_count = *found_start_vertices_count;
                         verts_vec.resize(pre_vertices_added, 0)
                     }
@@ -814,7 +820,7 @@ impl<'a> ImportedGltf {
                 }
 
                 vertices_count = verts_vec.len() as u32 / vertsize;
-                info!("Vertex count: {}", vertices_count);
+                info!("      Total unique vertices so far: {}", vertices_count);
                 if vertices_count > (u16::MAX - 1).into() {
                     error!("Mesh consists of too many vertices ({})!", vertices_count);
                     error!("Mesh vertices count must stay below 65535!");
@@ -869,7 +875,13 @@ impl<'a> ImportedGltf {
 
                 merged_triangle_vec.append(&mut triangle_vec);
 
-                info!("{:?}", mesh_info);
+                let primitive_info = mesh_info.last().unwrap();
+                info!(
+                    "      Material: {}, first index: {}, index count: {}",
+                    primitive_info.material,
+                    primitive_info.start_index_location,
+                    primitive_info.index_count
+                );
                 //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
             }
             let verts = VertexFormat2::new(

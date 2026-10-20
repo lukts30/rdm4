@@ -66,6 +66,35 @@ RDM TO GLTF OPTIONS:
 $ ./rdm4-bin.exe --input rdm/container_ship_tycoons_lod1.rdm
 ```
 
+<details>
+<summary>Example output: two-primitive RDM → glTF conversion</summary>
+
+```console
+$ ./rdm4-bin.exe -i rdm4lib/rdm/fishery_others_lod2.rdm -o fishery.glb
+```
+
+```text
+[2026-10-20T17:09:01Z INFO  rdm4_bin] Material index overrides: None
+[2026-10-20T17:09:01Z INFO  rdm4_bin] Using input file: "rdm4lib/rdm/fishery_others_lod2.rdm"
+[2026-10-20T17:09:01Z INFO  rdm4_bin] Export skeleton: false
+[2026-10-20T17:09:01Z INFO  rdm4_bin] Export animation: false, external animation: None
+[2026-10-20T17:09:01Z INFO  rdm4lib] Loaded "rdm4lib/rdm/fishery_others_lod2.rdm" (95023 bytes)
+[2026-10-20T17:09:01Z INFO  rdm4lib]   Mesh #0
+[2026-10-20T17:09:01Z INFO  rdm4lib]     Vertices: 3291, format: P4h_N4b_G4b_B4b_T2h, stride: 24 bytes
+[2026-10-20T17:09:01Z INFO  rdm4lib]     Triangles: 2491
+[2026-10-20T17:09:01Z INFO  rdm4lib]     Primitive #0
+[2026-10-20T17:09:01Z INFO  rdm4lib]       Material: 0, first index: 0, index count: 7233
+[2026-10-20T17:09:01Z INFO  rdm4lib]     Primitive #1
+[2026-10-20T17:09:01Z INFO  rdm4lib]       Material: 1, first index: 7233, index count: 240
+[2026-10-20T17:09:01Z INFO  rdm4_bin]   Skin and animation: not exported
+[2026-10-20T17:09:01Z INFO  rdm4_bin] Building glTF
+[2026-10-20T17:09:01Z INFO  rdm4lib::gltf_export] Built glTF
+[2026-10-20T17:09:01Z INFO  rdm4lib::gltf_export] Writing glTF "fishery.glb"
+[2026-10-20T17:09:01Z INFO  rdm4lib::gltf_export] Wrote glTF "fishery.glb"
+```
+
+</details>
+
 ### Usage with animation (rdm 🠚 glTF 2.0)
 
 ```console
@@ -82,284 +111,313 @@ $ ./rdm4-bin.exe -i rdm/container_ship_tycoons_lod1.rdm -sam anim/container_ship
 
 **Flag --gltf or the alias -g must be used! See the section on vertex formats below**
 
-- **Note**: the example given here uses `-g=P4h_N4b_G4b_B4b_T2h_I4b_W4b` and `-sa` since it converts an animated glTF to rdm with anim files.
+This example converts the bundled animated glTF fixture to an RDM mesh and
+animation file. `-sa` enables skeleton and animation export; `--no_transform`
+avoids applying node transforms to the animated mesh.
 
 <details>
-<summary>Click to expand</summary>
+<summary>Example output: animated glTF → RDM conversion</summary>
 
 ```console
-$ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i untitled.gltf -sa
-[2020-08-25T22:29:12Z INFO  rdm4_bin] Using input file: "untitled.gltf"
-[2020-08-25T22:29:12Z INFO  rdm4_bin] Export skelton: true
-[2020-08-25T22:29:12Z INFO  rdm4_bin] Export rdanimation: None
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] Mesh #0
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] - Primitive #0
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] verts_vec.len 5184
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] skin #0
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #_rootJoint |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #_rootJoint |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #_rootJoint |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Hips_02 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Hips_02 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Hips_02 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine_062 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine_062 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine_062 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine1_063 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine1_063 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine1_063 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine2_064 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine2_064 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Spine2_064 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Neck_032 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Neck_032 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Neck_032 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Head_00 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Head_00 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:Head_00 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:HeadTop_End_01 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:HeadTop_End_01 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:HeadTop_End_01 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftShoulder_028 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftShoulder_028 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftShoulder_028 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftArm_03 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftArm_03 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftArm_03 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftForeArm_05 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftForeArm_05 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftForeArm_05 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHand_06 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHand_06 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHand_06 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb1_023 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb1_023 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb1_023 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb2_024 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb2_024 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb2_024 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb3_025 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb3_025 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb3_025 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb4_026 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb4_026 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandThumb4_026 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex1_07 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex1_07 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex1_07 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex2_08 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex2_08 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex2_08 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex3_09 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex3_09 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex3_09 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex4_010 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex4_010 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandIndex4_010 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle1_011 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle1_011 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle1_011 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle2_012 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle2_012 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle2_012 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle3_013 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle3_013 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle3_013 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle4_014 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle4_014 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandMiddle4_014 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing1_019 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing1_019 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing1_019 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing2_020 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing2_020 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing2_020 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing3_021 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing3_021 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing3_021 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing4_022 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing4_022 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandRing4_022 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky1_015 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky1_015 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky1_015 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky2_016 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky2_016 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky2_016 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky3_017 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky3_017 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky3_017 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky4_018 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky4_018 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftHandPinky4_018 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightShoulder_058 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightShoulder_058 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightShoulder_058 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightArm_033 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightArm_033 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightArm_033 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightForeArm_035 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightForeArm_035 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightForeArm_035 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHand_036 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHand_036 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHand_036 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb1_053 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb1_053 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb1_053 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb2_054 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb2_054 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb2_054 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb3_055 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb3_055 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb3_055 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb4_056 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb4_056 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandThumb4_056 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex1_037 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex1_037 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex1_037 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex2_038 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex2_038 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex2_038 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex3_039 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex3_039 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex3_039 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex4_040 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex4_040 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandIndex4_040 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle1_041 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle1_041 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle1_041 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle2_042 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle2_042 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle2_042 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle3_043 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle3_043 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle3_043 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle4_044 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle4_044 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandMiddle4_044 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing1_049 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing1_049 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing1_049 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing2_050 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing2_050 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing2_050 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing3_051 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing3_051 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing3_051 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing4_052 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing4_052 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandRing4_052 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky1_045 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky1_045 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky1_045 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky2_046 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky2_046 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky2_046 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky3_047 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky3_047 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky3_047 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky4_048 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky4_048 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightHandPinky4_048 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftUpLeg_031 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftUpLeg_031 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftUpLeg_031 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftLeg_027 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftLeg_027 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftLeg_027 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftFoot_04 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftFoot_04 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftFoot_04 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToeBase_029 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToeBase_029 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToeBase_029 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToe_End_030 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToe_End_030 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:LeftToe_End_030 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightUpLeg_061 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightUpLeg_061 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightUpLeg_061 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightLeg_057 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightLeg_057 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightLeg_057 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightFoot_034 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightFoot_034 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightFoot_034 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToeBase_059 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToeBase_059 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToeBase_059 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToe_End_060 |  Translation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToe_End_060 |  Rotation
-[2020-08-25T22:29:12Z INFO  rdm4lib::gltf_reader] channel #mixamorig:RightToe_End_060 |  Scale
-[2020-08-25T22:29:12Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+$ ./rdm4-bin.exe -g=P4h_N4b_G4b_B4b_T2h_I4b_W4b -i rdm4lib/rdm/gltf/stormtrooper_with_tangent.gltf -sa --no_transform -o stormtrooper.rdm
+```
+
+```text
+[2026-10-20T17:50:44Z INFO  rdm4_bin] Material index overrides: None
+[2026-10-20T17:50:44Z INFO  rdm4_bin] Using input file: "rdm4lib/rdm/gltf/stormtrooper_with_tangent.gltf"
+[2026-10-20T17:50:44Z INFO  rdm4_bin] Export skeleton: true
+[2026-10-20T17:50:44Z INFO  rdm4_bin] Export animation: true, external animation: None
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Loading glTF "rdm4lib/rdm/gltf/stormtrooper_with_tangent.gltf"
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Loaded glTF: 1 mesh(es)
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Destination vertex format: P4h_N4b_G4b_B4b_T2h_I4b_W4b
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]   Mesh #0 (node #68)
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Primitive #0
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]       Total unique vertices so far: 5184
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]       Material: 0, first index: 0, index count: 19554
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]   Skin #0: 66 joints
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 69
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 70
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 71
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 72
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 73
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader] Promoting (non skin) node: 74
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]   Animation #0 "mixamo.com"
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: _rootJoint | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: _rootJoint | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: _rootJoint | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Hips_02 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Hips_02 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Hips_02 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine_062 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine_062 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine_062 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine1_063 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine1_063 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine1_063 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine2_064 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine2_064 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Spine2_064 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Neck_032 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Neck_032 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Neck_032 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Head_00 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Head_00 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:Head_00 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:HeadTop_End_01 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:HeadTop_End_01 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:HeadTop_End_01 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftShoulder_028 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftShoulder_028 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftShoulder_028 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftArm_03 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftArm_03 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftArm_03 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftForeArm_05 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftForeArm_05 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftForeArm_05 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHand_06 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHand_06 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHand_06 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb1_023 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb1_023 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb1_023 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb2_024 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb2_024 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb2_024 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb3_025 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb3_025 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb3_025 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb4_026 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb4_026 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandThumb4_026 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex1_07 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex1_07 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex1_07 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex2_08 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex2_08 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex2_08 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex3_09 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex3_09 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex3_09 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex4_010 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex4_010 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandIndex4_010 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle1_011 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle1_011 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle1_011 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle2_012 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle2_012 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle2_012 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle3_013 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle3_013 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle3_013 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle4_014 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle4_014 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandMiddle4_014 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing1_019 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing1_019 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing1_019 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing2_020 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing2_020 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing2_020 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing3_021 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing3_021 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing3_021 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing4_022 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing4_022 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandRing4_022 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky1_015 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky1_015 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky1_015 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky2_016 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky2_016 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky2_016 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky3_017 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky3_017 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky3_017 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky4_018 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky4_018 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftHandPinky4_018 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightShoulder_058 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightShoulder_058 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightShoulder_058 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightArm_033 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightArm_033 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightArm_033 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightForeArm_035 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightForeArm_035 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightForeArm_035 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHand_036 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHand_036 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHand_036 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb1_053 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb1_053 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb1_053 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb2_054 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb2_054 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb2_054 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb3_055 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb3_055 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb3_055 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb4_056 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb4_056 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandThumb4_056 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex1_037 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex1_037 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex1_037 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex2_038 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex2_038 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex2_038 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex3_039 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex3_039 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex3_039 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex4_040 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex4_040 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandIndex4_040 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle1_041 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle1_041 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle1_041 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle2_042 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle2_042 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle2_042 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle3_043 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle3_043 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle3_043 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle4_044 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle4_044 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandMiddle4_044 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing1_049 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing1_049 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing1_049 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing2_050 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing2_050 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing2_050 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing3_051 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing3_051 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing3_051 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing4_052 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing4_052 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandRing4_052 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky1_045 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky1_045 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky1_045 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky2_046 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky2_046 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky2_046 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky3_047 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky3_047 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky3_047 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky4_048 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky4_048 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightHandPinky4_048 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftUpLeg_031 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftUpLeg_031 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftUpLeg_031 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftLeg_027 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftLeg_027 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftLeg_027 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftFoot_04 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftFoot_04 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftFoot_04 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToeBase_029 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToeBase_029 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToeBase_029 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToe_End_030 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToe_End_030 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:LeftToe_End_030 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightUpLeg_061 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightUpLeg_061 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightUpLeg_061 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightLeg_057 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightLeg_057 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightLeg_057 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightFoot_034 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightFoot_034 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightFoot_034 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToeBase_059 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToeBase_059 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToeBase_059 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToe_End_060 | Translation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToe_End_060 | Rotation
+[2026-10-20T17:50:44Z INFO  rdm4lib::gltf_reader]     Channel: mixamorig:RightToe_End_060 | Scale
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] output sampler not supported: 'Scale'
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "Armature"
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "RootNode"
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "Node_3"
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "f8ce42897676455090b6ff376356f84c.fbx"
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "RootNode (model correction matrix)"
+[2026-10-20T17:50:44Z WARN  rdm4lib::gltf_reader] idle_anim: adding idle for joint: "RootNode (gltf orientation matrix)"
+[2026-10-20T17:50:44Z INFO  rdm4lib::rdm_data_anim] SEQUENCE EndTime (Max): 3833
+[2026-10-20T17:50:44Z INFO  rdm4lib::rdm_data_anim] Writing animation "stormtrooper_anim_0.rdm"
+[2026-10-20T17:50:44Z INFO  rdm4lib::rdm_data_anim] Wrote animation "stormtrooper_anim_0.rdm"
+[2026-10-20T17:50:44Z INFO  rdm4lib::rdm_data_main] Max Triangle List Index: 5183
+[2026-10-20T17:50:44Z INFO  rdm4lib::rdm_data_main] Writing RDM "stormtrooper.rdm"
+[2026-10-20T17:50:45Z INFO  rdm4lib::rdm_data_main] Wrote RDM "stormtrooper.rdm"
 ```
 
 </details>

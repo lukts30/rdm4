@@ -109,6 +109,7 @@ impl RdAnimWriter2 {
         }
         file.set_extension("rdm");
 
+        info!("Writing animation {:?}", file);
         let mut writer = OpenOptions::new()
             .write(true)
             .create(true)
@@ -120,6 +121,7 @@ impl RdAnimWriter2 {
         writer
             .write_type_args(&self.export, binrw::Endian::Little, ())
             .unwrap();
+        info!("Wrote animation {:?}", file);
     }
 
     pub fn new(anim_input: RdAnim) -> Self {

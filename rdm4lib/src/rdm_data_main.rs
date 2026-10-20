@@ -358,6 +358,7 @@ impl RdWriter2 {
             file.push("out.rdm");
         }
 
+        info!("Writing RDM {:?}", file);
         let mut writer = OpenOptions::new()
             .write(true)
             .create(true)
@@ -369,6 +370,7 @@ impl RdWriter2 {
         writer
             .write_type_args(&self.inner, binrw::Endian::Little, ())
             .unwrap();
+        info!("Wrote RDM {:?}", file);
 
         file.as_path().into()
     }

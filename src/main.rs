@@ -191,11 +191,14 @@ fn entry_do_work(mut opts: Opts) {
         }
     }
 
-    info!("overide_mesh_idx: {:?}", opts.overide_mesh_idx);
+    info!("Material index overrides: {:?}", opts.overide_mesh_idx);
     // Gets a value for config if supplied by user, or defaults to "default.conf"
     info!("Using input file: {:?}", opts.input);
-    info!("Export skeleton: {:?}", opts.skeleton);
-    info!("Export rdanimation: {:?}", opts.rdanimation);
+    info!("Export skeleton: {}", opts.skeleton);
+    info!(
+        "Export animation: {}, external animation: {:?}",
+        opts.animation, opts.rdanimation
+    );
     if opts.gltf.is_none() {
         convert_rdm_to_gltf(opts);
     } else {
@@ -207,20 +210,23 @@ fn convert_rdm_to_gltf(opts: Opts) {
     let mut rdm = RdModell::from(opts.input.as_path());
     if opts.skeleton && opts.rdanimation.is_none() {
         rdm.add_skin();
-        info!("Skin added !");
+        info!("  Skin: {} joints", rdm.joints.as_ref().unwrap().len());
     } else if opts.skeleton && opts.rdanimation.is_some() {
         rdm.add_skin();
         let anim = RdAnim::from(opts.rdanimation.unwrap().as_path());
         rdm.add_anim(anim);
-        info!("Skin and anim added !");
+        info!(
+            "  Skin: {} joints; animation added",
+            rdm.joints.as_ref().unwrap().len()
+        );
     } else {
-        warn!("No skin. No anim !");
+        info!("  Skin and animation: not exported");
     }
 
     if let Some(diffusetexture) = opts.diffusetexture {
         rdm.mat = Some(RdMaterial::new(diffusetexture));
     }
-    info!("running gltf_export ...");
+    info!("Building glTF");
 
     gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
 }
