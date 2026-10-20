@@ -1091,8 +1091,7 @@ pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
     }
 
     let p = b.build();
-    info!("gltf build end");
-    info!("write_gltf");
+    info!("Built glTF");
     p.write_gltf(dir, mat_opt, create_new, config);
 }
 
@@ -1199,7 +1198,8 @@ impl RdGltf {
         } else {
             file.set_extension("gltf");
         }
-        info!("{:?}", file);
+        info!("Writing glTF {:?}", file);
+        let output_path = file.clone();
 
         let mut writer = OpenOptions::new()
             .write(true)
@@ -1265,6 +1265,7 @@ impl RdGltf {
                 }
             }
         }
+        info!("Wrote glTF {:?}", output_path);
     }
 
     fn push_buffer(&mut self, b: BufferContainer) -> PushBufferResult {

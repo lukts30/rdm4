@@ -110,8 +110,9 @@ impl RdModell {
         let rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
 
         let vvert = VertexFormat2::read_format_via_data(&rdm);
+        info!("  Mesh #0");
         info!(
-            "Read {} vertices of type {} ({} bytes)",
+            "    Vertices: {}, format: {}, stride: {} bytes",
             vvert.len(),
             vvert,
             vvert.get_size()
@@ -128,7 +129,15 @@ impl RdModell {
             triangles.push(t);
         }
 
-        let mesh_info = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
+        let mesh_info: Vec<_> = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
+        info!("    Triangles: {}", triangles_real_count);
+        for (index, primitive) in mesh_info.iter().enumerate() {
+            info!("    Primitive #{}", index);
+            info!(
+                "      Material: {}, first index: {}, index count: {}",
+                primitive.material, primitive.start_index_location, primitive.index_count
+            );
+        }
 
         RdModell {
             rdmf: Some(rdm),
@@ -158,9 +167,7 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 
         let buffer_len = buffer.len();
 
-        info!("loaded {:?} into buffer", f_path.as_ref().to_str().unwrap());
-
-        info!("buffer size: {}", buffer_len);
+        info!("Loaded {:?} ({} bytes)", f_path.as_ref(), buffer_len);
         RdModell::new(buffer)
     }
 }
