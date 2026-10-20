@@ -211,6 +211,20 @@ mod tests_intern {
     use binrw::{BinWriterExt, Endian};
 
     #[test]
+    fn corpus_u32_indices() {
+        let model = RdModell::from("rdm/destruction_stone_building_04_decal_detail01_lod0.rdm");
+        let meta = &model.rdmf.as_ref().unwrap().header1.meta;
+        assert_eq!(meta.index_format.element_type, vertex::StorageType::U32);
+        assert_eq!(meta.triangle_list.info.part_size, 4);
+        assert_eq!(model.vertex.len(), 74_480);
+        assert_eq!(model.triangle_indices.len(), 37_240);
+        let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
+        assert_eq!(indices.clone().max(), Some(74_479));
+        assert!(indices.clone().any(|i| i > u16::MAX as u32));
+        assert!(indices.into_iter().all(|i| i < model.vertex.len()));
+    }
+
+    #[test]
     fn reject_invalid_index_format() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
         let word =

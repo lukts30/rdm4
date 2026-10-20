@@ -326,6 +326,47 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn bounds_before_half_float_quantization() {
+        let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
+        let stored = model.rdmf.as_ref().unwrap().header1.meta.bounds();
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(model.vertex.identifiers[0].storage_type, StorageType::F16);
+        assert_ne!(stored, calculated);
+        let round = |value| half::f16::from_f32(value).to_f32();
+        assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
+        assert_eq!(
+            RdWriter2::new(model).inner.header1.meta.bounds(),
+            calculated
+        );
+    }
+
+    #[test]
+    fn float32_position_bounds() {
+        let model = crate::RdModell::from("rdm/eden_line_flagpole_variation_cloth_lod0.rdm");
+        let position = &model.vertex.identifiers[0];
+        assert_eq!(position.storage_type, StorageType::F32);
+        assert_eq!(position.to_string(), "P3f");
+        assert_eq!(model.vertex.len(), 4);
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(
+            calculated.0.map(f32::to_bits),
+            [0x3c70ef5c, 0x3d073c7a, 0xbe9ba652]
+        );
+        assert_eq!(
+            calculated.1.map(f32::to_bits),
+            [0x3cf1c51e, 0x3fc6c946, 0x3e9ba652]
+        );
+        assert_eq!(
+            model.rdmf.as_ref().unwrap().header1.meta.bounds(),
+            calculated
+        );
+        assert_eq!(
+            RdWriter2::new(model).inner.header1.meta.bounds(),
+            calculated
+        );
+    }
+
+    #[test]
     fn stored_bounds_match_vertices() {
         for data in [
             include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
