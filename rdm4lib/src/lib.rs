@@ -122,6 +122,15 @@ impl RdModell {
             vvert.get_size()
         );
 
+        debug!(
+            "    Stored bounds (min, max): {:?}",
+            rdm.header1.meta.bounds()
+        );
+        debug!(
+            "    Calculated bounds (min, max): {:?}",
+            vvert.calculate_bounds()
+        );
+
         let mut offset = 0;
         for component in &vvert.identifiers {
             debug!(

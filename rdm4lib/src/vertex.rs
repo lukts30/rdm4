@@ -255,6 +255,26 @@ impl fmt::Display for VertexFormat2 {
 }
 
 impl VertexFormat2 {
+    /// Calculate minimum and maximum XYZ from stored positions, before animation.
+    /// Panics if positions are missing, empty, or non-finite.
+    pub fn calculate_bounds(&self) -> ([f32; 3], [f32; 3]) {
+        assert!(
+            self.vertex_count > 0,
+            "Cannot calculate bounds without vertices"
+        );
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for position in self.iter::<P4h, P3f>(0).expect("Missing vertex positions") {
+            for axis in 0..3 {
+                let value = position.data[axis];
+                assert!(value.is_finite(), "Non-finite vertex position");
+                min[axis] = min[axis].min(value);
+                max[axis] = max[axis].max(value);
+            }
+        }
+        (min, max)
+    }
+
     pub fn get_size(&self) -> u32 {
         self.size
     }
@@ -781,6 +801,47 @@ impl VertexFormatProperties for TargetVertexFormat {
 mod tests_vertex {
 
     use super::*;
+
+    #[test]
+    fn bounds_use_stored_positions() {
+        for half in [false, true] {
+            let mut bytes = Vec::new();
+            for point in [[2.0006, -8.0, 3.0], [4.0, -2.0, 5.0]] {
+                bytes.extend([0u8; 4]); // Normal before position.
+                for value in point {
+                    if half {
+                        bytes.extend(f16::from_f32(value).to_le_bytes());
+                    } else {
+                        bytes.extend(value.to_le_bytes());
+                    }
+                }
+                if half {
+                    bytes.extend(f16::from_f32(100.0).to_le_bytes()); // Ignore W.
+                }
+            }
+            let position = if half {
+                VertexIdentifier::p4h()
+            } else {
+                VertexIdentifier::p3f()
+            };
+            let stride = 4 + position.get_size();
+            let vertices = VertexFormat2::new(
+                vec![VertexIdentifier::n4b(), position].into_boxed_slice(),
+                2,
+                stride,
+                bytes.into(),
+            );
+            let min_x = if half {
+                f16::from_f32(2.0006).to_f32()
+            } else {
+                2.0006
+            };
+            assert_eq!(
+                vertices.calculate_bounds(),
+                ([min_x, -8.0, 3.0], [4.0, -2.0, 5.0])
+            );
+        }
+    }
 
     #[test]
     fn format_names_follow_native_rules() {

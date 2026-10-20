@@ -279,7 +279,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "242c11e5a71a85fd25c5a398374cac4da6575e73b6f8abc963b05dc7f1fdd5db",
+            "f11a0a18cd89df95799719dc9b77cfda0d2b87d5080b506f9a257c0d51acda88",
         );
     }
 
@@ -332,7 +332,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "8f08378928a2d5cfc80d10a54c7cde05644de7d9977f0eb262ecb6adcd37aa4e",
+            "188da4dc618ab2c80c88386d5272071a1999ccb524f72c05b22748ce21bd74df",
         );
     }
 

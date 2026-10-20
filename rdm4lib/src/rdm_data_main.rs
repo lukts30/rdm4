@@ -107,6 +107,11 @@ pub struct Meta {
 }
 
 impl Meta {
+    /// Stored minimum and maximum XYZ bounds.
+    pub fn bounds(&self) -> ([f32; 3], [f32; 3]) {
+        (self.bounds_min, self.bounds_max)
+    }
+
     pub fn triangle_list_len(&self) -> u32 {
         self.triangle_list.info.count
     }
@@ -321,6 +326,18 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn stored_bounds_match_vertices() {
+        for data in [
+            include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
+            include_bytes!("../rdm/ark_waterfall2.rdm").as_slice(),
+        ] {
+            let rdm: RdmFile<RdmKindMesh> = std::io::Cursor::new(data).read_le().unwrap();
+            let vertices = crate::vertex::VertexFormat2::read_format_via_data(&rdm);
+            assert_eq!(rdm.header1.meta.bounds(), vertices.calculate_bounds());
+        }
+    }
+
+    #[test]
     fn struct_sizes() {
         //assert_eq!(RdmHeader1::get_struct_byte_size(), 48);
         assert_eq!(RdmBlobToMat::get_struct_byte_size(), 28);
@@ -459,8 +476,8 @@ impl RdWriter2 {
             }),
         };
 
-        rdm.header1.meta.bounds_min = [-1.941_406_3, -2.535_156_3, -1.932_617_2];
-        rdm.header1.meta.bounds_max = [1.964_843_8, 1.896_484_4, 1.972_656_3];
+        (rdm.header1.meta.bounds_min, rdm.header1.meta.bounds_max) =
+            rdm_in.vertex.calculate_bounds();
 
         rdm.header1.meta.index_format.element_type = StorageType::U16;
         rdm.header1.meta.triangle_list.0 = RdmFilePtr {
