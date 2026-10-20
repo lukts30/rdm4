@@ -122,6 +122,26 @@ impl RdModell {
             vvert.get_size()
         );
 
+        let mut offset = 0;
+        for component in &vvert.identifiers {
+            debug!(
+                "      {:?}: type={:?}, count={}, interpretation={}, offset={}, bytes={}",
+                component.semantic,
+                component.storage_type,
+                component.storage_count,
+                component.interpretation.0,
+                offset,
+                component.get_size()
+            );
+            offset += component.get_size();
+        }
+        let index_type = rdm.header1.meta.index_format.element_type;
+        info!(
+            "    Index type: {:?} ({} bytes)",
+            index_type,
+            index_type.byte_size()
+        );
+
         let triangles_idx_count = rdm.header1.meta.triangle_list_len();
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);

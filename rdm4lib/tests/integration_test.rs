@@ -201,8 +201,8 @@ mod tests {
     fn ark_waterfall2() {
         let rdm = RdModell::from("rdm/ark_waterfall2.rdm");
         assert_eq!(rdm.vertex.len(), 105);
-        // TODO: cfg says P4h_N4b_T2h_C4c
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
+        // Matches the vertex format declared in the game CFG.
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4c");
         assert_eq!(rdm.mesh_info.len(), 1);
     }
 

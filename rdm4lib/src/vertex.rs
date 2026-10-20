@@ -5,80 +5,128 @@ use std::{fmt, str::FromStr};
 use crate::{rdm_data_main::RdmFile, *};
 use binrw::binrw;
 
+/// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
 #[derive(Clone, Debug)]
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
 pub struct VertexIdentifier {
-    pub uniq: UniqueIdentifier,
-    #[br(assert(matches!(unit_size, StorageType::U32 | StorageType::F16 | StorageType::F32),
+    pub semantic: VertexSemantic,
+    #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
         "Unsupported vertex storage type"))]
-    pub unit_size: StorageType,
-    pub interpretation: u32,
-    pub count: u32,
+    pub storage_type: StorageType,
+    pub interpretation: VertexInterpretation,
+    pub storage_count: u32,
 }
 
 impl fmt::Display for VertexIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO: cleanup
-        let tmp = format!("{:?}", self.uniq);
-        let unit_size = match self.unit_size {
-            StorageType::U32 => 'b',
-            StorageType::F16 => 'h',
-            StorageType::F32 => 'f',
-            StorageType::U16 => panic!("Unsupported vertex storage type: U16"),
+        let format = match self.storage_type {
+            StorageType::F16 => Some((self.storage_count, 'h')),
+            StorageType::F32 => Some((self.storage_count, 'f')),
+            StorageType::U32 if self.storage_count == 1 => {
+                let suffix = if (3..=5).contains(&self.interpretation.0) {
+                    'c'
+                } else {
+                    'b'
+                };
+                Some((4, suffix))
+            }
+            _ => None,
         };
-        let r = if self.count == 0x1 { 4 } else { self.count };
-        write!(f, "{}{}{}", tmp.chars().next().unwrap(), r, unit_size)
-    }
-}
-
-#[repr(u32)]
-#[derive(Debug, Clone, Eq, PartialEq)]
-#[binrw]
-#[brw(repr(u32))]
-pub enum UniqueIdentifier {
-    Position = 0x0,
-    Normal = 0x1,
-    GTangent = 0x2,
-    Bitangent = 0x3,
-    Texcoord = 0x4,
-    Color = 0x5,
-    IJoint = 0x7,
-    Weight = 0x6,
-    Invalid = 0xFF,
-}
-
-impl UniqueIdentifier {
-    const fn from(i: u32) -> Self {
-        match i {
-            0x0 => UniqueIdentifier::Position,
-            0x1 => UniqueIdentifier::Normal,
-            0x2 => UniqueIdentifier::GTangent,
-            0x3 => UniqueIdentifier::Bitangent,
-            0x4 => UniqueIdentifier::Texcoord,
-            0x5 => UniqueIdentifier::Color,
-            0x7 => UniqueIdentifier::IJoint,
-            0x6 => UniqueIdentifier::Weight,
-            _ => UniqueIdentifier::Invalid,
+        match (self.semantic.format_letter(), format) {
+            (Some(letter), Some((count, suffix))) => write!(f, "{letter}{count}{suffix}"),
+            _ => write!(
+                f,
+                "{:?}(type={:?},count={},interpretation={})",
+                self.semantic, self.storage_type, self.storage_count, self.interpretation.0
+            ),
         }
     }
 }
 
-pub trait GetUniqueIdentifier {
-    fn get_unique_identifier() -> UniqueIdentifier;
+/// Controls how a vertex attribute's stored values are interpreted.
+///
+/// Observed uses in the examined Anno 2070 and Anno 1800 files:
+/// - 0: float attributes and packed joint indices.
+/// - 2: packed weights; also some Anno 1800 colors.
+/// - 4: packed colors.
+/// - 6: packed normals, tangents, and bitangents;
+///   also some Anno 1800 colors.
+///
+/// Unknown values are preserved.
+///
+/// For packed U32 attributes, Anno 2070's format-name builder
+/// uses `4c` for codes 3 through 5 and `4b` for other codes.
+#[repr(transparent)]
+#[binrw]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VertexInterpretation(pub u32);
+
+/// Role of an attribute within a vertex, encoded by the RDM semantic ID.
+#[repr(u32)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[binrw]
+#[brw(repr(u32))]
+pub enum VertexSemantic {
+    Position = 0x0,
+    Normal = 0x1,
+    Tangent = 0x2,
+    Bitangent = 0x3,
+    Texcoord = 0x4,
+    Color = 0x5,
+    JointIndex = 0x7,
+    Weight = 0x6,
+    Invalid = 0xFF,
 }
 
-impl<T: Default + Copy, const I: u32, const N: usize> GetUniqueIdentifier for AnnoData<T, I, N> {
-    fn get_unique_identifier() -> UniqueIdentifier {
+impl VertexSemantic {
+    // PNGBTCWI
+    fn format_letter(&self) -> Option<char> {
+        Some(match self {
+            Self::Position => 'P',
+            Self::Normal => 'N',
+            Self::Tangent => 'G',
+            Self::Bitangent => 'B',
+            Self::Texcoord => 'T',
+            Self::Color => 'C',
+            Self::Weight => 'W',
+            Self::JointIndex => 'I',
+            Self::Invalid => return None,
+        })
+    }
+
+    const fn from(i: u32) -> Self {
+        match i {
+            0x0 => VertexSemantic::Position,
+            0x1 => VertexSemantic::Normal,
+            0x2 => VertexSemantic::Tangent,
+            0x3 => VertexSemantic::Bitangent,
+            0x4 => VertexSemantic::Texcoord,
+            0x5 => VertexSemantic::Color,
+            0x7 => VertexSemantic::JointIndex,
+            0x6 => VertexSemantic::Weight,
+            _ => VertexSemantic::Invalid,
+        }
+    }
+}
+
+/// Associates a decoded vertex component with its semantic.
+pub trait GetVertexSemantic {
+    /// Return the role of this component.
+    fn get_semantic() -> VertexSemantic;
+}
+
+impl<T: Default + Copy, const I: u32, const N: usize> GetVertexSemantic for AnnoData<T, I, N> {
+    fn get_semantic() -> VertexSemantic {
         AnnoData::<T, I, N>::TYPE
     }
 }
 
-impl From<u32> for UniqueIdentifier {
+impl From<u32> for VertexSemantic {
     fn from(i: u32) -> Self {
-        UniqueIdentifier::from(i)
+        VertexSemantic::from(i)
     }
 }
 
@@ -90,7 +138,7 @@ pub struct AnnoData<DataType, const IDENTIFIER: u32, const DATA_SIZE: usize> {
 impl<DataType: Default + Copy, const IDENTIFIER: u32, const DATA_SIZE: usize>
     AnnoData<DataType, IDENTIFIER, DATA_SIZE>
 {
-    const TYPE: UniqueIdentifier = UniqueIdentifier::from(IDENTIFIER);
+    const TYPE: VertexSemantic = VertexSemantic::from(IDENTIFIER);
 
     #[inline]
     /// Will call f N times to fill the struct's data array.
@@ -106,29 +154,30 @@ impl<DataType: Default + Copy, const IDENTIFIER: u32, const DATA_SIZE: usize>
     }
 }
 
-// rust const generics enum are unstable
-pub(crate) type P3f = AnnoData<f32, { UniqueIdentifier::Position as u32 }, 3>;
-pub(crate) type P4h = AnnoData<f16, { UniqueIdentifier::Position as u32 }, 4>;
+// Stable Rust cannot use VertexSemantic as a const-parameter type.
+// Pass its numeric code instead; the aliases keep the semantic explicit.
+pub(crate) type P3f = AnnoData<f32, { VertexSemantic::Position as u32 }, 3>;
+pub(crate) type P4h = AnnoData<f16, { VertexSemantic::Position as u32 }, 4>;
 
-pub(crate) type N3f = AnnoData<f32, { UniqueIdentifier::Normal as u32 }, 3>;
-pub(crate) type N4b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 4>;
+pub(crate) type N3f = AnnoData<f32, { VertexSemantic::Normal as u32 }, 3>;
+pub(crate) type N4b = AnnoData<u8, { VertexSemantic::Normal as u32 }, 4>;
 #[allow(dead_code)]
-pub(crate) type N3b = AnnoData<u8, { UniqueIdentifier::Normal as u32 }, 3>;
+pub(crate) type N3b = AnnoData<u8, { VertexSemantic::Normal as u32 }, 3>;
 
-pub(crate) type G3f = AnnoData<f32, { UniqueIdentifier::GTangent as u32 }, 3>;
-pub(crate) type G4b = AnnoData<u8, { UniqueIdentifier::GTangent as u32 }, 4>;
+pub(crate) type G3f = AnnoData<f32, { VertexSemantic::Tangent as u32 }, 3>;
+pub(crate) type G4b = AnnoData<u8, { VertexSemantic::Tangent as u32 }, 4>;
 #[allow(dead_code)]
-pub(crate) type B3f = AnnoData<f32, { UniqueIdentifier::Bitangent as u32 }, 3>;
-pub(crate) type B4b = AnnoData<u8, { UniqueIdentifier::Bitangent as u32 }, 4>;
+pub(crate) type B3f = AnnoData<f32, { VertexSemantic::Bitangent as u32 }, 3>;
+pub(crate) type B4b = AnnoData<u8, { VertexSemantic::Bitangent as u32 }, 4>;
 
-pub(crate) type T2f = AnnoData<f32, { UniqueIdentifier::Texcoord as u32 }, 2>;
-pub(crate) type T2h = AnnoData<f16, { UniqueIdentifier::Texcoord as u32 }, 2>;
+pub(crate) type T2f = AnnoData<f32, { VertexSemantic::Texcoord as u32 }, 2>;
+pub(crate) type T2h = AnnoData<f16, { VertexSemantic::Texcoord as u32 }, 2>;
 
-pub(crate) type I4b = AnnoData<u8, { UniqueIdentifier::IJoint as u32 }, 4>;
-pub(crate) type W4b = AnnoData<u8, { UniqueIdentifier::Weight as u32 }, 4>;
+pub(crate) type I4b = AnnoData<u8, { VertexSemantic::JointIndex as u32 }, 4>;
+pub(crate) type W4b = AnnoData<u8, { VertexSemantic::Weight as u32 }, 4>;
 
-pub(crate) type C4b = AnnoData<u8, { UniqueIdentifier::Color as u32 }, 4>;
-pub(crate) type C4c = AnnoData<i8, { UniqueIdentifier::Color as u32 }, 4>;
+pub(crate) type C4b = AnnoData<u8, { VertexSemantic::Color as u32 }, 4>;
+pub(crate) type C4c = AnnoData<i8, { VertexSemantic::Color as u32 }, 4>;
 
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
@@ -220,9 +269,7 @@ impl VertexFormat2 {
 
     // TODO: remove for_each?
     pub fn set_weight_sum(&mut self) {
-        let n = self
-            .find_component_offsets(UniqueIdentifier::Weight)
-            .count();
+        let n = self.find_component_offsets(VertexSemantic::Weight).count();
         if n == 0 {
             self.weight_sum = Some(vec![255; self.len() as usize]);
         } else {
@@ -259,7 +306,7 @@ impl VertexFormat2 {
             offsets.push(off);
             off += e.get_size() as usize;
         }
-        text.truncate((identifiers.len() * 4) - 1);
+        text.pop(); // Remove the trailing separator.
 
         let size: u32 = identifiers.iter().map(|x| x.get_size()).sum();
         debug_assert_eq!(size, off as u32);
@@ -294,7 +341,7 @@ impl VertexFormat2 {
             for vertex in vertex_buffer.chunks_exact_mut(vertex_size as usize) {
                 let mut offset = 0;
                 for id in &vec {
-                    let width = id.unit_size.byte_size() as usize;
+                    let width = id.storage_type.byte_size() as usize;
                     let end = offset + id.get_size() as usize;
                     for component in vertex[offset..end].chunks_exact_mut(width) {
                         component.reverse();
@@ -315,13 +362,13 @@ impl VertexFormat2 {
     #[allow(clippy::needless_lifetimes)]
     pub fn find_component_offsets<'a>(
         &'a self,
-        search_ident: UniqueIdentifier,
+        search_ident: VertexSemantic,
     ) -> impl Iterator<Item = usize> + 'a {
         self.identifiers
             .iter()
             .enumerate()
             .filter_map(move |(index, value)| {
-                if value.uniq == search_ident {
+                if value.semantic == search_ident {
                     Some(index)
                 } else {
                     None
@@ -339,30 +386,28 @@ impl VertexFormat2 {
 
     pub fn iter<
         'a,
-        Z: GetUniqueIdentifier + GetVertex,
-        T: GetUniqueIdentifier + GetVertex + From<Z> + 'a,
+        Z: GetVertexSemantic + GetVertex,
+        T: GetVertexSemantic + GetVertex + From<Z> + 'a,
     >(
         &'a self,
         set: usize,
     ) -> Option<impl Iterator<Item = T> + 'a> {
-        let offset_idx: Vec<usize> = self
-            .find_component_offsets(T::get_unique_identifier())
-            .collect();
+        let offset_idx: Vec<usize> = self.find_component_offsets(T::get_semantic()).collect();
         if offset_idx.is_empty() {
             return None;
         }
         assert!(offset_idx.len() < 5);
         let offset = self.offsets[offset_idx[set]];
 
-        let unit_size = self.identifiers[offset_idx[set]].get_size() as usize;
+        let component_size = self.identifiers[offset_idx[set]].get_size() as usize;
         let mem_size_small = std::mem::size_of::<Z>();
         let mem_size_target = std::mem::size_of::<T>();
-        assert!(mem_size_small == unit_size || mem_size_target == unit_size);
+        assert!(mem_size_small == component_size || mem_size_target == component_size);
 
         let unit = &self.identifiers[offset_idx[set]];
         // TODO: this needs far better checking!
-        let need_convert =
-            unit.unit_size == StorageType::F16 || unit.count == 0x1 && unit.interpretation != 0x0;
+        let need_convert = unit.storage_type == StorageType::F16
+            || unit.storage_count == 0x1 && unit.interpretation.0 != 0;
 
         let mut count = 0;
 
@@ -384,7 +429,7 @@ impl VertexFormat2 {
             };
             count += 1;
             if count < n {
-                vbuffer.advance((self.size as usize) - unit_size);
+                vbuffer.advance((self.size as usize) - component_size);
             }
             ret
         });
@@ -436,140 +481,140 @@ impl From<u32> for StorageType {
 
 impl VertexIdentifier {
     pub fn get_size(&self) -> u32 {
-        self.unit_size.byte_size() * self.count
+        self.storage_type.byte_size() * self.storage_count
     }
 
     pub const fn p4h() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Position,
-            unit_size: StorageType::F16,
-            interpretation: 0,
-            count: 4,
+            semantic: VertexSemantic::Position,
+            storage_type: StorageType::F16,
+            interpretation: VertexInterpretation(0),
+            storage_count: 4,
         }
     }
 
     pub const fn p3f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Position,
-            unit_size: StorageType::F32,
-            interpretation: 0,
-            count: 3,
+            semantic: VertexSemantic::Position,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0),
+            storage_count: 3,
         }
     }
 
     pub const fn n4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Normal,
-            unit_size: StorageType::U32,
-            interpretation: 0x6,
-            count: 1,
+            semantic: VertexSemantic::Normal,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x6),
+            storage_count: 1,
         }
     }
 
     pub const fn n3f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Normal,
-            unit_size: StorageType::F32,
-            interpretation: 0x0,
-            count: 3,
+            semantic: VertexSemantic::Normal,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 3,
         }
     }
 
     pub const fn g4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::GTangent,
-            unit_size: StorageType::U32,
-            interpretation: 0x6,
-            count: 1,
+            semantic: VertexSemantic::Tangent,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x6),
+            storage_count: 1,
         }
     }
 
     pub const fn g3f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::GTangent,
-            unit_size: StorageType::F32,
-            interpretation: 0x0,
-            count: 3,
+            semantic: VertexSemantic::Tangent,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 3,
         }
     }
 
     pub const fn b4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Bitangent,
-            unit_size: StorageType::U32,
-            interpretation: 0x6,
-            count: 1,
+            semantic: VertexSemantic::Bitangent,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x6),
+            storage_count: 1,
         }
     }
 
     pub const fn b3f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Bitangent,
-            unit_size: StorageType::U32,
-            interpretation: 0x0,
-            count: 3,
+            semantic: VertexSemantic::Bitangent,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 3,
         }
     }
 
     pub const fn t2h() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Texcoord,
-            unit_size: StorageType::F16,
-            interpretation: 0x0,
-            count: 2,
+            semantic: VertexSemantic::Texcoord,
+            storage_type: StorageType::F16,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 2,
         }
     }
 
     pub const fn t2f() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Texcoord,
-            unit_size: StorageType::F32,
-            interpretation: 0x0,
-            count: 2,
+            semantic: VertexSemantic::Texcoord,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 2,
         }
     }
 
     pub const fn i4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::IJoint,
-            unit_size: StorageType::U32,
-            interpretation: 0x0,
-            count: 1,
+            semantic: VertexSemantic::JointIndex,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x0),
+            storage_count: 1,
         }
     }
 
     pub const fn w4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Weight,
-            unit_size: StorageType::U32,
-            interpretation: 0x2,
-            count: 1,
+            semantic: VertexSemantic::Weight,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x2),
+            storage_count: 1,
         }
     }
 
     pub const fn c4b() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Color,
-            unit_size: StorageType::U32,
-            interpretation: 0x4,
-            count: 1,
+            semantic: VertexSemantic::Color,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x4),
+            storage_count: 1,
         }
     }
 
     pub const fn c4b_interpret2() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Color,
-            unit_size: StorageType::U32,
-            interpretation: 0x2,
-            count: 1,
+            semantic: VertexSemantic::Color,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x2),
+            storage_count: 1,
         }
     }
     pub const fn c4b_interpret6() -> Self {
         VertexIdentifier {
-            uniq: UniqueIdentifier::Color,
-            unit_size: StorageType::U32,
-            interpretation: 0x6,
-            count: 1,
+            semantic: VertexSemantic::Color,
+            storage_type: StorageType::U32,
+            interpretation: VertexInterpretation(0x6),
+            storage_count: 1,
         }
     }
 }
@@ -736,6 +781,65 @@ impl VertexFormatProperties for TargetVertexFormat {
 mod tests_vertex {
 
     use super::*;
+
+    #[test]
+    fn format_names_follow_native_rules() {
+        for (semantic, letter) in [
+            (VertexSemantic::Position, 'P'),
+            (VertexSemantic::Normal, 'N'),
+            (VertexSemantic::Tangent, 'G'),
+            (VertexSemantic::Bitangent, 'B'),
+            (VertexSemantic::Texcoord, 'T'),
+            (VertexSemantic::Color, 'C'),
+            (VertexSemantic::Weight, 'W'),
+            (VertexSemantic::JointIndex, 'I'),
+        ] {
+            let mut component = VertexIdentifier::p3f();
+            component.semantic = semantic;
+            assert_eq!(component.to_string(), format!("{letter}3f"));
+        }
+        let mut component = VertexIdentifier::p3f();
+        component.storage_count = 1;
+        assert_eq!(component.to_string(), "P1f");
+        component.storage_type = StorageType::F16;
+        assert_eq!(component.to_string(), "P1h");
+        component = VertexIdentifier::n4b();
+        for code in [0, 2, 3, 4, 5, 6, 99] {
+            component.interpretation = VertexInterpretation(code);
+            assert_eq!(
+                component.to_string(),
+                if (3..=5).contains(&code) {
+                    "N4c"
+                } else {
+                    "N4b"
+                }
+            );
+        }
+        component.storage_type = StorageType::U16;
+        assert_eq!(
+            component.to_string(),
+            "Normal(type=U16,count=1,interpretation=99)"
+        );
+        let expected = format!("{}_P3f", component);
+        let format = VertexFormat2::new(
+            vec![component, VertexIdentifier::p3f()].into_boxed_slice(),
+            0,
+            14,
+            Bytes::new(),
+        );
+        assert_eq!(format.to_string(), expected);
+    }
+
+    #[test]
+    fn interpretation_preserves_unknown_codes() {
+        use binrw::{BinReaderExt, BinWriterExt};
+        let mut cursor = std::io::Cursor::new(99u32.to_le_bytes());
+        let value: VertexInterpretation = cursor.read_le().unwrap();
+        assert_eq!(value, VertexInterpretation(99));
+        let mut output = std::io::Cursor::new(Vec::new());
+        output.write_le(&value).unwrap();
+        assert_eq!(output.into_inner(), 99u32.to_le_bytes());
+    }
 
     #[test]
     fn identifier_bytes_equal() {
