@@ -55,7 +55,7 @@ nix develop --command cargo test --workspace                     # debug, all cr
 nix develop --command cargo test --release --workspace           # release, all crates (as CI)
 
 # Test — single test by name
-nix develop --command cargo test -p rdm4lib -- tests::fishery_others_lod2
+nix develop --command cargo test -p rdm4lib -- tests::reads_mesh_with_multiple_material_groups
 # Test — single crate
 nix develop --command cargo test -p rdm4lib
 

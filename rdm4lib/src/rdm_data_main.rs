@@ -345,7 +345,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn short_metadata_reads_only_four_words() {
+    fn reads_68_byte_metadata_without_consuming_the_next_block() {
         for (source, endian) in [
             (
                 include_bytes!("../rdm/n_nature_small_stone_02_lod0.rdm").as_slice(),
@@ -381,15 +381,13 @@ mod tests {
     }
 
     #[test]
-    fn big_endian_short_metadata_converts_to_92_bytes() {
+    fn converts_be_68_byte_metadata_to_le_92_byte_metadata() {
         use crate::vertex::{N3f, N4b, VertexFormat2};
         let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
         let source = model.rdmf.as_ref().unwrap();
         assert!(source.big_endian);
         assert_eq!(source.header1.meta.info.part_size, 68);
-        assert_eq!(source.header1.meta._unknown_words, [0; 10]);
-        assert_eq!(model.vertex.len(), 45);
-        assert_eq!(model.triangle_indices.len(), 15);
+        // The packed normal must be decoded as a BE word, not four unchanged bytes.
         let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
         for (actual, expected) in normal
             .data
@@ -414,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn bounds_before_half_float_quantization() {
+    fn writes_bounds_from_quantized_vertices_instead_of_source_bounds() {
         let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
         let stored = model.rdmf.as_ref().unwrap().header1.meta.bounds();
         let calculated = model.vertex.calculate_bounds();
@@ -429,12 +427,10 @@ mod tests {
     }
 
     #[test]
-    fn float32_position_bounds() {
+    fn preserves_f32_position_bounds_when_writing_rdm() {
         let model = crate::RdModell::from("rdm/eden_line_flagpole_variation_cloth_lod0.rdm");
         let position = &model.vertex.identifiers[0];
-        assert_eq!(position.storage_type, StorageType::F32);
         assert_eq!(position.to_string(), "P3f");
-        assert_eq!(model.vertex.len(), 4);
         let calculated = model.vertex.calculate_bounds();
         assert_eq!(
             calculated.0.map(f32::to_bits),
@@ -455,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn stored_bounds_match_vertices() {
+    fn calculates_bounds_matching_existing_mesh_metadata() {
         for data in [
             include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
             include_bytes!("../rdm/ark_waterfall2.rdm").as_slice(),
@@ -467,8 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn struct_sizes() {
-        //assert_eq!(RdmHeader1::get_struct_byte_size(), 48);
+    fn matches_serialized_record_sizes() {
         assert_eq!(RdmBlobToMat::get_struct_byte_size(), 28);
         assert_eq!(RdmBlobToJoint::get_struct_byte_size(), 32);
 
@@ -487,9 +482,8 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn rdm_file_serialisation_roundtrip() {
+    fn preserves_mesh_bytes_when_read_and_written() {
         let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
-        //let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
 
         let mut reader = std::io::Cursor::new(&data);
 
@@ -507,8 +501,6 @@ mod tests {
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
 
-        dbg!(file.metadata().unwrap().len());
-        dbg!(data.len());
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 }

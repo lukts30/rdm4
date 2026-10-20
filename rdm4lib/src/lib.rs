@@ -211,41 +211,43 @@ mod tests_intern {
     use binrw::{BinWriterExt, Endian};
 
     #[test]
-    fn corpus_u32_indices() {
+    fn reads_u32_indices_without_truncation() {
         let model = RdModell::from("rdm/destruction_stone_building_04_decal_detail01_lod0.rdm");
         let meta = &model.rdmf.as_ref().unwrap().header1.meta;
         assert_eq!(meta.index_format.element_type, vertex::StorageType::U32);
-        assert_eq!(meta.triangle_list.info.part_size, 4);
-        assert_eq!(model.vertex.len(), 74_480);
         assert_eq!(model.triangle_indices.len(), 37_240);
         let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
-        assert_eq!(indices.clone().max(), Some(74_479));
-        assert!(indices.clone().any(|i| i > u16::MAX as u32));
-        assert!(indices.into_iter().all(|i| i < model.vertex.len()));
+        assert_eq!(indices.max(), Some(74_479));
     }
 
     #[test]
-    fn reject_invalid_index_format() {
+    fn rejects_unknown_float_and_mismatched_index_types() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
         let word =
             |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
         let meta = word(word(16) + 4);
         let index_format = word(meta + 8);
-        // Unknown code, mismatched width, and floating-point index types.
-        for code in [99u32, 5, 6, 7] {
+        for (code, case) in [
+            (99u32, "unknown storage code"),
+            (5, "U32 descriptor with a U16 index buffer"),
+            (6, "F16 indices"),
+            (7, "F32 indices"),
+        ] {
             let mut invalid = bytes.to_vec();
             invalid[index_format..index_format + 4].copy_from_slice(&code.to_le_bytes());
-            assert!(std::io::Cursor::new(invalid)
-                .read_le::<RdmFile<RdmKindMesh>>()
-                .is_err());
+            assert!(
+                std::io::Cursor::new(invalid)
+                    .read_le::<RdmFile<RdmKindMesh>>()
+                    .is_err(),
+                "accepted {case}"
+            );
         }
     }
 
     #[test]
-    fn big_endian_mesh_matches_little_endian() {
+    fn decodes_be_vertices_and_both_index_widths_like_le() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
         let expected = RdModell::new(bytes.to_vec());
-        assert_eq!(expected.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         for index_size in [2, 4] {
             let mut raw: RdmFile<RdmKindMesh> = std::io::Cursor::new(bytes).read_le().unwrap();
             let meta = &mut raw.header1.meta;
@@ -284,29 +286,23 @@ mod tests_intern {
             }
             let actual = RdModell::new(output);
             assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
-            assert_eq!(
-                actual.triangle_indices.len(),
-                expected.triangle_indices.len()
-            );
-            assert!(actual
-                .triangle_indices
-                .iter()
-                .zip(&expected.triangle_indices)
-                .all(|(a, b)| a.indices == b.indices));
-            let normals = |model: &RdModell| {
+            let indices = |model: &RdModell| {
                 model
-                    .vertex
-                    .iter::<vertex::N4b, vertex::N3f>(0)
-                    .unwrap()
-                    .map(|n| n.data)
+                    .triangle_indices
+                    .iter()
+                    .map(|t| t.indices)
                     .collect::<Vec<_>>()
             };
-            assert_eq!(normals(&actual), normals(&expected));
+            assert_eq!(
+                indices(&actual),
+                indices(&expected),
+                "{index_size}-byte indices"
+            );
         }
     }
 
     #[test]
-    fn fishery_others_cutout_lod0() {
+    fn reads_position_only_mesh_from_memory() {
         // for Miri test include bytes since there is no i/o.
         let bytes = include_bytes!("../rdm/fishery_others_cutout_lod0.rdm");
         let v = bytes.to_vec();

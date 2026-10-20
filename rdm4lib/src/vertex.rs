@@ -803,7 +803,7 @@ mod tests_vertex {
     use super::*;
 
     #[test]
-    fn bounds_use_stored_positions() {
+    fn calculates_xyz_bounds_with_attribute_offsets_and_f16_rounding() {
         for half in [false, true] {
             let mut bytes = Vec::new();
             for point in [[2.0006, -8.0, 3.0], [4.0, -2.0, 5.0]] {
@@ -844,7 +844,7 @@ mod tests_vertex {
     }
 
     #[test]
-    fn format_names_follow_native_rules() {
+    fn formats_semantics_with_game_prefix_letters() {
         for (semantic, letter) in [
             (VertexSemantic::Position, 'P'),
             (VertexSemantic::Normal, 'N'),
@@ -859,40 +859,53 @@ mod tests_vertex {
             component.semantic = semantic;
             assert_eq!(component.to_string(), format!("{letter}3f"));
         }
+    }
+
+    #[test]
+    fn formats_single_float_components_without_expanding_to_four() {
         let mut component = VertexIdentifier::p3f();
         component.storage_count = 1;
         assert_eq!(component.to_string(), "P1f");
         component.storage_type = StorageType::F16;
         assert_eq!(component.to_string(), "P1h");
-        component = VertexIdentifier::n4b();
-        for code in [0, 2, 3, 4, 5, 6, 99] {
+    }
+
+    #[test]
+    fn formats_packed_words_as_four_bytes_with_interpretation_suffix() {
+        let mut component = VertexIdentifier::n4b();
+        for (code, expected) in [
+            (0, "N4b"),
+            (2, "N4b"),
+            (3, "N4c"),
+            (4, "N4c"),
+            (5, "N4c"),
+            (6, "N4b"),
+            (99, "N4b"),
+        ] {
             component.interpretation = VertexInterpretation(code);
-            assert_eq!(
-                component.to_string(),
-                if (3..=5).contains(&code) {
-                    "N4c"
-                } else {
-                    "N4b"
-                }
-            );
+            assert_eq!(component.to_string(), expected, "interpretation {code}");
         }
+    }
+
+    #[test]
+    fn includes_unsupported_descriptor_details_without_truncating_format_names() {
+        let mut component = VertexIdentifier::n4b();
         component.storage_type = StorageType::U16;
-        assert_eq!(
-            component.to_string(),
-            "Normal(type=U16,count=1,interpretation=99)"
-        );
-        let expected = format!("{}_P3f", component);
+        component.interpretation = VertexInterpretation(99);
         let format = VertexFormat2::new(
             vec![component, VertexIdentifier::p3f()].into_boxed_slice(),
             0,
             14,
             Bytes::new(),
         );
-        assert_eq!(format.to_string(), expected);
+        assert_eq!(
+            format.to_string(),
+            "Normal(type=U16,count=1,interpretation=99)_P3f"
+        );
     }
 
     #[test]
-    fn interpretation_preserves_unknown_codes() {
+    fn preserves_unknown_interpretation_codes_when_read_and_written() {
         use binrw::{BinReaderExt, BinWriterExt};
         let mut cursor = std::io::Cursor::new(99u32.to_le_bytes());
         let value: VertexInterpretation = cursor.read_le().unwrap();
@@ -903,7 +916,7 @@ mod tests_vertex {
     }
 
     #[test]
-    fn identifier_bytes_equal() {
+    fn matches_vertex_descriptor_bytes() {
         let p = p4h_n4b_g4b_b4b_t2h_i4b();
         let bytes = unsafe { p.align_to::<[u8; 16]>().1 };
         assert_eq!(bytes.len(), 6);

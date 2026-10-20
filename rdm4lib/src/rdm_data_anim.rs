@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn rdm_anim_serialisation_roundtrip() {
+    fn preserves_animation_bytes_when_read_and_written() {
         use crate::rdm_data_main::{RdmFile, RdmKindAnim};
 
         let data = fs::read("rdm/basalt_crusher_others_work01.rdm").unwrap();
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn run_conv() {
+    fn writes_loaded_animation_without_errors() {
         let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
         let rdaw = RdAnimWriter2::new(anim);
         let output_dir = tempfile::tempdir().unwrap();
