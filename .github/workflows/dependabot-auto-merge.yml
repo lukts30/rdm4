@@ -1,0 +1,19 @@
+name: Dependabot auto-merge
+on: pull_request_target
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: Mic92/auto-merge@4ac8209ccc201a1b2d049001cccd77262e689533
+        with:
+          approve: "false"
+          use-auto-merge: "true"
+          merge-method: squash
+          required-labels: dependencies
