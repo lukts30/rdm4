@@ -38,9 +38,8 @@ the root header position, but its meaning is unknown. It has not been
 established as a header pointer. The words at `0x08` and `0x0c` are also
 unexplained.
 
-The root has the same block header as other blocks. All fixtures have one
-48-byte root record. Its populated offsets distinguish models from animations.
-A 52-byte variant is also reported, but has no retained sample for verification.
+The root has the same block header as other blocks and contains one record.
+Both 48-byte and 52-byte root records occur.
 
 ## Blocks and offsets
 
@@ -68,7 +67,7 @@ Offsets are unsigned 32-bit absolute file positions:
 - `0` is a null reference.
 - Nonzero offsets point to a block's first payload byte.
 - The target's header starts at `offset - 8`.
-- All identified references in the fixtures point forward to payload
+- All identified references in the audited files point forward to payload
   boundaries, not to individual records within a block.
 
 **RDM is not self-describing.** `count` and `stride` give block boundaries,
@@ -110,8 +109,8 @@ the file's byte order.
 
 ## Block order and references
 
-In the fixtures, blocks fill the file from `0x14` to EOF without gaps or
-trailing bytes:
+Across the audited Anno 2070 and Anno 1800 archive members and the generated
+files, blocks fill the file from `0x14` to EOF without gaps or trailing bytes:
 
 ```text
 [ preamble ][ root header | root payload ][ header | payload ] ...
@@ -121,8 +120,9 @@ file_size = 0x14 + sum(8 + count * stride)
 
 Headers and payloads can start at odd offsets; there is no alignment padding.
 
-The identified references form a rooted tree: each non-root block has exactly
-one incoming reference, and every block is reachable. Blocks appear in
+The references identified from the recovered record layouts form a rooted tree:
+each non-root block has exactly one known incoming reference, and every block
+is reachable. Blocks appear in
 depth-first preorder. Each block stores all its direct records before any
 child blocks; each child's subtree precedes the next sibling.
 
@@ -140,7 +140,7 @@ three blocks are stored as mesh information, vertex data, then indices.
 
 These are observed properties, not restrictions of absolute offsets. The
 encoding could represent shared blocks, backward references, or cycles.
-None occur among the identified references in the fixtures; whether games
+None occur among the identified references in the audited files; whether games
 accept them is unknown.
 
 ### Game reader and structural scanner
