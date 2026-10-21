@@ -95,35 +95,80 @@ fn type_argument<'a>(ty: &'a Type, name: &str) -> Option<&'a Type> {
     }
 }
 
+fn storage_mode(field: &syn::Field) -> syn::Result<Option<syn::Ident>> {
+    let mut mode = None;
+    for attr in field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("rdm"))
+    {
+        let value: syn::Ident = attr.parse_args()?;
+        if value != "offset" && value != "inline" && value != "skip" {
+            return Err(syn::Error::new_spanned(
+                value,
+                "expected offset, inline, or skip",
+            ));
+        }
+        if mode.replace(value).is_some() {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "duplicate RDM storage attribute",
+            ));
+        }
+    }
+    Ok(mode)
+}
+
+fn byte_sequence(ty: &Type) -> bool {
+    let element = match ty {
+        Type::Array(array) => Some(array.elem.as_ref()),
+        _ => type_argument(ty, "Vec"),
+    };
+    element.is_some_and(|ty| matches!(ty, Type::Path(path) if path.path.is_ident("u8")))
+}
+
 fn expand_rdm_read(input: &mut DeriveInput) -> syn::Result<()> {
+    // binrw removes temporary fields before the writer derive runs. Preserve shared
+    // storage attributes for that derive on the remaining native struct fields.
+    let derives_writer = input
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("derive"))
+        .map(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+            )
+        })
+        .collect::<syn::Result<Vec<_>>>()?
+        .iter()
+        .flatten()
+        .any(|path| {
+            path.segments
+                .last()
+                .is_some_and(|part| part.ident == "RdmDescribe")
+        });
+
     let Data::Struct(data) = &mut input.data else {
         return Err(syn::Error::new_spanned(input, "rdm_read expects a struct"));
     };
     for field in &mut data.fields {
-        let mut storage = None;
+        let mut storage = storage_mode(field)?;
         let mut custom_parser = false;
-        for attr in &field.attrs {
-            if attr.path().is_ident("rdm") {
-                let mode: syn::Ident = attr.parse_args()?;
-                if mode != "offset" && mode != "inline" {
-                    return Err(syn::Error::new_spanned(mode, "expected offset or inline"));
-                }
-                if storage.replace(mode).is_some() {
-                    return Err(syn::Error::new_spanned(
-                        attr,
-                        "duplicate RDM storage attribute",
-                    ));
-                }
-            } else if attr.path().is_ident("br") {
-                let directives = attr.parse_args_with(
-                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                )?;
-                custom_parser |= directives
-                    .iter()
-                    .any(|meta| meta.path().is_ident("parse_with"));
-            }
+        for attr in field.attrs.iter().filter(|attr| attr.path().is_ident("br")) {
+            let directives = attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )?;
+            custom_parser |= directives
+                .iter()
+                .any(|meta| meta.path().is_ident("parse_with"));
         }
-        field.attrs.retain(|attr| !attr.path().is_ident("rdm"));
+        if !derives_writer {
+            field.attrs.retain(|attr| !attr.path().is_ident("rdm"));
+        }
+        // skip affects writing only; retain the normal reading convention.
+        if storage.as_ref().is_some_and(|mode| mode == "skip") {
+            storage = None;
+        }
         if custom_parser {
             if let Some(mode) = storage {
                 return Err(syn::Error::new_spanned(
@@ -156,4 +201,75 @@ fn expand_rdm_read(input: &mut DeriveInput) -> syn::Result<()> {
             .push(parse_quote!(#[br(parse_with = crate::rdm_container::#parser)]));
     }
     Ok(())
+}
+
+/// Describe a native record using the same Vec/Option/inline conventions as rdm_read.
+/// Use after #[rdm_read] so binrw's temporary fields have already been removed.
+/// This derive generates writing only; it neither invokes nor interprets binrw.
+#[proc_macro_derive(RdmDescribe, attributes(rdm))]
+pub fn derive_rdm_describe(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_rdm_describe(&input) {
+        Ok(output) => output.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
+fn block_expression(value: proc_macro2::TokenStream, ty: &Type) -> proc_macro2::TokenStream {
+    match type_argument(ty, "Vec") {
+        Some(Type::Path(path)) if path.path.is_ident("u8") => quote!(plan.add_byte_block(#value)),
+        Some(_) => quote!(plan.add_record_array(#value)),
+        None => quote!(plan.add_record(#value)),
+    }
+}
+
+fn expand_rdm_describe(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let Data::Struct(data) = &input.data else {
+        return Err(syn::Error::new_spanned(
+            input,
+            "RdmDescribe expects a struct",
+        ));
+    };
+    let mut statements = Vec::new();
+    for (index, field) in data.fields.iter().enumerate() {
+        let mode = storage_mode(field)?;
+        if mode.as_ref().is_some_and(|mode| mode == "skip") {
+            continue;
+        }
+        let member = field
+            .ident
+            .clone()
+            .map(syn::Member::Named)
+            .unwrap_or_else(|| syn::Member::Unnamed(syn::Index::from(index)));
+        let inline = mode.as_ref().is_some_and(|mode| mode == "inline");
+        let optional = type_argument(&field.ty, "Option");
+        let statement = if let Some(inner) = optional.filter(|_| !inline) {
+            let block = block_expression(quote!(value), inner);
+            quote!(record.append_offset(self.#member.as_ref().map(|value| #block));)
+        } else if !inline && (mode.is_some() || type_argument(&field.ty, "Vec").is_some()) {
+            let block = block_expression(quote!(&self.#member), &field.ty);
+            quote!(record.append_offset(Some(#block));)
+        } else if byte_sequence(&field.ty) {
+            quote!(record.append_bytes(&self.#member);)
+        } else {
+            quote!(crate::rdm_writer::Inline::append_inline(&self.#member, plan, &mut record);)
+        };
+        statements.push(statement);
+    }
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    Ok(quote! {
+        impl #impl_generics crate::rdm_writer::Describe for #name #ty_generics #where_clause {
+            fn describe<'__rdm>(&'__rdm self, plan: &mut crate::rdm_writer::Plan<'__rdm>) -> crate::rdm_writer::Record {
+                let mut record = crate::rdm_writer::Record::new(plan);
+                #(#statements)*
+                record
+            }
+        }
+        impl #impl_generics crate::rdm_writer::Inline for #name #ty_generics #where_clause {
+            fn append_inline<'__rdm>(&'__rdm self, plan: &mut crate::rdm_writer::Plan<'__rdm>, record: &mut crate::rdm_writer::Record) {
+                record.append_record(crate::rdm_writer::Describe::describe(self, plan));
+            }
+        }
+    })
 }

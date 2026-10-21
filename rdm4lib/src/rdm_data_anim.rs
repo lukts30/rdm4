@@ -1,4 +1,4 @@
-use rdm_derive::rdm_read;
+use rdm_derive::{rdm_read, RdmDescribe};
 
 use std::{
     fs::{self, OpenOptions},
@@ -9,6 +9,7 @@ use crate::rdm_anim::RdAnim;
 use crate::rdm_data_main::{RdmFile, RdmKindAnim};
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct AnimMeta {
     pub name: Vec<u8>,
 
@@ -20,6 +21,7 @@ pub struct AnimMeta {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct AnimInner {
     pub j_name: Vec<u8>,
 
@@ -29,6 +31,7 @@ pub struct AnimInner {
 
 #[derive(Debug, Copy, Clone)]
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct Frame {
     pub rotation: [f32; 4],
     pub translation: [f32; 3],
@@ -160,36 +163,5 @@ impl RdAnimWriter2 {
             name: anim_input.name,
             export: anim,
         }
-    }
-}
-
-use crate::rdm_writer::{Describe, Plan, Record};
-impl Describe for AnimMeta {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_byte_block(&self.name)));
-        r.append_offset(Some(plan.add_record_array(&self.anims)));
-        r.append_u32(self.time_max);
-        r.append_u32(self.sampling_rate);
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for AnimInner {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_byte_block(&self.j_name)));
-        r.append_offset(Some(plan.add_record_array(&self.j_data)));
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for Frame {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_f32s(&self.rotation);
-        r.append_f32s(&self.translation);
-        r.append_f32s(&[self.time]);
-        r
     }
 }

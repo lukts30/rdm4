@@ -6,19 +6,21 @@ use std::{
 };
 
 use binrw::BinRead;
-use rdm_derive::rdm_read;
+use rdm_derive::{rdm_read, RdmDescribe};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
 use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 struct ModelName {
     name: Option<Vec<u8>>,
     _padding: [u8; 24],
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct VertId {
     pub rdm_container: Vec<crate::vertex::VertexIdentifier>,
     unknown_shader_id: u8,
@@ -27,6 +29,7 @@ pub struct VertId {
 
 #[derive(Debug, Clone)]
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct MeshInfo {
     pub start_index_location: u32,
     pub index_count: u32,
@@ -41,6 +44,7 @@ impl MeshInfo {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub(crate) struct IndexFormat {
     #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
         "Index format requires U16 or U32"))]
@@ -146,6 +150,7 @@ impl Meta {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 struct RdmBlobToMat {
     #[rdm(offset)]
     mat: RdmMat,
@@ -153,6 +158,7 @@ struct RdmBlobToMat {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 struct RdmMat {
     name: Option<Vec<u8>>,
 
@@ -161,6 +167,7 @@ struct RdmMat {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct RdmBlobToJoint {
     pub joint: Vec<RdmJoint>,
     _padding: [u8; 32 - 4],
@@ -168,6 +175,7 @@ pub struct RdmBlobToJoint {
 
 #[derive(Debug)]
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct RdmJoint {
     pub name: Vec<u8>,
     pub t: [f32; 3],
@@ -177,6 +185,7 @@ pub struct RdmJoint {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct RdmHeader1 {
     #[br(temp, restore_position, seek_before = SeekFrom::Current(-4), assert(matches!(part_size, 48 | 52)))]
     part_size: u32,
@@ -198,6 +207,7 @@ pub struct RdmHeader1 {
 }
 
 #[rdm_read]
+#[derive(RdmDescribe)]
 pub struct ExportInfo {
     pub export_name1: Option<Vec<u8>>,
 
@@ -592,110 +602,6 @@ impl RdWriter2 {
 }
 
 use crate::rdm_writer::{Describe, Plan, Record};
-impl Describe for ModelName {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(self.name.as_ref().map(|value| plan.add_byte_block(value)));
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for VertId {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_record_array(&self.rdm_container)));
-        r.append_bytes(&[self.unknown_shader_id]);
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for MeshInfo {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_u32(self.start_index_location);
-        r.append_u32(self.index_count);
-        r.append_u32(self.material);
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for IndexFormat {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_u32(self.element_type as u32);
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for RdmBlobToMat {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_record(&self.mat)));
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for RdmMat {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(self.name.as_ref().map(|value| plan.add_byte_block(value)));
-        r.append_offset(self.png.as_ref().map(|value| plan.add_byte_block(value)));
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for RdmBlobToJoint {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_record_array(&self.joint)));
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for RdmJoint {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(Some(plan.add_byte_block(&self.name)));
-        r.append_f32s(&self.t);
-        r.append_f32s(&self.r);
-        r.append_u32(self.parent_id);
-        r.append_bytes(&self._padding);
-        r
-    }
-}
-impl Describe for RdmHeader1 {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(self.header2.as_ref().map(|value| plan.add_record(value)));
-        r.append_offset(self.meta.as_ref().map(|value| plan.add_record(value)));
-        r.append_offset(
-            self.rdm_blob_to_mat
-                .as_ref()
-                .map(|value| plan.add_record_array(value)),
-        );
-        r.append_offset(self.skin.as_ref().map(|value| plan.add_record(value)));
-        r.append_offset(self.meta_anim.as_ref().map(|value| plan.add_record(value)));
-        r.append_bytes(&self._data);
-        r
-    }
-}
-impl Describe for ExportInfo {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let mut r = Record::new(plan);
-        r.append_offset(
-            self.export_name1
-                .as_ref()
-                .map(|value| plan.add_byte_block(value)),
-        );
-        r.append_offset(
-            self.export_name2
-                .as_ref()
-                .map(|value| plan.add_byte_block(value)),
-        );
-        r.append_bytes(&self._data);
-        r
-    }
-}
 
 impl Describe for Meta {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {

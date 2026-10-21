@@ -4,11 +4,13 @@ use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
 use binrw::{binread, binrw};
+use rdm_derive::RdmDescribe;
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
 #[derive(Clone, Debug)]
 #[binread]
+#[derive(RdmDescribe)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
     #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
@@ -976,13 +978,30 @@ mod tests_vertex {
     }
 }
 
-impl crate::rdm_writer::Describe for VertexIdentifier {
-    fn describe<'a>(&'a self, plan: &mut crate::rdm_writer::Plan<'a>) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::new(plan);
-        r.append_u32(self.semantic.clone() as u32);
-        r.append_u32(self.storage_type as u32);
-        r.append_u32(self.interpretation.0);
-        r.append_u32(self.storage_count);
-        r
+impl crate::rdm_writer::Inline for VertexSemantic {
+    fn append_inline<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(self.clone() as u32);
+    }
+}
+impl crate::rdm_writer::Inline for StorageType {
+    fn append_inline<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(*self as u32);
+    }
+}
+impl crate::rdm_writer::Inline for VertexInterpretation {
+    fn append_inline<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(self.0);
     }
 }

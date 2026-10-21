@@ -81,6 +81,19 @@ impl Record {
             ..Self::default()
         }
     }
+    // Embed a composite value and rebase its offset slots into the parent record.
+    pub(crate) fn append_record(&mut self, nested: Record) {
+        let start = self.bytes.len();
+        self.offsets.extend(
+            nested
+                .offsets
+                .into_iter()
+                .map(|(field, target)| (FieldOffset(start + field.bytes()), target)),
+        );
+        self.children.extend(nested.children);
+        self.bytes.extend(nested.bytes);
+    }
+
     pub(crate) fn append_bytes(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
     }
@@ -115,6 +128,41 @@ impl Record {
 
 pub(crate) trait Describe {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record;
+}
+
+/// Encode a value within the current record, without adding a block header.
+pub(crate) trait Inline {
+    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record);
+}
+
+impl Inline for u8 {
+    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+        record.append_bytes(&[*self]);
+    }
+}
+impl Inline for u32 {
+    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+        record.append_u32(*self);
+    }
+}
+impl Inline for f32 {
+    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+        record.append_u32(self.to_bits());
+    }
+}
+impl<T: Inline, const N: usize> Inline for [T; N] {
+    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
+        for value in self {
+            value.append_inline(plan, record);
+        }
+    }
+}
+impl<T: Inline> Inline for Vec<T> {
+    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
+        for value in self {
+            value.append_inline(plan, record);
+        }
+    }
 }
 
 /// Writer-owned bytes are separate from the structural graph.
@@ -269,5 +317,51 @@ impl<'a> Plan<'a> {
             out.write_all(&self.payloads[id])?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rdm_derive::RdmDescribe;
+
+    #[test]
+    fn derives_nested_offset_slots_without_a_reader() {
+        #[derive(RdmDescribe)]
+        struct Named {
+            name: Vec<u8>,
+        }
+        #[derive(RdmDescribe)]
+        struct Leaf {
+            value: u32,
+        }
+        #[derive(RdmDescribe)]
+        struct Parent {
+            tag: u32,
+            nested: Named,
+            #[rdm(offset)]
+            child: Leaf,
+            #[rdm(skip)]
+            _runtime_flag: bool,
+        }
+        let value = Parent {
+            tag: 7,
+            nested: Named {
+                name: b"ab".to_vec(),
+            },
+            child: Leaf { value: 99 },
+            _runtime_flag: true,
+        };
+        let mut plan = Plan::new(false);
+        let root = plan.add_record(&value);
+        let mut bytes = Vec::new();
+        plan.write_file(root, &mut bytes).unwrap();
+        let word = |at| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        assert_eq!(word(24), 12); // Parent stride: tag and two offset slots.
+        assert_eq!(word(28), 7);
+        assert_eq!(word(32), 48); // Nested name slot rebased past the tag.
+        assert_eq!(&bytes[48..50], b"ab");
+        assert_eq!(word(36), 58); // Separate single-record child block.
+        assert_eq!(word(58), 99);
     }
 }
