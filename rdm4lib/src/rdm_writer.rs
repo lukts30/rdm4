@@ -11,10 +11,17 @@ struct RecordIndex(usize);
 #[derive(Clone, Copy, Debug)]
 struct FieldOffset(usize);
 
-struct Edge {
-    source: BlockId,
+// A four-byte offset field within one record of a source block.
+struct OffsetSlot {
+    block: BlockId,
     record: RecordIndex,
     field: FieldOffset,
+}
+
+// The source is a specific slot; the target is the start of a block's payload.
+// IDs remain stable while the block and payload vectors grow during planning.
+struct Edge {
+    source: OffsetSlot,
     target: BlockId,
 }
 
@@ -141,9 +148,11 @@ impl<'a> Plan<'a> {
             assert_eq!(record.bytes.len(), stride, "mixed record strides");
             for (field, target) in record.offsets {
                 self.graph.edges.push(Edge {
-                    source: id,
-                    record: RecordIndex(index),
-                    field,
+                    source: OffsetSlot {
+                        block: id,
+                        record: RecordIndex(index),
+                        field,
+                    },
                     target,
                 });
             }
@@ -204,10 +213,19 @@ impl<'a> Plan<'a> {
             }
         };
         for edge in &self.graph.edges {
-            let block = &self.graph.blocks[edge.source.0];
-            let at = edge.record.0 * block.stride as usize + edge.field.0;
-            self.payloads[edge.source.0].to_mut()[at..at + 4]
-                .copy_from_slice(&encode(offsets[edge.target.0]));
+            let source = &edge.source;
+            let source_block = &self.graph.blocks[source.block.0];
+            // Convert the record-relative field position to a position within the payload.
+            let slot_start = source.record.0 * source_block.stride as usize + source.field.0;
+            // RDM stores an absolute file offset to the target payload, after its header.
+            let target_payload_offset = offsets[edge.target.0];
+            let encoded_offset = encode(target_payload_offset);
+
+            // Resolve the placeholder in memory before writing anything to the output.
+            // Edge sources are owned record bytes, so to_mut() does not clone a buffer.
+            let source_payload = self.payloads[source.block.0].to_mut();
+            let slot = &mut source_payload[slot_start..slot_start + encoded_offset.len()];
+            slot.copy_from_slice(&encoded_offset);
         }
         out.write_all(b"RDM")?;
         out.write_all(&[u8::from(!self.big_endian)])?;
