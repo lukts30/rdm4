@@ -31,8 +31,5 @@ features = ["extras", "names"]
 version = "1.8.3"
 features = []
 
-[dependencies.rdm_derive]
-path = "../rdm_derive"
-
 [dev-dependencies]
 tempfile = "3"

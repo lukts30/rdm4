@@ -1,5 +1,5 @@
 use bytes::{Buf, Bytes};
-use rdm_derive::RdmStructSize;
+
 use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
@@ -9,7 +9,6 @@ use binrw::{binread, binrw};
 #[repr(C)]
 #[derive(Clone, Debug)]
 #[binread]
-#[derive(RdmStructSize)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
     #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
@@ -343,17 +342,16 @@ impl VertexFormat2 {
     }
 
     pub fn read_format_via_data(rdm: &RdmFile<RdmKindMesh>) -> Self {
-        let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
+        let meta: &rdm_data_main::Meta = rdm.header1.meta.as_ref().unwrap();
         let format_identifiers = &meta.format_identifiers;
 
         let ids = &format_identifiers.rdm_container;
-        assert_eq!(ids.info.part_size, 16);
 
-        let vec: Vec<VertexIdentifier> = ids.iter().cloned().collect();
+        let vec: Vec<VertexIdentifier> = ids.to_vec();
 
-        let vertex_count = meta.vertex.info.count;
-        let vertex_size = meta.vertex.info.part_size;
-        let mut vertex_buffer: Vec<u8> = meta.vertex.iter().map(|x| x.0).collect();
+        let vertex_count = meta.vertex.count;
+        let vertex_size = meta.vertex.stride;
+        let mut vertex_buffer: Vec<u8> = meta.vertex.bytes.clone();
         if rdm.big_endian {
             // Normalize to the LE representation used by all vertex consumers.
             // Packed N4b/I4b/W4b/etc. are U32 words, not four independent bytes.
@@ -979,7 +977,7 @@ mod tests_vertex {
 }
 
 impl crate::rdm_writer::Describe for VertexIdentifier {
-    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+    fn describe<'a>(&'a self, plan: &mut crate::rdm_writer::Plan<'a>) -> crate::rdm_writer::Record {
         let mut r = crate::rdm_writer::Record::new(plan);
         r.u32(self.semantic.clone() as u32);
         r.u32(self.storage_type as u32);

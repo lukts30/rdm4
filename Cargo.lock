@@ -739,7 +739,6 @@ dependencies = [
  "half",
  "log",
  "nalgebra",
- "rdm_derive",
  "serde_json",
  "sha2",
  "tempfile",

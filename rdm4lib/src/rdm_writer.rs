@@ -1,5 +1,8 @@
 //! Record descriptions build a block graph before any output is written.
-use std::io::{self, Write};
+use std::{
+    borrow::Cow,
+    io::{self, Write},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BlockId(usize);
@@ -37,15 +40,11 @@ pub(crate) struct Record {
 }
 
 impl Record {
-    pub(crate) fn new(plan: &Plan) -> Self {
+    pub(crate) fn new(plan: &Plan<'_>) -> Self {
         Self {
             big_endian: plan.big_endian,
             ..Self::default()
         }
-    }
-    pub(crate) fn into_bytes(self) -> Vec<u8> {
-        assert!(self.offsets.is_empty());
-        self.bytes
     }
     pub(crate) fn bytes(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
@@ -79,21 +78,30 @@ impl Record {
 }
 
 pub(crate) trait Describe {
-    fn byte(&self) -> u8 {
-        panic!("not a byte record")
-    }
-    fn describe(&self, plan: &mut Plan) -> Record;
+    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record;
 }
 
 /// Writer-owned bytes are separate from the structural graph.
 #[derive(Default)]
-pub(crate) struct Plan {
+pub(crate) struct Plan<'a> {
     big_endian: bool,
     graph: Graph,
-    payloads: Vec<Vec<u8>>,
+    payloads: Vec<Cow<'a, [u8]>>,
 }
 
-impl Plan {
+impl<'a> Plan<'a> {
+    pub(crate) fn one(&mut self, value: &'a impl Describe) -> BlockId {
+        let record = value.describe(self);
+        self.records(vec![record])
+    }
+    pub(crate) fn array(&mut self, values: &'a [impl Describe]) -> BlockId {
+        let records = values.iter().map(|value| value.describe(self)).collect();
+        self.records(records)
+    }
+    pub(crate) fn bytes(&mut self, bytes: &'a [u8]) -> BlockId {
+        self.raw(u32::try_from(bytes.len()).unwrap(), 1, bytes)
+    }
+
     pub(crate) fn new(big_endian: bool) -> Self {
         Self {
             big_endian,
@@ -125,11 +133,11 @@ impl Plan {
             stride: u32::try_from(stride).unwrap(),
             children,
         });
-        self.payloads.push(payload);
+        self.payloads.push(Cow::Owned(payload));
         id
     }
 
-    pub(crate) fn raw(&mut self, count: u32, stride: u32, bytes: Vec<u8>) -> BlockId {
+    pub(crate) fn raw(&mut self, count: u32, stride: u32, bytes: &'a [u8]) -> BlockId {
         assert!(count > 0 && stride > 0);
         assert_eq!(bytes.len() as u64, u64::from(count) * u64::from(stride));
         let id = BlockId(self.graph.blocks.len());
@@ -138,7 +146,7 @@ impl Plan {
             stride,
             children: Vec::new(),
         });
-        self.payloads.push(bytes);
+        self.payloads.push(Cow::Borrowed(bytes));
         id
     }
 
@@ -175,7 +183,7 @@ impl Plan {
         for edge in &self.graph.edges {
             let block = &self.graph.blocks[edge.source.0];
             let at = edge.record.0 * block.stride as usize + edge.field.0;
-            self.payloads[edge.source.0][at..at + 4]
+            self.payloads[edge.source.0].to_mut()[at..at + 4]
                 .copy_from_slice(&encode(offsets[edge.target.0]));
         }
         out.write_all(b"RDM")?;

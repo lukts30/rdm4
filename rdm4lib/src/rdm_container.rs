@@ -1,427 +1,201 @@
-use std::any::TypeId;
-use std::fmt;
-use std::io::{Seek, SeekFrom};
-use std::ops::Deref;
-use std::str;
-use std::vec::Vec;
+//! Seek-based binrw readers for framed blocks, returning ordinary Rust values.
+use binrw::{BinRead, BinResult, Endian, Error};
+use std::io::{Read, Seek, SeekFrom};
 
-use crate::rdm_data_main::{Meta, RdmHeader1};
-use crate::RDMStructSizeTr;
-use binrw::{binread, BinRead};
-use rdm_derive::RdmStructSize;
-
-pub trait RdmRead: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
-impl<M> RdmRead for M where M: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
-
-pub trait RdmContainerRead: for<'a> BinRead<Args<'a> = u32> + 'static {}
-impl<M> RdmContainerRead for M where M: for<'a> BinRead<Args<'a> = u32> + 'static {}
-
-fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
-    let old_pos = reader.stream_position()?;
-    let len = reader.seek(SeekFrom::End(0))?;
-
-    // Avoid seeking a third time when we were already at the end of the
-    // stream. The branch is usually way cheaper than a seek operation.
-    if old_pos != len {
-        reader.seek(SeekFrom::Start(old_pos))?;
-    }
-    Ok(len)
-}
-
-#[derive(Debug, BinRead)]
-#[br(import_raw(c: u32))]
-pub struct VectorN<T: RdmRead> {
-    #[br(count = c)]
-    pub items: Vec<T>,
-}
-
-#[derive(Debug, BinRead)]
-#[br(import_raw(c: u32))]
-#[br(assert(
-    c == 1 || TypeId::of::<Meta>() == TypeId::of::<T>() && { error!("ignoring {} additional {}",c-1,std::any::type_name::<T>()); true}
-    ,"Expected 1 element of type {} but got {}",std::any::type_name::<T>(),c))]
-pub struct Vector1<T: RdmRead> {
-    pub item: [T; 1],
-}
-
-impl<'a, T: RdmRead> IntoIterator for &'a Vector1<T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.item.iter()
-    }
-}
-
-impl<'a, T: RdmRead> IntoIterator for &'a VectorN<T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.items.iter()
-    }
-}
-
-pub struct Fixed2;
-pub struct Dynamic2;
-
-pub trait VectorSize2 {
-    type Storage<T>: VectorLen + RdmContainerRead
-    where
-        T: RdmRead;
-}
-
-impl VectorSize2 for Fixed2 {
-    type Storage<T: RdmRead> = Vector1<T>;
-}
-
-impl VectorSize2 for Dynamic2 {
-    type Storage<T: RdmRead> = VectorN<T>;
-}
-
-pub trait VectorLen {
-    fn len(&self) -> u32;
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl<T: RdmRead> VectorLen for VectorN<T> {
-    fn len(&self) -> u32 {
-        self.items.len() as u32
-    }
-}
-
-impl<T: RdmRead> VectorLen for Vector1<T> {
-    fn len(&self) -> u32 {
-        1
-    }
-}
-
-#[derive(Debug)]
-pub struct RdmContainerPrefix {
+/// Raw records whose stride is determined by a vertex or index format.
+#[derive(Debug, Clone)]
+pub struct RawBuffer {
+    /// Number of records, not number of bytes.
     pub count: u32,
-    pub part_size: u32,
+    /// Bytes per record.
+    pub stride: u32,
+    /// Unconverted payload in the source file's byte order.
+    pub bytes: Vec<u8>,
 }
 
-impl BinRead for RdmContainerPrefix {
-    type Args<'a> = ();
-
-    fn read_options<R: std::io::Read + Seek>(
-        reader: &mut R,
-        endian: binrw::Endian,
-        _args: Self::Args<'_>,
-    ) -> binrw::BinResult<Self> {
-        let c_prefix = RdmContainerPrefix {
-            count: <u32>::read_options(reader, endian, ()).unwrap(),
-            part_size: <u32>::read_options(reader, endian, ()).unwrap(),
-        };
-
-        if c_prefix.count == 0 {
-            return Err(binrw::Error::AssertFail {
-                message: "count 0 ".into(),
-                pos: reader.stream_position().unwrap() - 8,
-            });
-        }
-
-        if c_prefix.part_size == 0 {
-            return Err(binrw::Error::AssertFail {
-                message: "part_size 0 ".into(),
-                pos: reader.stream_position().unwrap() - 4,
-            });
-        }
-
-        let file_size = stream_len(reader)?;
-        if file_size
-            < (c_prefix.count * c_prefix.part_size) as u64 + reader.stream_position().unwrap()
-        {
-            return Err(binrw::Error::AssertFail {
-                message: "RdmContainer > EOF".into(),
-                pos: reader.stream_position().unwrap() - 8,
-            });
-        }
-
-        Ok(c_prefix)
+fn invalid(pos: u64, message: &str) -> Error {
+    Error::AssertFail {
+        pos,
+        message: message.into(),
     }
 }
 
-#[binread]
-pub struct RdmContainer<const T_IS_PARTSIZED: bool, C, T>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead,
-{
-    #[br(assert(!T_IS_PARTSIZED
-        || TypeId::of::<RdmHeader1>() == TypeId::of::<T>() && (info.part_size == 48 || info.part_size == 52)
-        || TypeId::of::<Meta>() == TypeId::of::<T>() && info.part_size == 68
-        || info.part_size as usize == T::get_struct_byte_size(),
-     "Struct ({}) size mismatch expected {} but got {}",std::any::type_name::<T>(),T::get_struct_byte_size(),info.part_size))
-    ]
-    pub info: RdmContainerPrefix,
-
-    #[br(args_raw = match T_IS_PARTSIZED {
-        true => info.count,
-        false => info.count * info.part_size,
-    })]
-    pub storage: C::Storage<T>,
-}
-
-impl<const T_IS_PARTSIZED: bool, T> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Fixed2, T>
-where
-    T: RdmRead,
-{
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.storage.item[0]
-    }
-}
-
-impl<const T_IS_PARTSIZED: bool, T> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Fixed2, T>
-where
-    T: RdmRead,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.storage.item[0]
-    }
-}
-
-impl<const T_IS_PARTSIZED: bool, T> std::ops::Deref for RdmContainer<T_IS_PARTSIZED, Dynamic2, T>
-where
-    T: RdmRead,
-{
-    type Target = [T];
-    fn deref(&self) -> &Self::Target {
-        &self.storage.items
-    }
-}
-
-impl<const T_IS_PARTSIZED: bool, T> std::ops::DerefMut for RdmContainer<T_IS_PARTSIZED, Dynamic2, T>
-where
-    T: RdmRead,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.storage.items
-    }
-}
-
-impl RdmString {
-    pub fn as_ascii(&self) -> &str {
-        let (_head, body, _tail) = unsafe { self.deref().align_to::<u8>() };
-        str::from_utf8(body).unwrap()
-    }
-}
-
-impl fmt::Display for RdmString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_ascii())
-    }
-}
-
-impl fmt::Debug for RdmString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_ascii())
-    }
-}
-
-pub type AnnoPtr<T> = AnnoPtr2<false, T>;
-pub type NullableAnnoPtr<T> = AnnoPtr2<true, T>;
-
-#[derive(Debug)]
-pub struct RdmFilePtr<T> {
-    pub ptr: u32,
-    pub value: Option<T>,
-}
-
-impl<T> std::ops::Deref for RdmFilePtr<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        self.value.as_ref().unwrap()
-    }
-}
-
-impl<T> std::ops::DerefMut for RdmFilePtr<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        self.value.as_mut().unwrap()
-    }
-}
-
-pub struct AnnoPtr2<const PTR_NULLABLE: bool, T>(pub RdmFilePtr<T>);
-
-impl<const PTR_NULLABLE: bool, T> std::ops::Deref for AnnoPtr2<PTR_NULLABLE, T> {
-    type Target = RdmFilePtr<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<const PTR_NULLABLE: bool, T> std::ops::DerefMut for AnnoPtr2<PTR_NULLABLE, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<const PTR_NULLABLE: bool, T: std::fmt::Debug> std::fmt::Debug for AnnoPtr2<PTR_NULLABLE, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.deref(), f)
-    }
-}
-
-// https://docs.rs/binrw/0.11.2/binrw/docs/attribute/index.html#custom-parserswriters
-// https://github.com/jam1garner/binrw/blob/8a49a5cea8568eed7b86a0e2646b8608527a60f4/binrw/src/file_ptr.rs#L127
-impl<const PTR_NULLABLE: bool, const N: bool, C, T> BinRead
-    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, C, T>>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead,
-{
-    type Args<'a> = ();
-
-    fn read_options<R: std::io::Read + std::io::Seek>(
-        reader: &mut R,
-        endian: binrw::Endian,
-        _args: Self::Args<'_>,
-    ) -> binrw::BinResult<Self> {
-        let raw_ptr = u32::read_options(reader, endian, ())?;
-        let saved_pos = reader.stream_position().unwrap();
-        if raw_ptr != 0 {
-            let adjusted_ptr = raw_ptr.saturating_sub(8);
-
-            if adjusted_ptr as u64 <= reader.stream_position().unwrap() {
-                return Err(binrw::Error::AssertFail {
-                    message: format!("unexpected back-pointer {:#x}", raw_ptr),
-                    pos: reader.stream_position().unwrap() - 4,
-                });
-            }
-            let file_size = stream_len(reader)?;
-
-            if file_size <= adjusted_ptr.into() {
-                return Err(binrw::Error::AssertFail {
-                    message: format!("out-of-bounds pointer {:#x}", raw_ptr),
-                    pos: reader.stream_position().unwrap() - 4,
-                });
-            }
-
-            reader.seek(SeekFrom::Start(adjusted_ptr as u64))?;
-            let value = RdmContainer::<N, C, T>::read_options(reader, endian, ())?;
-            reader.seek(SeekFrom::Start(saved_pos))?;
-
-            Ok(AnnoPtr2(RdmFilePtr {
-                ptr: adjusted_ptr,
-                value: Some(value),
-            }))
-        } else if PTR_NULLABLE {
-            Ok(AnnoPtr2(RdmFilePtr {
-                ptr: 0,
-                value: None,
-            }))
-        } else {
-            Err(binrw::Error::AssertFail {
-                message: "null pointer".into(),
-                pos: reader.stream_position().unwrap() - 4,
-            })
-        }
-    }
-}
-
-#[binread]
-#[repr(transparent)]
-#[derive(RdmStructSize)]
-pub struct AnnoChar(pub u8);
-
-#[binread]
-#[repr(transparent)]
-#[derive(RdmStructSize)]
-pub struct AnnoU8(pub u8);
-
-#[binread]
-#[repr(transparent)]
-#[derive(RdmStructSize)]
-pub struct AnnoU16(pub u16);
-
-#[binread]
-#[repr(transparent)]
-#[derive(RdmStructSize)]
-pub struct AnnoU32(pub u16);
-
-pub type RdmTypedT<T> = RdmContainer<true, Fixed2, T>;
-pub type RdmTypedContainer<T> = RdmContainer<true, Dynamic2, T>;
-pub type RdmUntypedContainer = RdmContainer<false, Dynamic2, AnnoU8>;
-pub type RdmString = RdmContainer<true, Dynamic2, AnnoChar>;
-
-impl<const N: bool, C, T> RdmContainer<N, C, T>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead,
-{
-    pub(crate) fn plan(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::BlockId
-    where
-        T: crate::rdm_writer::Describe,
+fn prefix<R: Read + Seek>(reader: &mut R, endian: Endian) -> BinResult<(u32, u32)> {
+    let count = u32::read_options(reader, endian, ())?;
+    let stride = u32::read_options(reader, endian, ())?;
+    let start = reader.stream_position()?;
+    let end = reader.seek(SeekFrom::End(0))?;
+    reader.seek(SeekFrom::Start(start))?;
+    if count == 0 || stride == 0 || u64::from(count) * u64::from(stride) > end.saturating_sub(start)
     {
-        if TypeId::of::<T>() == TypeId::of::<AnnoChar>()
-            || TypeId::of::<T>() == TypeId::of::<AnnoU8>()
-        {
-            return plan.raw(
-                self.info.count,
-                self.info.part_size,
-                self.storage.into_iter().map(|value| value.byte()).collect(),
-            );
-        }
-        let records: Vec<_> = self
-            .storage
-            .into_iter()
-            .map(|value| value.describe(plan))
-            .collect();
-        if N {
-            plan.records(records)
-        } else {
-            let mut bytes = Vec::new();
-            for record in records {
-                bytes.extend(record.into_bytes());
-            }
-            plan.raw(self.info.count, self.info.part_size, bytes)
-        }
+        return Err(invalid(start - 8, "invalid RDM block extent"));
     }
+    Ok((count, stride))
 }
 
-impl<const NULL: bool, const N: bool, C, T> AnnoPtr2<NULL, RdmContainer<N, C, T>>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead,
-{
-    pub(crate) fn plan(
-        &self,
-        plan: &mut crate::rdm_writer::Plan,
-    ) -> Option<crate::rdm_writer::BlockId>
-    where
-        T: crate::rdm_writer::Describe,
-    {
-        assert!(NULL || self.value.is_some());
-        self.value.as_ref().map(|value| value.plan(plan))
+fn pointed<R: Read + Seek, T>(
+    reader: &mut R,
+    endian: Endian,
+    read: impl FnOnce(&mut R, Endian) -> BinResult<T>,
+) -> BinResult<Option<T>> {
+    let offset = u32::read_options(reader, endian, ())?;
+    let saved = reader.stream_position()?;
+    if offset == 0 {
+        return Ok(None);
     }
+    let header = u64::from(offset)
+        .checked_sub(8)
+        .ok_or_else(|| invalid(saved - 4, "invalid offset"))?;
+    if header <= saved {
+        return Err(invalid(saved - 4, "unexpected back-pointer"));
+    }
+    reader.seek(SeekFrom::Start(header))?;
+    let result = read(reader, endian);
+    reader.seek(SeekFrom::Start(saved))?;
+    result.map(Some)
 }
 
-impl crate::rdm_writer::Describe for AnnoChar {
-    fn byte(&self) -> u8 {
-        self.0
+fn one_block<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+) -> BinResult<T> {
+    let (count, stride) = prefix(reader, endian)?;
+    let start = reader.stream_position()?;
+    if count != 1 {
+        return Err(invalid(start - 8, "expected one record"));
     }
-    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::new(plan);
-        r.bytes(&[self.0]);
-        r
+    let value = T::read_options(reader, endian, ())?;
+    if reader.stream_position()? - start != u64::from(stride) {
+        return Err(invalid(start, "record stride mismatch"));
     }
+    Ok(value)
 }
-impl crate::rdm_writer::Describe for AnnoU8 {
-    fn byte(&self) -> u8 {
-        self.0
+
+pub(crate) fn read_root<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<T> {
+    one_block(reader, endian)
+}
+
+pub(crate) fn read_one<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<T> {
+    let pos = reader.stream_position()?;
+    read_optional(reader, endian, ())?.ok_or_else(|| invalid(pos, "null required offset"))
+}
+
+pub(crate) fn read_optional<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Option<T>> {
+    pointed(reader, endian, one_block)
+}
+
+fn array_block<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+) -> BinResult<Vec<T>> {
+    let (count, stride) = prefix(reader, endian)?;
+    let mut values = Vec::new();
+    for _ in 0..count {
+        let start = reader.stream_position()?;
+        let value = T::read_options(reader, endian, ())?;
+        if reader.stream_position()? - start != u64::from(stride) {
+            return Err(invalid(start, "record stride mismatch"));
+        }
+        values.push(value);
     }
-    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::new(plan);
-        r.bytes(&[self.0]);
-        r
+    Ok(values)
+}
+
+pub(crate) fn read_array<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Vec<T>> {
+    let pos = reader.stream_position()?;
+    read_optional_array(reader, endian, ())?.ok_or_else(|| invalid(pos, "null required offset"))
+}
+
+pub(crate) fn read_optional_array<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Option<Vec<T>>> {
+    pointed(reader, endian, array_block)
+}
+
+pub(crate) fn read_raw<R: Read + Seek>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<RawBuffer> {
+    let pos = reader.stream_position()?;
+    pointed(reader, endian, |reader, endian| {
+        let (count, stride) = prefix(reader, endian)?;
+        let len = usize::try_from(u64::from(count) * u64::from(stride)).unwrap();
+        let mut bytes = vec![0; len];
+        reader.read_exact(&mut bytes)?;
+        Ok(RawBuffer {
+            count,
+            stride,
+            bytes,
+        })
+    })?
+    .ok_or_else(|| invalid(pos, "null required offset"))
+}
+
+fn bytes_block<R: Read + Seek>(reader: &mut R, endian: Endian) -> BinResult<Vec<u8>> {
+    let (count, stride) = prefix(reader, endian)?;
+    if stride != 1 {
+        return Err(invalid(
+            reader.stream_position()? - 4,
+            "expected byte records",
+        ));
     }
+    let mut bytes = vec![0; count as usize];
+    reader.read_exact(&mut bytes)?;
+    Ok(bytes)
+}
+
+pub(crate) fn read_bytes<R: Read + Seek>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Vec<u8>> {
+    let pos = reader.stream_position()?;
+    read_optional_bytes(reader, endian, ())?.ok_or_else(|| invalid(pos, "null required offset"))
+}
+
+pub(crate) fn read_optional_bytes<R: Read + Seek>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Option<Vec<u8>>> {
+    pointed(reader, endian, bytes_block)
+}
+
+// The existing converter uses only the first model when a file contains several.
+pub(crate) fn read_first<R: Read + Seek, T: for<'a> BinRead<Args<'a> = ()>>(
+    reader: &mut R,
+    endian: Endian,
+    _: (),
+) -> BinResult<Option<T>> {
+    pointed(reader, endian, |reader, endian| {
+        let (count, stride) = prefix(reader, endian)?;
+        if count > 1 {
+            log::error!("ignoring {} additional model records", count - 1);
+        }
+        let start = reader.stream_position()?;
+        let value = T::read_options(reader, endian, ())?;
+        if reader.stream_position()? - start != u64::from(stride) {
+            return Err(invalid(start, "record stride mismatch"));
+        }
+        Ok(value)
+    })
 }
