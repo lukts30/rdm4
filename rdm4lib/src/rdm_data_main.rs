@@ -608,6 +608,7 @@ impl Describe for Meta {
         let name = Some(plan.add_record(&self.model_name));
         let format = Some(plan.add_record(&self.format_identifiers));
         let index = Some(plan.add_record(&self.index_format));
+        // Register groups before buffers for file order; their offset field comes last.
         let groups = Some(plan.add_record_array(&self.mesh_info));
         let vertices =
             Some(plan.add_raw_block(self.vertex.count, self.vertex.stride, &self.vertex.bytes));
@@ -619,7 +620,6 @@ impl Describe for Meta {
         for target in [name, format, index, vertices, triangles, groups] {
             r.append_offset(target);
         }
-        r.set_recent_child_order(&[name, format, index, groups, vertices, triangles]);
         r.append_u32(self.skeleton_index as u32);
         r.append_f32s(&self.bounds_min);
         r.append_f32s(&self.bounds_max);

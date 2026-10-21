@@ -56,7 +56,6 @@ struct Edge {
 struct Block {
     count: u32,
     stride: u32,
-    children: Vec<BlockId>,
 }
 
 // Structural information only: no native values, writer callbacks, or payload bytes.
@@ -71,7 +70,6 @@ pub(crate) struct Record {
     big_endian: bool,
     bytes: Vec<u8>,
     offsets: Vec<(FieldOffset, BlockId)>,
-    children: Vec<BlockId>,
 }
 
 impl Record {
@@ -99,19 +97,8 @@ impl Record {
     pub(crate) fn append_offset(&mut self, target: Option<BlockId>) {
         if let Some(target) = target {
             self.offsets.push((FieldOffset(self.bytes.len()), target));
-            self.children.push(target);
         }
         self.append_u32(0);
-    }
-    // Reorder the most recently appended children (Meta puts mesh groups before buffers).
-    // Earlier children belong to enclosing fields and keep their positions.
-    // This does not reverse anything for DFS or move the offset slots in this record.
-    pub(crate) fn set_recent_child_order(&mut self, children: &[Option<BlockId>]) {
-        let children: Vec<_> = children.iter().flatten().copied().collect();
-        let start = self.children.len() - children.len();
-        let recent = &mut self.children[start..];
-        assert!(recent.iter().all(|child| children.contains(child)));
-        recent.copy_from_slice(&children);
     }
 }
 
@@ -198,7 +185,6 @@ impl<'a> Plan<'a> {
         self.graph.blocks.push(Block {
             count: 0,
             stride: 0,
-            children: Vec::new(),
         });
         self.payloads.push(Cow::Owned(Vec::new()));
         id
@@ -209,7 +195,6 @@ impl<'a> Plan<'a> {
         let stride = records[0].bytes.len();
         assert_eq!(self.graph.blocks[id].count, 0, "block already filled");
         let mut payload = Vec::new();
-        let mut children = Vec::new();
         let count = u32::try_from(records.len()).unwrap();
         for (index, record) in records.into_iter().enumerate() {
             assert_eq!(record.bytes.len(), stride, "mixed record strides");
@@ -223,13 +208,11 @@ impl<'a> Plan<'a> {
                     target,
                 });
             }
-            children.extend(record.children);
             payload.extend(record.bytes);
         }
         self.graph.blocks[id] = Block {
             count,
             stride: u32::try_from(stride).unwrap(),
-            children,
         };
         self.payloads[id] = Cow::Owned(payload);
     }
@@ -238,35 +221,20 @@ impl<'a> Plan<'a> {
         assert!(count > 0 && stride > 0);
         assert_eq!(bytes.len() as u64, u64::from(count) * u64::from(stride));
         let id = BlockId(self.graph.blocks.len());
-        self.graph.blocks.push(Block {
-            count,
-            stride,
-            children: Vec::new(),
-        });
+        self.graph.blocks.push(Block { count, stride });
         self.payloads.push(Cow::Borrowed(bytes));
         id
     }
 
     pub(crate) fn write_file(mut self, root: BlockId, out: &mut impl Write) -> io::Result<()> {
-        let mut order = Vec::new();
-        let mut seen = vec![false; self.graph.blocks.len()];
-        let mut stack = vec![root];
-        while let Some(id) = stack.pop() {
-            if !seen[id] {
-                seen[id] = true;
-                order.push(id);
-                // children is already in desired file order. Push [C, B, A] so the
-                // LIFO stack pops A first; this preserves that order rather than changing it.
-                stack.extend(self.graph.blocks[id].children.iter().rev().copied());
-            }
-        }
-        assert!(seen.iter().all(|seen| *seen), "unreachable output block");
-        // Indexed by BlockId, not by DFS position: iterate in physical file order,
-        // but store each final payload offset under its stable block identity.
+        // Parents are reserved before their descendants, so registration already
+        // gives preorder output. Creating a block schedules it; appending an offset
+        // only records a reference and cannot change that order.
+        // Final payload offsets are indexed by stable BlockId, like both block tables.
         let mut offsets = vec![0u32; self.graph.blocks.len()];
         let mut end = 20u64;
-        for &id in &order {
-            let block = &self.graph.blocks[id];
+        for (index, block) in self.graph.blocks.iter().enumerate() {
+            let id = BlockId(index);
             offsets[id] = u32::try_from(end + 8).expect("RDM offset exceeds u32");
             end += 8 + u64::from(block.count) * u64::from(block.stride);
         }
@@ -301,8 +269,8 @@ impl<'a> Plan<'a> {
         for word in [20u32, 0, 4, offsets[root]] {
             out.write_all(&encode(word))?;
         }
-        for id in order {
-            let block = &self.graph.blocks[id];
+        for (index, block) in self.graph.blocks.iter().enumerate() {
+            let id = BlockId(index);
             out.write_all(&encode(block.count))?;
             out.write_all(&encode(block.stride))?;
             out.write_all(&self.payloads[id])?;
