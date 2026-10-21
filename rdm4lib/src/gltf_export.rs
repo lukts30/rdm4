@@ -359,7 +359,7 @@ impl RdGltfBuilder {
         let n = self
             .rdm
             .vertex
-            .find_component_offsets(UniqueIdentifier::IJoint)
+            .find_component_offsets(VertexSemantic::JointIndex)
             .count();
         let mut ibuffers = Vec::with_capacity(n);
         let mut wbuffers = Vec::with_capacity(n);

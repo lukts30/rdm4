@@ -5,9 +5,10 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinWriterExt};
+use binrw::{binrw, BinRead, BinWriterExt};
 use std::marker::PhantomData;
 
+use crate::vertex::StorageType;
 use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
 use rdm_derive::RdmStructSize;
 
@@ -54,8 +55,10 @@ impl MeshInfo {
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
-struct MetaUnknown {
-    _unknown: u32,
+pub(crate) struct IndexFormat {
+    #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
+        "Index format requires U16 or U32"))]
+    pub(crate) element_type: StorageType,
     _padding: [u8; 16],
 }
 
@@ -63,12 +66,16 @@ struct MetaUnknown {
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize)]
 pub struct Meta {
+    #[br(temp, restore_position, seek_before = SeekFrom::Current(-4))]
+    #[bw(ignore)]
+    part_size: u32,
+
     #[bw(args_raw = end)]
     model_name: AnnoPtr<RdmTypedT<ModelName>>,
     #[bw(args_raw = end)]
     pub format_identifiers: AnnoPtr<RdmTypedT<VertId>>,
     #[bw(args_raw = end)]
-    unknown: AnnoPtr<RdmTypedT<MetaUnknown>>,
+    pub(crate) index_format: AnnoPtr<RdmTypedT<IndexFormat>>,
 
     #[bw(args_raw = {
         debug!("{:?}", end);
@@ -78,6 +85,8 @@ pub struct Meta {
     })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
     #[bw(args_raw = end)]
+    #[br(assert(triangle_list.info.part_size == index_format.element_type.byte_size(),
+        "Index type and index-buffer stride disagree"))]
     pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
     #[bw(args_raw = {
@@ -95,32 +104,53 @@ pub struct Meta {
     })]
     d: (),
 
-    _padding_ff: u32, // 0x_FF_FF_FF_FF or 0x0
-    _unknown_box: [u8; 24],
-    _padding_zero: [u8; 40],
+    skeleton_index: i32, // -1 means no skeleton.
+    bounds_min: [f32; 3],
+    bounds_max: [f32; 3],
+    #[br(parse_with = read_meta_words, args(part_size))]
+    _unknown_words: [u32; 10], // 68-byte records store only the first four.
+}
+
+#[binrw::parser(reader, endian)]
+fn read_meta_words(part_size: u32) -> binrw::BinResult<[u32; 10]> {
+    let word_count = match part_size {
+        68 => 4,
+        92 => 10,
+        _ => panic!("Unsupported metadata size: {part_size}"),
+    };
+    let mut words = [0; 10];
+    for word in &mut words[..word_count] {
+        *word = u32::read_options(reader, endian, ())?;
+    }
+    Ok(words)
 }
 
 impl Meta {
+    /// Stored minimum and maximum XYZ bounds.
+    pub fn bounds(&self) -> ([f32; 3], [f32; 3]) {
+        (self.bounds_min, self.bounds_max)
+    }
+
     pub fn triangle_list_len(&self) -> u32 {
         self.triangle_list.info.count
     }
 
-    pub fn triangle_list(&self) -> impl Iterator<Item = u32> + '_ {
-        let part_size = self.triangle_list.info.part_size as usize;
-        let convert = match part_size {
-            2 => |chunk: &[AnnoU8]| -> u32 {
+    /// Decode indices using the source file's byte order.
+    pub fn triangle_list(&self, big_endian: bool) -> impl Iterator<Item = u32> + '_ {
+        let index_type = self.index_format.element_type;
+        let part_size = index_type.byte_size() as usize;
+        let convert = match index_type {
+            StorageType::U16 => |chunk: &[AnnoU8]| -> u32 {
                 let chunk: [u8; 2] = [chunk[0].0, chunk[1].0];
                 let value: u32 = u16::from_le_bytes(chunk).into();
                 value
             },
-            4 => |chunk: &[AnnoU8]| -> u32 {
+            StorageType::U32 => |chunk: &[AnnoU8]| -> u32 {
                 let chunk: [u8; 4] = [chunk[0].0, chunk[1].0, chunk[2].0, chunk[3].0];
                 let value: u32 = u32::from_le_bytes(chunk);
                 value
             },
-            _ => {
-                panic!("Unexpected indices part_size: {}", part_size)
-            }
+            _ => panic!("Index format requires U16 or U32"),
         };
 
         let result = self
@@ -128,7 +158,14 @@ impl Meta {
             .storage
             .items
             .chunks_exact(part_size)
-            .map(convert);
+            .map(move |chunk| {
+                let value = convert(chunk);
+                match (big_endian, index_type) {
+                    (true, StorageType::U16) => (value as u16).swap_bytes().into(),
+                    (true, StorageType::U32) => value.swap_bytes(),
+                    _ => value,
+                }
+            });
         result
     }
 }
@@ -212,8 +249,19 @@ impl RdmFileType for RdmKindMesh {}
 impl RdmFileType for RdmKindAnim {}
 
 #[binrw]
-#[brw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
+#[br(magic = b"RDM")]
+#[bw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmFile<T: RdmFileType + 'static> {
+    #[br(temp, assert(byte_order <= 1))]
+    #[bw(ignore)]
+    byte_order: u8,
+    #[br(temp, is_big = byte_order == 0, assert(preamble == [0x14, 0, 4, 0x1c]))]
+    #[bw(ignore)]
+    preamble: [u32; 4],
+    #[br(calc = byte_order == 0)]
+    #[bw(ignore)]
+    pub(crate) big_endian: bool,
+    #[br(is_big = big_endian)]
     #[brw(seek_before = SeekFrom::Start(0x00000014))]
     #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     // RdmHeader1 size is usually 48 but sometimes 52
@@ -297,8 +345,125 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn struct_sizes() {
-        //assert_eq!(RdmHeader1::get_struct_byte_size(), 48);
+    fn reads_68_byte_metadata_without_consuming_the_next_block() {
+        for (source, endian) in [
+            (
+                include_bytes!("../rdm/n_nature_small_stone_02_lod0.rdm").as_slice(),
+                binrw::Endian::Big,
+            ),
+            (
+                include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
+                binrw::Endian::Little,
+            ),
+        ] {
+            let mut bytes = source.to_vec();
+            let word = |offset| match endian {
+                binrw::Endian::Big => {
+                    u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap())
+                }
+                _ => u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()),
+            };
+            let meta = word(word(16) as usize + 4) as usize;
+            let encode = |value: u32| match endian {
+                binrw::Endian::Big => value.to_be_bytes(),
+                _ => value.to_le_bytes(),
+            };
+            bytes[meta - 4..meta].copy_from_slice(&encode(68));
+            for i in 0..4 {
+                bytes[meta + 52 + i * 4..meta + 56 + i * 4].copy_from_slice(&encode(i as u32 + 1));
+            }
+            let mut reader = std::io::Cursor::new(bytes);
+            reader.set_position(meta as u64);
+            let value: Meta = reader.read_type(endian).unwrap();
+            assert_eq!(reader.position(), meta as u64 + 68);
+            assert_eq!(value._unknown_words, [1, 2, 3, 4, 0, 0, 0, 0, 0, 0]);
+        }
+    }
+
+    #[test]
+    fn converts_be_68_byte_metadata_to_le_92_byte_metadata() {
+        use crate::vertex::{N3f, N4b, VertexFormat2};
+        let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
+        let source = model.rdmf.as_ref().unwrap();
+        assert!(source.big_endian);
+        assert_eq!(source.header1.meta.info.part_size, 68);
+        // The packed normal must be decoded as a BE word, not four unchanged bytes.
+        let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
+        for (actual, expected) in normal
+            .data
+            .into_iter()
+            .zip([0.90588236, 0.42745098, 0.03529412])
+        {
+            assert!((actual - expected).abs() < 0.000001);
+        }
+        let bounds = model.vertex.calculate_bounds();
+        let writer = RdWriter2::new(model);
+        let mut output = std::io::Cursor::new(Vec::new());
+        output.write_le(&writer.inner).unwrap();
+        output.set_position(0);
+        let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
+        assert!(!result.big_endian);
+        assert_eq!(result.header1.meta.info.part_size, 92);
+        assert_eq!(result.header1.meta._unknown_words, [0; 10]);
+        assert_eq!(
+            VertexFormat2::read_format_via_data(&result).calculate_bounds(),
+            bounds
+        );
+    }
+
+    #[test]
+    fn writes_bounds_from_quantized_vertices_instead_of_source_bounds() {
+        let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
+        let stored = model.rdmf.as_ref().unwrap().header1.meta.bounds();
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(model.vertex.identifiers[0].storage_type, StorageType::F16);
+        assert_ne!(stored, calculated);
+        let round = |value| half::f16::from_f32(value).to_f32();
+        assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
+        assert_eq!(
+            RdWriter2::new(model).inner.header1.meta.bounds(),
+            calculated
+        );
+    }
+
+    #[test]
+    fn preserves_f32_position_bounds_when_writing_rdm() {
+        let model = crate::RdModell::from("rdm/eden_line_flagpole_variation_cloth_lod0.rdm");
+        let position = &model.vertex.identifiers[0];
+        assert_eq!(position.to_string(), "P3f");
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(
+            calculated.0.map(f32::to_bits),
+            [0x3c70ef5c, 0x3d073c7a, 0xbe9ba652]
+        );
+        assert_eq!(
+            calculated.1.map(f32::to_bits),
+            [0x3cf1c51e, 0x3fc6c946, 0x3e9ba652]
+        );
+        assert_eq!(
+            model.rdmf.as_ref().unwrap().header1.meta.bounds(),
+            calculated
+        );
+        assert_eq!(
+            RdWriter2::new(model).inner.header1.meta.bounds(),
+            calculated
+        );
+    }
+
+    #[test]
+    fn calculates_bounds_matching_existing_mesh_metadata() {
+        for data in [
+            include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
+            include_bytes!("../rdm/ark_waterfall2.rdm").as_slice(),
+        ] {
+            let rdm: RdmFile<RdmKindMesh> = std::io::Cursor::new(data).read_le().unwrap();
+            let vertices = crate::vertex::VertexFormat2::read_format_via_data(&rdm);
+            assert_eq!(rdm.header1.meta.bounds(), vertices.calculate_bounds());
+        }
+    }
+
+    #[test]
+    fn matches_serialized_record_sizes() {
         assert_eq!(RdmBlobToMat::get_struct_byte_size(), 28);
         assert_eq!(RdmBlobToJoint::get_struct_byte_size(), 32);
 
@@ -317,9 +482,8 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn rdm_file_serialisation_roundtrip() {
+    fn preserves_mesh_bytes_when_read_and_written() {
         let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
-        //let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
 
         let mut reader = std::io::Cursor::new(&data);
 
@@ -337,8 +501,6 @@ mod tests {
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
 
-        dbg!(file.metadata().unwrap().len());
-        dbg!(data.len());
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 }
@@ -407,11 +569,7 @@ impl RdWriter2 {
         rdm.header1.meta.format_identifiers.unknown_shader_id =
             if rdm_in.has_skin() { 1 } else { 0 };
 
-        rdm.header1.meta._padding_ff = if rdm_in.has_skin() {
-            Default::default()
-        } else {
-            u32::MAX
-        };
+        rdm.header1.meta.skeleton_index = if rdm_in.has_skin() { 0 } else { -1 };
 
         rdm.header1.meta.format_identifiers.rdm_container.0 = RdmFilePtr {
             ptr: 0,
@@ -439,17 +597,16 @@ impl RdWriter2 {
             }),
         };
 
-        rdm.header1.meta._unknown_box = [
-            0x00, 0x80, 0xF8, 0xBF, 0x00, 0x40, 0x22, 0xC0, 0x00, 0x60, 0xF7, 0xBF, 0x00, 0x80,
-            0xFB, 0x3F, 0x00, 0xC0, 0xF2, 0x3F, 0x00, 0x80, 0xFC, 0x3F,
-        ];
+        (rdm.header1.meta.bounds_min, rdm.header1.meta.bounds_max) =
+            rdm_in.vertex.calculate_bounds();
 
+        rdm.header1.meta.index_format.element_type = StorageType::U16;
         rdm.header1.meta.triangle_list.0 = RdmFilePtr {
             ptr: 0,
             value: Some(RdmContainer {
                 info: RdmContainerPrefix {
                     count: rdm_in.triangle_indices.len() as u32 * 3,
-                    part_size: 2,
+                    part_size: StorageType::U16.byte_size(),
                 },
                 storage: rdm_container::VectorN {
                     items: {

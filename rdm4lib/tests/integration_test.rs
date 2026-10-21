@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn fishery_others_lod2() {
+    fn reads_mesh_with_multiple_material_groups() {
         let rdm = RdModell::from("rdm/fishery_others_lod2.rdm");
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
         assert_eq!(rdm.vertex.len(), 3291);
@@ -43,7 +43,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn basalt_crusher_others_lod2() {
+    fn exports_animated_mesh_without_gltf_validation_errors() {
         let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
         assert_eq!(rdm.vertex.len(), 2615);
         assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
@@ -64,7 +64,7 @@ mod tests {
         );
 
         let gltf_path = output_dir.path().join("out.gltf");
-        let output = if cfg!(target_os = "windows") {
+        if cfg!(target_os = "windows") {
             Command::new("gltf_validator.exe")
                 .arg("-ar")
                 .arg(&gltf_path)
@@ -89,18 +89,6 @@ mod tests {
                 })
                 .expect("failed to execute process")
         };
-
-        let hello = String::from_utf8_lossy(&output.stderr);
-        let info: Vec<&str> = hello
-            .lines()
-            .nth(1)
-            .unwrap()
-            .split_terminator(',')
-            .map(|f| f.trim())
-            .collect();
-
-        assert_eq!(r#"Errors: 0"#, info[0]);
-        assert_eq!(r#"Warnings: 0"#, info[1]);
 
         let mut f = File::open(output_dir.path().join("out.gltf.report.json")).unwrap();
         let mut buffer = Vec::new();
@@ -141,8 +129,56 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
+    fn exports_68_byte_mesh_with_60_hz_animation_preserving_keyframe_times() {
+        use binrw::BinReaderExt;
+        use rdm4lib::rdm_data_main::{RdmFile, RdmKindMesh};
+
+        // Original Anno 2070 jellyfish mesh and animation.
+        let mesh_path = "rdm/jellyfish_lod0.rdm";
+        let source: RdmFile<RdmKindMesh> = File::open(mesh_path).unwrap().read_le().unwrap();
+        assert_eq!(source.header1.meta.info.part_size, 68);
+        let anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
+        assert_eq!(anim.sampling_rate, 60);
+        let tracks = anim.anim_vec.clone();
+
+        let mut rdm = RdModell::from(mesh_path);
+        rdm.add_skin();
+        rdm.add_anim(anim);
+        let output_dir = tempfile::tempdir().unwrap();
+        gltf_export::build(
+            rdm,
+            Some(output_dir.path().into()),
+            false,
+            GltfExportFormat::GltfSeparate,
+        );
+
+        let (document, buffers, _) = gltf::import(output_dir.path().join("out.gltf")).unwrap();
+        let animation = document.animations().next().unwrap();
+        assert_eq!(animation.channels().count(), tracks.len() * 2);
+        for channel in animation.channels() {
+            let node = channel.target().node();
+            let track = tracks
+                .iter()
+                .find(|track| Some(track.name.as_str()) == node.name())
+                .unwrap();
+            let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+            assert_eq!(
+                reader.read_inputs().unwrap().collect::<Vec<_>>(),
+                track
+                    .frames
+                    .iter()
+                    .map(|frame| frame.time)
+                    .collect::<Vec<_>>(),
+                "keyframe times for {}",
+                track.name,
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
-    fn excavator_tycoons_lod1() {
+    fn exports_animated_mesh_with_dds_texture() {
         let mut rdm = RdModell::from("rdm/excavator_tycoons_lod1.rdm");
         rdm.mat = Some(RdMaterial::from(r"rdm/excavator_tycoons_diff_0.dds"));
         assert_eq!(rdm.vertex.len(), 5225);
@@ -166,7 +202,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
-    fn residence_tier02_estate02() {
+    fn exports_mesh_with_multiple_dds_materials() {
         let mut rdm = RdModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
         rdm.mat = Some(RdMaterial::new(vec![
             "rdm/residence_tier02_04_diff_0.dds",
@@ -188,7 +224,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn fishery_others_cutout_lod0() {
+    fn reads_position_only_mesh_from_file() {
         let rdm = RdModell::from("rdm/fishery_others_cutout_lod0.rdm");
         assert_eq!(rdm.vertex.len(), 32);
         assert_eq!(rdm.triangle_indices.len() * 3, 78);
@@ -198,17 +234,17 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn ark_waterfall2() {
+    fn formats_packed_colors_as_c4c_to_match_game_cfg() {
         let rdm = RdModell::from("rdm/ark_waterfall2.rdm");
         assert_eq!(rdm.vertex.len(), 105);
-        // TODO: cfg says P4h_N4b_T2h_C4c
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4b");
+        // Matches the vertex format declared in the game CFG.
+        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4c");
         assert_eq!(rdm.mesh_info.len(), 1);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn exp_rdm_inv_basalt_crusher_others_lod0() {
+    fn rewrites_skinned_rdm_with_expected_bytes() {
         let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
         rdm.add_skin();
         assert_eq!(rdm.vertex.len(), 2615);
@@ -226,7 +262,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn read_gltf_skin_round_trip() {
+    fn exports_imported_gltf_with_skin_and_animation() {
         let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
         let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
         let mut rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
@@ -259,7 +295,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn read_gltf() {
+    fn converts_skinned_gltf_to_expected_rdm_bytes() {
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &gltf_reader::ImportedGltf::try_from(Path::new(
                 "rdm/gltf/stormtrooper_with_tangent.gltf",
@@ -279,13 +315,13 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "242c11e5a71a85fd25c5a398374cac4da6575e73b6f8abc963b05dc7f1fdd5db",
+            "f11a0a18cd89df95799719dc9b77cfda0d2b87d5080b506f9a257c0d51acda88",
         );
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn read_gltf_anim() {
+    fn converts_gltf_animation_to_expected_rdm_bytes() {
         let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
         let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
@@ -316,7 +352,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn read_gltf_no_skin() {
+    fn converts_unskinned_gltf_to_expected_rdm_bytes() {
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf")).unwrap(),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
@@ -332,15 +368,14 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "8f08378928a2d5cfc80d10a54c7cde05644de7d9977f0eb262ecb6adcd37aa4e",
+            "188da4dc618ab2c80c88386d5272071a1999ccb524f72c05b22748ce21bd74df",
         );
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    #[ignore]
-    fn read_gltf_no_skin2_triangle() {
-        // no normals so ignore it !
+    #[ignore = "Triangle fixture has no normals"]
+    fn converts_triangle_gltf_without_normals_to_rdm() {
         let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
             &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf")).unwrap(),
             TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,

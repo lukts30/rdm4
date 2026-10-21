@@ -16,6 +16,8 @@ pub struct FrameCollection {
 #[derive(Debug, Clone)]
 pub struct RdAnim {
     pub time_max: u32,
+    /// Nominal samples per second.
+    pub sampling_rate: u32,
     pub name: String,
     pub anim_vec: Vec<FrameCollection>,
 }
@@ -24,6 +26,10 @@ impl RdAnim {
     pub fn new(buffer: Vec<u8>, name_anim: String) -> Self {
         let mut reader = std::io::Cursor::new(&buffer);
         let rdmm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
+        info!(
+            "  Endianness: {}",
+            if rdmm.big_endian { "big" } else { "little" }
+        );
         let v = &rdmm.header1.meta_anim.anims;
 
         let time_max = rdmm.header1.meta_anim.time_max;
@@ -44,6 +50,7 @@ impl RdAnim {
             anim_vec,
             name: name_anim,
             time_max,
+            sampling_rate: rdmm.header1.meta_anim.sampling_rate,
         }
     }
 }

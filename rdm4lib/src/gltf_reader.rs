@@ -367,6 +367,7 @@ impl<'a> ImportedGltf {
             let name = format!("anim_{}", anim_idx);
             rd_animations.push(RdAnim {
                 time_max: (t_max * 1000.0) as u32,
+                sampling_rate: 15,
                 anim_vec: frame_collections,
                 name,
             });
