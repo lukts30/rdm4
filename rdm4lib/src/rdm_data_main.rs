@@ -51,7 +51,7 @@ pub(crate) struct IndexFormat {
 
 #[binread]
 pub struct Meta {
-    #[br(restore_position, seek_before = SeekFrom::Current(-4))]
+    #[br(restore_position, seek_before = SeekFrom::Current(-4), assert(matches!(part_size, 68 | 92)))]
     part_size: u32,
 
     #[br(parse_with = read_one)]
@@ -81,13 +81,17 @@ pub struct Meta {
     _unknown_words: [u32; 10], // 68-byte records store only the first four.
 }
 
-#[binrw::parser(reader, endian)]
-fn read_meta_words(part_size: u32) -> binrw::BinResult<[u32; 10]> {
-    let word_count = match part_size {
+fn meta_word_count(stride: u32) -> usize {
+    match stride {
         68 => 4,
         92 => 10,
-        _ => panic!("Unsupported metadata size: {part_size}"),
-    };
+        _ => panic!("Unsupported metadata size: {stride}"),
+    }
+}
+
+#[binrw::parser(reader, endian)]
+fn read_meta_words(part_size: u32) -> binrw::BinResult<[u32; 10]> {
+    let word_count = meta_word_count(part_size);
     let mut words = [0; 10];
     for word in &mut words[..word_count] {
         *word = u32::read_options(reader, endian, ())?;
@@ -278,6 +282,51 @@ mod tests {
             let value: Meta = reader.read_type(endian).unwrap();
             assert_eq!(reader.position(), meta as u64 + 68);
             assert_eq!(value._unknown_words, [1, 2, 3, 4, 0, 0, 0, 0, 0, 0]);
+        }
+    }
+
+    #[test]
+    fn preserves_metadata_layout_and_words_in_both_byte_orders() {
+        for source in [
+            include_bytes!("../rdm/n_nature_small_stone_02_lod0.rdm").as_slice(),
+            include_bytes!("../rdm/fishery_others_lod2.rdm").as_slice(),
+        ] {
+            for stride in [68, 92] {
+                let mut rdm: RdmFile<RdmKindMesh> = std::io::Cursor::new(source).read_le().unwrap();
+                let meta = rdm.header1.meta.as_mut().unwrap();
+                meta.part_size = stride;
+                meta._unknown_words = [0; 10];
+                for (i, word) in meta._unknown_words[..meta_word_count(stride)]
+                    .iter_mut()
+                    .enumerate()
+                {
+                    *word = 0x12340000 + i as u32;
+                }
+                // Vec implements Write but not Seek.
+                let mut bytes = Vec::new();
+                rdm.write_rdm(&mut bytes).unwrap();
+                let word = |at: usize| {
+                    let bytes = bytes[at..at + 4].try_into().unwrap();
+                    if rdm.big_endian {
+                        u32::from_be_bytes(bytes)
+                    } else {
+                        u32::from_le_bytes(bytes)
+                    }
+                };
+                let root = word(16) as usize;
+                let model = word(root + 4) as usize;
+                assert_eq!(word(model - 4), stride);
+                // The model-name block starts immediately after this record.
+                assert_eq!(word(model), model as u32 + stride + 8);
+                let written: RdmFile<RdmKindMesh> = std::io::Cursor::new(bytes).read_le().unwrap();
+                let original = rdm.header1.meta.as_ref().unwrap();
+                let result = written.header1.meta.as_ref().unwrap();
+                assert_eq!(result.source_stride(), stride);
+                assert_eq!(result._unknown_words, original._unknown_words);
+                assert_eq!(result.vertex.bytes, original.vertex.bytes);
+                assert_eq!(result.triangle_list.bytes, original.triangle_list.bytes);
+                assert_eq!(written.big_endian, rdm.big_endian);
+            }
         }
     }
 
@@ -667,8 +716,13 @@ impl Describe for Meta {
         r.u32(self.skeleton_index as u32);
         r.floats(&self.bounds_min);
         r.floats(&self.bounds_max);
-        for word in self._unknown_words {
-            r.u32(word);
+        let words = meta_word_count(self.part_size);
+        assert!(
+            self._unknown_words[words..].iter().all(|word| *word == 0),
+            "compact metadata cannot discard extended words"
+        );
+        for word in &self._unknown_words[..words] {
+            r.u32(*word);
         }
         r
     }
