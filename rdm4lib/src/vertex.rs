@@ -978,3 +978,14 @@ mod tests_vertex {
         }
     }
 }
+
+impl crate::rdm_writer::Describe for VertexIdentifier {
+    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::default();
+        r.u32(self.semantic.clone() as u32);
+        r.u32(self.storage_type as u32);
+        r.u32(self.interpretation.0);
+        r.u32(self.storage_count);
+        r
+    }
+}

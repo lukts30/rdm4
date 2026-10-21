@@ -32,6 +32,7 @@ use vertex::VertexFormat2;
 pub mod rdm_container;
 pub mod rdm_data_anim;
 pub mod rdm_data_main;
+mod rdm_writer;
 
 pub struct RdModell {
     rdmf: Option<RdmFile<RdmKindMesh>>,

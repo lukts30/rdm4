@@ -501,6 +501,9 @@ mod tests {
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
 
+        let mut sequential = Vec::new();
+        rdm.write_rdm(&mut sequential).unwrap();
+        assert_eq!(dst, sequential);
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 }
@@ -766,5 +769,144 @@ impl RdWriter2 {
         };
 
         RdWriter2 { inner: rdm }
+    }
+}
+
+use crate::rdm_writer::{Describe, Plan, Record};
+impl Describe for ModelName {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.name.plan(plan));
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for VertId {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.rdm_container.plan(plan));
+        r.bytes(&[self.unknown_shader_id]);
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for MeshInfo {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.u32(self.start_index_location);
+        r.u32(self.index_count);
+        r.u32(self.material);
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for IndexFormat {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.u32(self.element_type as u32);
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for RdmBlobToMat {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.mat.plan(plan));
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for RdmMat {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.name.plan(plan));
+        r.offset(self.png.plan(plan));
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for RdmBlobToJoint {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.joint.plan(plan));
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for RdmJoint {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.name.plan(plan));
+        r.floats(&self.t);
+        r.floats(&self.r);
+        r.u32(self.parent_id);
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for RdmHeader1 {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.header2.plan(plan));
+        r.offset(self.meta.plan(plan));
+        r.offset(self.rdm_blob_to_mat.plan(plan));
+        r.offset(self.skin.plan(plan));
+        r.offset(self.meta_anim.plan(plan));
+        r.bytes(&self._data);
+        r
+    }
+}
+impl Describe for ExportInfo {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.export_name1.plan(plan));
+        r.offset(self.export_name2.plan(plan));
+        r.bytes(&self._data);
+        r
+    }
+}
+
+impl Describe for Meta {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let name = self.model_name.plan(plan);
+        let format = self.format_identifiers.plan(plan);
+        let index = self.index_format.plan(plan);
+        let groups = self.mesh_info.plan(plan);
+        let vertices = self.vertex.plan(plan);
+        let triangles = self.triangle_list.plan(plan);
+        let mut r = Record::default();
+        for target in [name, format, index, vertices, triangles, groups] {
+            r.offset(target);
+        }
+        r.children(&[name, format, index, groups, vertices, triangles]);
+        r.u32(self.skeleton_index as u32);
+        r.floats(&self.bounds_min);
+        r.floats(&self.bounds_max);
+        for word in self._unknown_words {
+            r.u32(word);
+        }
+        r
+    }
+}
+impl<T: RdmFileType + 'static> RdmFile<T> {
+    /// Serialize the file as little-endian RDM using sequential output only.
+    pub fn write_rdm(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+        assert!(
+            !self.big_endian,
+            "raw big-endian buffers require conversion before LE output"
+        );
+        let mut plan = Plan::default();
+        let root = self.header1.plan(&mut plan);
+        plan.write(root, writer)
     }
 }

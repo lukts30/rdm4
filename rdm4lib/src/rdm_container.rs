@@ -479,3 +479,78 @@ pub type RdmTypedT<T> = RdmContainer<true, Fixed2, T>;
 pub type RdmTypedContainer<T> = RdmContainer<true, Dynamic2, T>;
 pub type RdmUntypedContainer = RdmContainer<false, Dynamic2, AnnoU8>;
 pub type RdmString = RdmContainer<true, Dynamic2, AnnoChar>;
+
+impl<const N: bool, C, T> RdmContainer<N, C, T>
+where
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead,
+{
+    pub(crate) fn plan(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::BlockId
+    where
+        T: crate::rdm_writer::Describe,
+    {
+        if TypeId::of::<T>() == TypeId::of::<AnnoChar>()
+            || TypeId::of::<T>() == TypeId::of::<AnnoU8>()
+        {
+            return plan.raw(
+                self.info.count,
+                self.info.part_size,
+                self.storage.into_iter().map(|value| value.byte()).collect(),
+            );
+        }
+        let records: Vec<_> = self
+            .storage
+            .into_iter()
+            .map(|value| value.describe(plan))
+            .collect();
+        if N {
+            plan.records(records)
+        } else {
+            let mut bytes = Vec::new();
+            for record in records {
+                bytes.extend(record.into_bytes());
+            }
+            plan.raw(self.info.count, self.info.part_size, bytes)
+        }
+    }
+}
+
+impl<const NULL: bool, const N: bool, C, T> AnnoPtr2<NULL, RdmContainer<N, C, T>>
+where
+    C: VectorSize2,
+    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
+    T: RdmRead,
+{
+    pub(crate) fn plan(
+        &self,
+        plan: &mut crate::rdm_writer::Plan,
+    ) -> Option<crate::rdm_writer::BlockId>
+    where
+        T: crate::rdm_writer::Describe,
+    {
+        assert!(NULL || self.value.is_some());
+        self.value.as_ref().map(|value| value.plan(plan))
+    }
+}
+
+impl crate::rdm_writer::Describe for AnnoChar {
+    fn byte(&self) -> u8 {
+        self.0
+    }
+    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::default();
+        r.bytes(&[self.0]);
+        r
+    }
+}
+impl crate::rdm_writer::Describe for AnnoU8 {
+    fn byte(&self) -> u8 {
+        self.0
+    }
+    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::default();
+        r.bytes(&[self.0]);
+        r
+    }
+}

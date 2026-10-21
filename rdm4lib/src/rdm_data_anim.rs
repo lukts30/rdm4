@@ -75,6 +75,9 @@ mod tests {
         let output_path = output_dir.path().join("anim_out.rdm");
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
+        let mut sequential = Vec::new();
+        rdm.write_rdm(&mut sequential).unwrap();
+        assert_eq!(dst, sequential);
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 
@@ -221,5 +224,39 @@ impl RdAnimWriter2 {
             name: anim_input.name,
             export: anim,
         }
+    }
+}
+
+use crate::rdm_writer::{Describe, Plan, Record};
+impl Describe for AnimMeta {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.name.plan(plan));
+        r.offset(self.anims.plan(plan));
+        r.u32(self.time_max);
+        r.u32(self.sampling_rate);
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for AnimInner {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.offset(self.j_name.plan(plan));
+        r.offset(self.j_data.plan(plan));
+        r.bytes(&self._padding);
+        r
+    }
+}
+impl Describe for Frame {
+    fn describe(&self, plan: &mut Plan) -> Record {
+        let _ = &plan;
+        let mut r = Record::default();
+        r.floats(&self.rotation);
+        r.floats(&self.translation);
+        r.floats(&[self.time]);
+        r
     }
 }
