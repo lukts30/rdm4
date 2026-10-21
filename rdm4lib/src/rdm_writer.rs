@@ -95,12 +95,17 @@ pub(crate) struct Plan<'a> {
 
 impl<'a> Plan<'a> {
     pub(crate) fn add_record(&mut self, value: &'a impl Describe) -> BlockId {
+        let id = self.reserve_record_block();
         let record = value.describe(self);
-        self.add_encoded_records(vec![record])
+        self.fill_record_block(id, vec![record]);
+        id
     }
     pub(crate) fn add_record_array(&mut self, values: &'a [impl Describe]) -> BlockId {
+        assert!(!values.is_empty(), "RDM record blocks cannot be empty");
+        let id = self.reserve_record_block();
         let records = values.iter().map(|value| value.describe(self)).collect();
-        self.add_encoded_records(records)
+        self.fill_record_block(id, records);
+        id
     }
     pub(crate) fn add_byte_block(&mut self, bytes: &'a [u8]) -> BlockId {
         self.add_raw_block(u32::try_from(bytes.len()).unwrap(), 1, bytes)
@@ -112,10 +117,23 @@ impl<'a> Plan<'a> {
             ..Self::default()
         }
     }
-    fn add_encoded_records(&mut self, records: Vec<Record>) -> BlockId {
+    // Reserve the parent's identity before describing any descendants. The first
+    // record block (the file root) is therefore BlockId(0), regardless of its children.
+    fn reserve_record_block(&mut self) -> BlockId {
+        let id = BlockId(self.graph.blocks.len());
+        self.graph.blocks.push(Block {
+            count: 0,
+            stride: 0,
+            children: Vec::new(),
+        });
+        self.payloads.push(Cow::Owned(Vec::new()));
+        id
+    }
+
+    fn fill_record_block(&mut self, id: BlockId, records: Vec<Record>) {
         assert!(!records.is_empty(), "RDM record blocks cannot be empty");
         let stride = records[0].bytes.len();
-        let id = BlockId(self.graph.blocks.len());
+        assert_eq!(self.graph.blocks[id.0].count, 0, "block already filled");
         let mut payload = Vec::new();
         let mut children = Vec::new();
         let count = u32::try_from(records.len()).unwrap();
@@ -132,13 +150,12 @@ impl<'a> Plan<'a> {
             children.extend(record.children);
             payload.extend(record.bytes);
         }
-        self.graph.blocks.push(Block {
+        self.graph.blocks[id.0] = Block {
             count,
             stride: u32::try_from(stride).unwrap(),
             children,
-        });
-        self.payloads.push(Cow::Owned(payload));
-        id
+        };
+        self.payloads[id.0] = Cow::Owned(payload);
     }
 
     pub(crate) fn add_raw_block(&mut self, count: u32, stride: u32, bytes: &'a [u8]) -> BlockId {
