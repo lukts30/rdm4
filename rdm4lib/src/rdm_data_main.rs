@@ -606,123 +606,136 @@ use crate::rdm_writer::{Describe, Plan, Record};
 impl Describe for ModelName {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(self.name.as_ref().map(|value| plan.bytes(value)));
-        r.bytes(&self._padding);
+        r.append_offset(self.name.as_ref().map(|value| plan.add_byte_block(value)));
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for VertId {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.array(&self.rdm_container)));
-        r.bytes(&[self.unknown_shader_id]);
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_record_array(&self.rdm_container)));
+        r.append_bytes(&[self.unknown_shader_id]);
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for MeshInfo {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.u32(self.start_index_location);
-        r.u32(self.index_count);
-        r.u32(self.material);
-        r.bytes(&self._padding);
+        r.append_u32(self.start_index_location);
+        r.append_u32(self.index_count);
+        r.append_u32(self.material);
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for IndexFormat {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.u32(self.element_type as u32);
-        r.bytes(&self._padding);
+        r.append_u32(self.element_type as u32);
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for RdmBlobToMat {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.one(&self.mat)));
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_record(&self.mat)));
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for RdmMat {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(self.name.as_ref().map(|value| plan.bytes(value)));
-        r.offset(self.png.as_ref().map(|value| plan.bytes(value)));
-        r.bytes(&self._padding);
+        r.append_offset(self.name.as_ref().map(|value| plan.add_byte_block(value)));
+        r.append_offset(self.png.as_ref().map(|value| plan.add_byte_block(value)));
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for RdmBlobToJoint {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.array(&self.joint)));
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_record_array(&self.joint)));
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for RdmJoint {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.bytes(&self.name)));
-        r.floats(&self.t);
-        r.floats(&self.r);
-        r.u32(self.parent_id);
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_byte_block(&self.name)));
+        r.append_f32s(&self.t);
+        r.append_f32s(&self.r);
+        r.append_u32(self.parent_id);
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for RdmHeader1 {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(self.header2.as_ref().map(|value| plan.one(value)));
-        r.offset(self.meta.as_ref().map(|value| plan.one(value)));
-        r.offset(self.rdm_blob_to_mat.as_ref().map(|value| plan.array(value)));
-        r.offset(self.skin.as_ref().map(|value| plan.one(value)));
-        r.offset(self.meta_anim.as_ref().map(|value| plan.one(value)));
-        r.bytes(&self._data);
+        r.append_offset(self.header2.as_ref().map(|value| plan.add_record(value)));
+        r.append_offset(self.meta.as_ref().map(|value| plan.add_record(value)));
+        r.append_offset(
+            self.rdm_blob_to_mat
+                .as_ref()
+                .map(|value| plan.add_record_array(value)),
+        );
+        r.append_offset(self.skin.as_ref().map(|value| plan.add_record(value)));
+        r.append_offset(self.meta_anim.as_ref().map(|value| plan.add_record(value)));
+        r.append_bytes(&self._data);
         r
     }
 }
 impl Describe for ExportInfo {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(self.export_name1.as_ref().map(|value| plan.bytes(value)));
-        r.offset(self.export_name2.as_ref().map(|value| plan.bytes(value)));
-        r.bytes(&self._data);
+        r.append_offset(
+            self.export_name1
+                .as_ref()
+                .map(|value| plan.add_byte_block(value)),
+        );
+        r.append_offset(
+            self.export_name2
+                .as_ref()
+                .map(|value| plan.add_byte_block(value)),
+        );
+        r.append_bytes(&self._data);
         r
     }
 }
 
 impl Describe for Meta {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
-        let name = Some(plan.one(&self.model_name));
-        let format = Some(plan.one(&self.format_identifiers));
-        let index = Some(plan.one(&self.index_format));
-        let groups = Some(plan.array(&self.mesh_info));
-        let vertices = Some(plan.raw(self.vertex.count, self.vertex.stride, &self.vertex.bytes));
-        let triangles = Some(plan.raw(
+        let name = Some(plan.add_record(&self.model_name));
+        let format = Some(plan.add_record(&self.format_identifiers));
+        let index = Some(plan.add_record(&self.index_format));
+        let groups = Some(plan.add_record_array(&self.mesh_info));
+        let vertices =
+            Some(plan.add_raw_block(self.vertex.count, self.vertex.stride, &self.vertex.bytes));
+        let triangles = Some(plan.add_raw_block(
             self.triangle_list.count,
             self.triangle_list.stride,
             &self.triangle_list.bytes,
         ));
         let mut r = Record::new(plan);
         for target in [name, format, index, vertices, triangles, groups] {
-            r.offset(target);
+            r.append_offset(target);
         }
-        r.children(&[name, format, index, groups, vertices, triangles]);
-        r.u32(self.skeleton_index as u32);
-        r.floats(&self.bounds_min);
-        r.floats(&self.bounds_max);
+        r.set_child_order(&[name, format, index, groups, vertices, triangles]);
+        r.append_u32(self.skeleton_index as u32);
+        r.append_f32s(&self.bounds_min);
+        r.append_f32s(&self.bounds_max);
         let words = meta_word_count(self.part_size);
         assert!(
             self._unknown_words[words..].iter().all(|word| *word == 0),
             "compact metadata cannot discard extended words"
         );
         for word in &self._unknown_words[..words] {
-            r.u32(*word);
+            r.append_u32(*word);
         }
         r
     }
@@ -731,7 +744,7 @@ impl<T: RdmFileType + 'static> RdmFile<T> {
     /// Serialize using the source byte order and sequential output only.
     pub fn write_rdm(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
         let mut plan = Plan::new(self.big_endian);
-        let root = plan.one(&self.header1);
-        plan.write(root, writer)
+        let root = plan.add_record(&self.header1);
+        plan.write_file(root, writer)
     }
 }

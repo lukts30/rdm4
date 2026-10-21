@@ -46,30 +46,31 @@ impl Record {
             ..Self::default()
         }
     }
-    pub(crate) fn bytes(&mut self, bytes: &[u8]) {
+    pub(crate) fn append_bytes(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
     }
-    pub(crate) fn u32(&mut self, value: u32) {
-        self.bytes(&if self.big_endian {
+    pub(crate) fn append_u32(&mut self, value: u32) {
+        self.append_bytes(&if self.big_endian {
             value.to_be_bytes()
         } else {
             value.to_le_bytes()
         });
     }
-    pub(crate) fn floats(&mut self, values: &[f32]) {
+    pub(crate) fn append_f32s(&mut self, values: &[f32]) {
         for value in values {
-            self.u32(value.to_bits());
+            self.append_u32(value.to_bits());
         }
     }
-    pub(crate) fn offset(&mut self, target: Option<BlockId>) {
+    pub(crate) fn append_offset(&mut self, target: Option<BlockId>) {
         if let Some(target) = target {
             self.offsets.push((FieldOffset(self.bytes.len()), target));
             self.children.push(target);
         }
-        self.u32(0);
+        self.append_u32(0);
     }
-    // Change only traversal order; slots retain their positions in the record.
-    pub(crate) fn children(&mut self, children: &[Option<BlockId>]) {
+    // Set the desired sibling order in the file (Meta places mesh groups before buffers).
+    // This does not reverse anything for DFS or move the offset slots in this record.
+    pub(crate) fn set_child_order(&mut self, children: &[Option<BlockId>]) {
         let children: Vec<_> = children.iter().flatten().copied().collect();
         assert_eq!(children.len(), self.children.len());
         assert!(self.children.iter().all(|child| children.contains(child)));
@@ -86,20 +87,23 @@ pub(crate) trait Describe {
 pub(crate) struct Plan<'a> {
     big_endian: bool,
     graph: Graph,
+    // Structured records own their newly encoded bytes; leaf blocks borrow strings and
+    // raw buffers from the model. Offset resolution mutates only owned record payloads,
+    // so it does not copy the borrowed buffers. Indexed by the same BlockId as graph.blocks.
     payloads: Vec<Cow<'a, [u8]>>,
 }
 
 impl<'a> Plan<'a> {
-    pub(crate) fn one(&mut self, value: &'a impl Describe) -> BlockId {
+    pub(crate) fn add_record(&mut self, value: &'a impl Describe) -> BlockId {
         let record = value.describe(self);
-        self.records(vec![record])
+        self.add_encoded_records(vec![record])
     }
-    pub(crate) fn array(&mut self, values: &'a [impl Describe]) -> BlockId {
+    pub(crate) fn add_record_array(&mut self, values: &'a [impl Describe]) -> BlockId {
         let records = values.iter().map(|value| value.describe(self)).collect();
-        self.records(records)
+        self.add_encoded_records(records)
     }
-    pub(crate) fn bytes(&mut self, bytes: &'a [u8]) -> BlockId {
-        self.raw(u32::try_from(bytes.len()).unwrap(), 1, bytes)
+    pub(crate) fn add_byte_block(&mut self, bytes: &'a [u8]) -> BlockId {
+        self.add_raw_block(u32::try_from(bytes.len()).unwrap(), 1, bytes)
     }
 
     pub(crate) fn new(big_endian: bool) -> Self {
@@ -108,7 +112,7 @@ impl<'a> Plan<'a> {
             ..Self::default()
         }
     }
-    pub(crate) fn records(&mut self, records: Vec<Record>) -> BlockId {
+    fn add_encoded_records(&mut self, records: Vec<Record>) -> BlockId {
         assert!(!records.is_empty(), "RDM record blocks cannot be empty");
         let stride = records[0].bytes.len();
         let id = BlockId(self.graph.blocks.len());
@@ -137,7 +141,7 @@ impl<'a> Plan<'a> {
         id
     }
 
-    pub(crate) fn raw(&mut self, count: u32, stride: u32, bytes: &'a [u8]) -> BlockId {
+    pub(crate) fn add_raw_block(&mut self, count: u32, stride: u32, bytes: &'a [u8]) -> BlockId {
         assert!(count > 0 && stride > 0);
         assert_eq!(bytes.len() as u64, u64::from(count) * u64::from(stride));
         let id = BlockId(self.graph.blocks.len());
@@ -150,7 +154,7 @@ impl<'a> Plan<'a> {
         id
     }
 
-    pub(crate) fn write(mut self, root: BlockId, out: &mut impl Write) -> io::Result<()> {
+    pub(crate) fn write_file(mut self, root: BlockId, out: &mut impl Write) -> io::Result<()> {
         let mut order = Vec::new();
         let mut seen = vec![false; self.graph.blocks.len()];
         let mut stack = vec![root];
@@ -158,6 +162,8 @@ impl<'a> Plan<'a> {
             if !seen[id.0] {
                 seen[id.0] = true;
                 order.push(id);
+                // children is already in desired file order. Push [C, B, A] so the
+                // LIFO stack pops A first; this preserves that order rather than changing it.
                 stack.extend(self.graph.blocks[id.0].children.iter().rev().copied());
             }
         }

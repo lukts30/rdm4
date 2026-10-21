@@ -979,10 +979,10 @@ mod tests_vertex {
 impl crate::rdm_writer::Describe for VertexIdentifier {
     fn describe<'a>(&'a self, plan: &mut crate::rdm_writer::Plan<'a>) -> crate::rdm_writer::Record {
         let mut r = crate::rdm_writer::Record::new(plan);
-        r.u32(self.semantic.clone() as u32);
-        r.u32(self.storage_type as u32);
-        r.u32(self.interpretation.0);
-        r.u32(self.storage_count);
+        r.append_u32(self.semantic.clone() as u32);
+        r.append_u32(self.storage_type as u32);
+        r.append_u32(self.interpretation.0);
+        r.append_u32(self.storage_count);
         r
     }
 }

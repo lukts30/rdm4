@@ -171,29 +171,29 @@ use crate::rdm_writer::{Describe, Plan, Record};
 impl Describe for AnimMeta {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.bytes(&self.name)));
-        r.offset(Some(plan.array(&self.anims)));
-        r.u32(self.time_max);
-        r.u32(self.sampling_rate);
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_byte_block(&self.name)));
+        r.append_offset(Some(plan.add_record_array(&self.anims)));
+        r.append_u32(self.time_max);
+        r.append_u32(self.sampling_rate);
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for AnimInner {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.offset(Some(plan.bytes(&self.j_name)));
-        r.offset(Some(plan.array(&self.j_data)));
-        r.bytes(&self._padding);
+        r.append_offset(Some(plan.add_byte_block(&self.j_name)));
+        r.append_offset(Some(plan.add_record_array(&self.j_data)));
+        r.append_bytes(&self._padding);
         r
     }
 }
 impl Describe for Frame {
     fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
         let mut r = Record::new(plan);
-        r.floats(&self.rotation);
-        r.floats(&self.translation);
-        r.floats(&[self.time]);
+        r.append_f32s(&self.rotation);
+        r.append_f32s(&self.translation);
+        r.append_f32s(&[self.time]);
         r
     }
 }
