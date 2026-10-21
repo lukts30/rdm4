@@ -1,19 +1,17 @@
-use binrw::binread;
+use rdm_derive::rdm_read;
 
 use std::{
     fs::{self, OpenOptions},
     path::PathBuf,
 };
 
+use crate::rdm_anim::RdAnim;
 use crate::rdm_data_main::{RdmFile, RdmKindAnim};
-use crate::{rdm_anim::RdAnim, rdm_container::*};
 
-#[binread]
+#[rdm_read]
 pub struct AnimMeta {
-    #[br(parse_with = read_bytes)]
     pub name: Vec<u8>,
 
-    #[br(parse_with = read_array)]
     pub anims: Vec<AnimInner>,
     pub time_max: u32,
     /// Nominal samples per second.
@@ -21,18 +19,16 @@ pub struct AnimMeta {
     _padding: [u8; 32],
 }
 
-#[binread]
+#[rdm_read]
 pub struct AnimInner {
-    #[br(parse_with = read_bytes)]
     pub j_name: Vec<u8>,
 
-    #[br(parse_with = read_array)]
     pub j_data: Vec<Frame>,
     _padding: [u8; 16],
 }
 
 #[derive(Debug, Copy, Clone)]
-#[binread]
+#[rdm_read]
 pub struct Frame {
     pub rotation: [f32; 4],
     pub translation: [f32; 3],

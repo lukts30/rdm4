@@ -5,29 +5,28 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binread, BinRead};
+use binrw::BinRead;
+use rdm_derive::rdm_read;
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
 use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
 
-#[binread]
+#[rdm_read]
 struct ModelName {
-    #[br(parse_with = read_optional_bytes)]
     name: Option<Vec<u8>>,
     _padding: [u8; 24],
 }
 
-#[binread]
+#[rdm_read]
 pub struct VertId {
-    #[br(parse_with = read_array)]
     pub rdm_container: Vec<crate::vertex::VertexIdentifier>,
     unknown_shader_id: u8,
     _padding: [u8; 19],
 }
 
 #[derive(Debug, Clone)]
-#[binread]
+#[rdm_read]
 pub struct MeshInfo {
     pub start_index_location: u32,
     pub index_count: u32,
@@ -41,7 +40,7 @@ impl MeshInfo {
     }
 }
 
-#[binread]
+#[rdm_read]
 pub(crate) struct IndexFormat {
     #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
         "Index format requires U16 or U32"))]
@@ -49,18 +48,18 @@ pub(crate) struct IndexFormat {
     _padding: [u8; 16],
 }
 
-#[binread]
+#[rdm_read]
 pub struct Meta {
     #[br(restore_position, seek_before = SeekFrom::Current(-4), assert(matches!(part_size, 68 | 92)))]
     part_size: u32,
 
-    #[br(parse_with = read_one)]
+    #[rdm(offset)]
     model_name: ModelName,
 
-    #[br(parse_with = read_one)]
+    #[rdm(offset)]
     pub format_identifiers: VertId,
 
-    #[br(parse_with = read_one)]
+    #[rdm(offset)]
     pub(crate) index_format: IndexFormat,
 
     #[br(parse_with = read_raw)]
@@ -71,7 +70,6 @@ pub struct Meta {
     #[br(parse_with = read_raw)]
     pub triangle_list: RawBuffer,
 
-    #[br(parse_with = read_array)]
     pub mesh_info: Vec<MeshInfo>,
 
     skeleton_index: i32, // -1 means no skeleton.
@@ -147,34 +145,30 @@ impl Meta {
     }
 }
 
-#[binread]
+#[rdm_read]
 struct RdmBlobToMat {
-    #[br(parse_with = read_one)]
+    #[rdm(offset)]
     mat: RdmMat,
     _padding: [u8; 24],
 }
 
-#[binread]
+#[rdm_read]
 struct RdmMat {
-    #[br(parse_with = read_optional_bytes)]
     name: Option<Vec<u8>>,
 
-    #[br(parse_with = read_optional_bytes)]
     png: Option<Vec<u8>>,
     _padding: [u8; 40],
 }
 
-#[binread]
+#[rdm_read]
 pub struct RdmBlobToJoint {
-    #[br(parse_with = read_array)]
     pub joint: Vec<RdmJoint>,
     _padding: [u8; 32 - 4],
 }
 
 #[derive(Debug)]
-#[binread]
+#[rdm_read]
 pub struct RdmJoint {
-    #[br(parse_with = read_bytes)]
     pub name: Vec<u8>,
     pub t: [f32; 3],
     pub r: [f32; 4],
@@ -182,36 +176,31 @@ pub struct RdmJoint {
     _padding: [u8; 84 - 20 - 16],
 }
 
-#[binread]
+#[rdm_read]
 pub struct RdmHeader1 {
     #[br(temp, restore_position, seek_before = SeekFrom::Current(-4), assert(matches!(part_size, 48 | 52)))]
     part_size: u32,
     #[br(temp, restore_position, assert(export_offset == 36 + part_size))]
     export_offset: u32,
-    #[br(parse_with = read_optional)]
     pub header2: Option<ExportInfo>,
 
     #[br(parse_with = read_first)]
     pub meta: Option<Meta>,
 
-    #[br(parse_with = read_optional_array)]
     rdm_blob_to_mat: Option<Vec<RdmBlobToMat>>,
 
-    #[br(parse_with = read_optional)]
     pub skin: Option<RdmBlobToJoint>,
 
-    #[br(parse_with = read_optional)]
     pub meta_anim: Option<AnimMeta>,
+    #[rdm(inline)]
     #[br(count = part_size - 20)]
     _data: Vec<u8>,
 }
 
-#[binread]
+#[rdm_read]
 pub struct ExportInfo {
-    #[br(parse_with = read_optional_bytes)]
     pub export_name1: Option<Vec<u8>>,
 
-    #[br(parse_with = read_optional_bytes)]
     pub export_name2: Option<Vec<u8>>,
     _data: [u8; 72 - 8],
 }
@@ -222,7 +211,7 @@ pub trait RdmFileType {}
 impl RdmFileType for RdmKindMesh {}
 impl RdmFileType for RdmKindAnim {}
 
-#[binread]
+#[rdm_read]
 #[br(magic = b"RDM")]
 
 pub struct RdmFile<T: RdmFileType + 'static> {
