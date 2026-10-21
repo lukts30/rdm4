@@ -81,19 +81,6 @@ impl Record {
             ..Self::default()
         }
     }
-    // Embed a composite value and rebase its offset slots into the parent record.
-    pub(crate) fn append_record(&mut self, nested: Record) {
-        let start = self.bytes.len();
-        self.offsets.extend(
-            nested
-                .offsets
-                .into_iter()
-                .map(|(field, target)| (FieldOffset(start + field.bytes()), target)),
-        );
-        self.children.extend(nested.children);
-        self.bytes.extend(nested.bytes);
-    }
-
     pub(crate) fn append_bytes(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
     }
@@ -116,51 +103,55 @@ impl Record {
         }
         self.append_u32(0);
     }
-    // Set the desired sibling order in the file (Meta places mesh groups before buffers).
+    // Reorder the most recently appended children (Meta puts mesh groups before buffers).
+    // Earlier children belong to enclosing fields and keep their positions.
     // This does not reverse anything for DFS or move the offset slots in this record.
-    pub(crate) fn set_child_order(&mut self, children: &[Option<BlockId>]) {
+    pub(crate) fn set_recent_child_order(&mut self, children: &[Option<BlockId>]) {
         let children: Vec<_> = children.iter().flatten().copied().collect();
-        assert_eq!(children.len(), self.children.len());
-        assert!(self.children.iter().all(|child| children.contains(child)));
-        self.children = children;
+        let start = self.children.len() - children.len();
+        let recent = &mut self.children[start..];
+        assert!(recent.iter().all(|child| children.contains(child)));
+        recent.copy_from_slice(&children);
     }
 }
 
+/// Append fields directly into the destination record, including inline composites.
 pub(crate) trait Describe {
-    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record;
+    fn append_to<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record);
+
+    fn describe<'a>(&'a self, plan: &mut Plan<'a>) -> Record {
+        let mut record = Record::new(plan);
+        self.append_to(plan, &mut record);
+        record
+    }
 }
 
-/// Encode a value within the current record, without adding a block header.
-pub(crate) trait Inline {
-    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record);
-}
-
-impl Inline for u8 {
-    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+impl Describe for u8 {
+    fn append_to<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
         record.append_bytes(&[*self]);
     }
 }
-impl Inline for u32 {
-    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+impl Describe for u32 {
+    fn append_to<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
         record.append_u32(*self);
     }
 }
-impl Inline for f32 {
-    fn append_inline<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
+impl Describe for f32 {
+    fn append_to<'a>(&'a self, _: &mut Plan<'a>, record: &mut Record) {
         record.append_u32(self.to_bits());
     }
 }
-impl<T: Inline, const N: usize> Inline for [T; N] {
-    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
+impl<T: Describe, const N: usize> Describe for [T; N] {
+    fn append_to<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
         for value in self {
-            value.append_inline(plan, record);
+            value.append_to(plan, record);
         }
     }
 }
-impl<T: Inline> Inline for Vec<T> {
-    fn append_inline<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
+impl<T: Describe> Describe for Vec<T> {
+    fn append_to<'a>(&'a self, plan: &mut Plan<'a>, record: &mut Record) {
         for value in self {
-            value.append_inline(plan, record);
+            value.append_to(plan, record);
         }
     }
 }
@@ -359,7 +350,7 @@ mod tests {
         let word = |at| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
         assert_eq!(word(24), 12); // Parent stride: tag and two offset slots.
         assert_eq!(word(28), 7);
-        assert_eq!(word(32), 48); // Nested name slot rebased past the tag.
+        assert_eq!(word(32), 48); // Nested name slot appended after the tag.
         assert_eq!(&bytes[48..50], b"ab");
         assert_eq!(word(36), 58); // Separate single-record child block.
         assert_eq!(word(58), 99);

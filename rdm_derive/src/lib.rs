@@ -198,7 +198,7 @@ fn expand_rdm_describe(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStr
         } else if byte_sequence(&field.ty) {
             quote!(record.append_bytes(&self.#member);)
         } else {
-            quote!(crate::rdm_writer::Inline::append_inline(&self.#member, plan, &mut record);)
+            quote!(crate::rdm_writer::Describe::append_to(&self.#member, plan, record);)
         };
         statements.push(statement);
     }
@@ -206,15 +206,8 @@ fn expand_rdm_describe(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStr
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         impl #impl_generics crate::rdm_writer::Describe for #name #ty_generics #where_clause {
-            fn describe<'__rdm>(&'__rdm self, plan: &mut crate::rdm_writer::Plan<'__rdm>) -> crate::rdm_writer::Record {
-                let mut record = crate::rdm_writer::Record::new(plan);
+            fn append_to<'__rdm>(&'__rdm self, plan: &mut crate::rdm_writer::Plan<'__rdm>, record: &mut crate::rdm_writer::Record) {
                 #(#statements)*
-                record
-            }
-        }
-        impl #impl_generics crate::rdm_writer::Inline for #name #ty_generics #where_clause {
-            fn append_inline<'__rdm>(&'__rdm self, plan: &mut crate::rdm_writer::Plan<'__rdm>, record: &mut crate::rdm_writer::Record) {
-                record.append_record(crate::rdm_writer::Describe::describe(self, plan));
             }
         }
     })

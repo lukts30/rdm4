@@ -978,8 +978,8 @@ mod tests_vertex {
     }
 }
 
-impl crate::rdm_writer::Inline for VertexSemantic {
-    fn append_inline<'a>(
+impl crate::rdm_writer::Describe for VertexSemantic {
+    fn append_to<'a>(
         &'a self,
         _: &mut crate::rdm_writer::Plan<'a>,
         record: &mut crate::rdm_writer::Record,
@@ -987,8 +987,8 @@ impl crate::rdm_writer::Inline for VertexSemantic {
         record.append_u32(self.clone() as u32);
     }
 }
-impl crate::rdm_writer::Inline for StorageType {
-    fn append_inline<'a>(
+impl crate::rdm_writer::Describe for StorageType {
+    fn append_to<'a>(
         &'a self,
         _: &mut crate::rdm_writer::Plan<'a>,
         record: &mut crate::rdm_writer::Record,
@@ -996,8 +996,8 @@ impl crate::rdm_writer::Inline for StorageType {
         record.append_u32(*self as u32);
     }
 }
-impl crate::rdm_writer::Inline for VertexInterpretation {
-    fn append_inline<'a>(
+impl crate::rdm_writer::Describe for VertexInterpretation {
+    fn append_to<'a>(
         &'a self,
         _: &mut crate::rdm_writer::Plan<'a>,
         record: &mut crate::rdm_writer::Record,
