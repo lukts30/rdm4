@@ -51,12 +51,40 @@ pub struct Preamble {
     pub root_payload_offset: u32,
 }
 
+/// Index of a physical block, distinct from a byte offset into the file.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BlockId(usize);
+
+impl BlockId {
+    /// First block found by the physical scan.
+    pub const ROOT: Self = Self(0);
+
+    /// Construct an ID from an index in `Analysis::blocks`.
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Index used to access block-indexed vectors.
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Display for BlockId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
 /// One block discovered by walking the file linearly.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Block {
-    pub id: usize,
+    pub id: BlockId,
+    /// Absolute byte offset of the block header.
     pub header_offset: usize,
+    /// Absolute byte offset of the first record.
     pub payload_offset: usize,
+    /// Exclusive absolute byte offset of the payload end.
     pub payload_end: usize,
     pub count: u32,
     pub stride: u32,
@@ -70,7 +98,7 @@ impl Block {
 
     /// Human-readable, structural label that does not claim record semantics.
     pub fn structural_label(&self, bytes: &[u8]) -> String {
-        if self.id == 0 {
+        if self.id == BlockId::ROOT {
             return "Root record".to_owned();
         }
         if self.text_preview(bytes).is_some() {
@@ -111,20 +139,20 @@ impl Block {
     }
 }
 
-/// Direction-based confidence of a discovered offset candidate.
+/// Direction of a payload-boundary match, not evidence that it is a pointer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EdgeConfidence {
-    /// A forward offset, matching all examined files documented by rdm4.
-    Strong,
-    /// A self- or backward target, structurally possible but not observed.
-    Candidate,
+pub enum EdgeDirection {
+    /// Candidate targeting a later block.
+    Forward,
+    /// Candidate targeting the same block or an earlier block.
+    BackwardOrSelf,
 }
 
-impl fmt::Display for EdgeConfidence {
+impl fmt::Display for EdgeDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Strong => write!(f, "strong"),
-            Self::Candidate => write!(f, "candidate"),
+            Self::Forward => write!(f, "forward candidate"),
+            Self::BackwardOrSelf => write!(f, "backward/self candidate"),
         }
     }
 }
@@ -132,12 +160,14 @@ impl fmt::Display for EdgeConfidence {
 /// A four-byte record field whose value equals a discovered payload boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Edge {
-    pub source_block: usize,
-    pub target_block: usize,
+    pub source_block: BlockId,
+    pub target_block: BlockId,
+    /// Absolute byte offset of the four-byte candidate value.
     pub file_offset: usize,
     pub record_index: u32,
+    /// Byte offset within one record, not within the file.
     pub field_offset: u32,
-    pub confidence: EdgeConfidence,
+    pub direction: EdgeDirection,
 }
 
 /// Complete structural interpretation of one RDM file.
@@ -239,7 +269,7 @@ impl Analysis {
                 ));
             }
             blocks.push(Block {
-                id: blocks.len(),
+                id: BlockId::new(blocks.len()),
                 header_offset,
                 payload_offset,
                 payload_end,
@@ -252,7 +282,7 @@ impl Analysis {
             header_offset = payload_end;
         }
 
-        let targets: HashMap<u32, usize> = blocks
+        let targets: HashMap<u32, BlockId> = blocks
             .iter()
             .map(|block| (block.payload_offset as u32, block.id))
             .collect();
@@ -270,10 +300,10 @@ impl Analysis {
                     let Some(&target_block) = targets.get(&value) else {
                         continue;
                     };
-                    let confidence = if target_block > block.id {
-                        EdgeConfidence::Strong
+                    let direction = if target_block > block.id {
+                        EdgeDirection::Forward
                     } else {
-                        EdgeConfidence::Candidate
+                        EdgeDirection::BackwardOrSelf
                     };
                     edges.push(Edge {
                         source_block: block.id,
@@ -281,7 +311,7 @@ impl Analysis {
                         file_offset,
                         record_index: record_index as u32,
                         field_offset: field_offset as u32,
-                        confidence,
+                        direction,
                     });
                 }
             }
@@ -305,12 +335,12 @@ impl Analysis {
     }
 
     /// Structural label refined with the inferred reference topology.
-    pub fn structural_label(&self, block_id: usize) -> String {
-        let block = &self.blocks[block_id];
-        if block.id == 0 || block.text_preview(&self.bytes).is_some() {
+    pub fn structural_label(&self, block_id: BlockId) -> String {
+        let block = &self.blocks[block_id.index()];
+        if block.id == BlockId::ROOT || block.text_preview(&self.bytes).is_some() {
             return block.structural_label(&self.bytes);
         }
-        match (block.count, self.strong_outgoing_count(block_id)) {
+        match (block.count, self.forward_outgoing_count(block_id)) {
             (1, 1..) => "Record + refs".to_owned(),
             (_, 1..) => "Array + refs".to_owned(),
             _ => block.structural_label(&self.bytes),
@@ -324,37 +354,37 @@ impl Analysis {
             .find(|edge| offset >= edge.file_offset && offset < edge.file_offset + 4)
     }
 
-    /// Incoming strong-edge count for a block.
-    pub fn strong_incoming_count(&self, block_id: usize) -> usize {
+    /// Incoming forward-candidate count for a block.
+    pub fn forward_incoming_count(&self, block_id: BlockId) -> usize {
         self.edges
             .iter()
             .filter(|edge| {
-                edge.target_block == block_id && edge.confidence == EdgeConfidence::Strong
+                edge.target_block == block_id && edge.direction == EdgeDirection::Forward
             })
             .count()
     }
 
-    /// Outgoing strong-edge count for a block.
-    pub fn strong_outgoing_count(&self, block_id: usize) -> usize {
+    /// Outgoing forward-candidate count for a block.
+    pub fn forward_outgoing_count(&self, block_id: BlockId) -> usize {
         self.edges
             .iter()
             .filter(|edge| {
-                edge.source_block == block_id && edge.confidence == EdgeConfidence::Strong
+                edge.source_block == block_id && edge.direction == EdgeDirection::Forward
             })
             .count()
     }
 
-    /// Blocks reachable from the root through strong inferred edges.
-    pub fn strongly_reachable(&self) -> Vec<bool> {
+    /// Blocks reachable from the root through forward candidates.
+    pub fn forward_reachable(&self) -> Vec<bool> {
         let mut reached = vec![false; self.blocks.len()];
-        let mut queue = VecDeque::from([0]);
+        let mut queue = VecDeque::from([BlockId::ROOT]);
         while let Some(block_id) = queue.pop_front() {
-            if reached[block_id] {
+            if reached[block_id.index()] {
                 continue;
             }
-            reached[block_id] = true;
+            reached[block_id.index()] = true;
             for edge in self.edges.iter().filter(|edge| {
-                edge.source_block == block_id && edge.confidence == EdgeConfidence::Strong
+                edge.source_block == block_id && edge.direction == EdgeDirection::Forward
             }) {
                 queue.push_back(edge.target_block);
             }
@@ -433,10 +463,10 @@ mod tests {
             Some("hello")
         );
         assert_eq!(analysis.edges.len(), 1);
-        assert_eq!(analysis.edges[0].source_block, 0);
-        assert_eq!(analysis.edges[0].target_block, 1);
+        assert_eq!(analysis.edges[0].source_block, BlockId::ROOT);
+        assert_eq!(analysis.edges[0].target_block, BlockId::new(1));
         assert_eq!(analysis.edges[0].field_offset, 0);
-        assert_eq!(analysis.edges[0].confidence, EdgeConfidence::Strong);
+        assert_eq!(analysis.edges[0].direction, EdgeDirection::Forward);
     }
 
     #[test]
@@ -458,9 +488,9 @@ mod tests {
         bytes.extend(0x1c_u32.to_le_bytes());
         let analysis = Analysis::parse(bytes).unwrap();
         assert!(analysis.edges.iter().any(|edge| {
-            edge.source_block == 1
-                && edge.target_block == 0
-                && edge.confidence == EdgeConfidence::Candidate
+            edge.source_block == BlockId::new(1)
+                && edge.target_block == BlockId::ROOT
+                && edge.direction == EdgeDirection::BackwardOrSelf
         }));
     }
 
@@ -484,19 +514,19 @@ mod tests {
             }
             let analysis = Analysis::parse(std::fs::read(&path).unwrap())
                 .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-            let strong_edges = analysis
+            let forward_edges = analysis
                 .edges
                 .iter()
-                .filter(|edge| edge.confidence == EdgeConfidence::Strong)
+                .filter(|edge| edge.direction == EdgeDirection::Forward)
                 .count();
             assert_eq!(
-                strong_edges,
+                forward_edges,
                 analysis.blocks.len() - 1,
                 "{}",
                 path.display()
             );
             assert!(
-                analysis.strongly_reachable().into_iter().all(|value| value),
+                analysis.forward_reachable().into_iter().all(|value| value),
                 "{}",
                 path.display()
             );

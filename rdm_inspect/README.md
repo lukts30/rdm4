@@ -11,10 +11,9 @@ does not link to `rdm4lib` or use model and animation record definitions.
 1. Build a set of every discovered payload start.
 1. Scan every possible four-byte field position inside every record. A value
    equal to a payload start is an inferred offset.
-1. Treat forward matches as strong edges because all files covered by the
-   format documentation use forward offsets. Preserve self and backward
-   matches as lower-confidence candidates so scalar collisions remain visible
-   without contaminating the main graph.
+1. Classify matches by direction: forward, or backward/self. Both are
+   candidates, not confirmed pointers. The main graph shows forward candidates;
+   the report also lists backward/self candidates. Either can be scalar collisions.
 
 The labels are structural: root record, record or byte arrays, records with
 references, and conservative UTF-8 text candidates. The tool never labels a
@@ -48,7 +47,7 @@ rdm-inspect model.rdm --dot > model.dot
 `--dump` starts with a compact physical block table. String-like byte blocks
 receive an inline, truncated preview; all other meanings remain conservative.
 The `In` and `Out` columns count every inferred boundary match, while the edge
-list below the table keeps strong and lower-confidence matches separate:
+list below the table keeps forward and backward/self candidates separate:
 
 ```text
 Block  Header      Payload     Meaning                         Count     Stride      Bytes  In Out
@@ -68,7 +67,7 @@ Block  Header      Payload     Meaning                         Count     Stride 
 - Shift+Tab: jump to the next physical record boundary.
 - `[` and `]`: move to the preceding or following block payload.
 - Enter: follow the inferred offset under the cursor.
-- `i`: jump from the selected block to its first strong incoming offset field.
+- `i`: jump from the selected block to its first forward candidate incoming field.
 - Backspace: return from a followed offset.
 - `b`: toggle the current block and record-boundary overlay. Count and stride
   headers get separate backgrounds; payload records alternate backgrounds at
@@ -91,6 +90,13 @@ target when applicable, and the outgoing offsets in the current record.
 The block inventory uses the same conservative meanings and `In`/`Out` counts
 as `--dump`. Every block with inferred outgoing offsets has a `▸` marker,
 including root and single-record blocks. Select one and press Enter, Space, or
-Right to expand its per-record offset candidates; Left collapses it. Strong and
-lower-confidence candidates use distinct colors. Press Enter on an expanded
+Right to expand its per-record offset candidates; Left collapses it. Forward and
+backward/self candidates use distinct colors. Press Enter on an expanded
 candidate to inspect its source field in the hex view.
+
+## Rust identifiers
+
+`BlockId` identifies an entry in `Analysis::blocks`; it is a distinct type, not
+a byte offset. Use `.index()` when indexing block-indexed vectors. Absolute
+file offsets remain `usize`; `field_offset` is relative to one record.
+`EdgeDirection` records direction only and does not express pointer confidence.

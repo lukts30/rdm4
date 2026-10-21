@@ -13,7 +13,7 @@ use crossterm::terminal::{
 };
 use crossterm::{execute, queue};
 
-use crate::{output, Analysis, Block, Edge, EdgeConfidence, Endian};
+use crate::{output, Analysis, Block, BlockId, Edge, EdgeDirection, Endian};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum View {
@@ -24,7 +24,7 @@ enum View {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InventoryRow {
-    Block(usize),
+    Block(BlockId),
     Edge(usize),
 }
 
@@ -176,7 +176,7 @@ fn handle_key(key: KeyEvent, analysis: &Analysis, app: &mut App, width: u16, hei
         KeyCode::Enter => {
             if let Some(edge) = analysis.edge_at(app.cursor) {
                 app.history.push(app.cursor);
-                app.cursor = analysis.blocks[edge.target_block].payload_offset;
+                app.cursor = analysis.blocks[edge.target_block.index()].payload_offset;
             }
         }
         KeyCode::Backspace => {
@@ -215,7 +215,7 @@ fn handle_inventory_key(key: KeyEvent, analysis: &Analysis, app: &mut App, heigh
         KeyCode::Right | KeyCode::Char('l') => {
             if let Some(InventoryRow::Block(block_id)) = rows.get(app.inventory_selection) {
                 if inventory_block_expandable(analysis, *block_id) {
-                    app.inventory_expanded[*block_id] = true;
+                    app.inventory_expanded[block_id.index()] = true;
                 }
             }
         }
@@ -241,10 +241,10 @@ fn activate_inventory_row(
     };
     match row {
         InventoryRow::Block(block_id) if inventory_block_expandable(analysis, block_id) => {
-            app.inventory_expanded[block_id] = !app.inventory_expanded[block_id];
+            app.inventory_expanded[block_id.index()] = !app.inventory_expanded[block_id.index()];
         }
         InventoryRow::Block(block_id) if open_non_expandable => {
-            app.cursor = analysis.blocks[block_id].payload_offset;
+            app.cursor = analysis.blocks[block_id.index()].payload_offset;
             app.view = View::Hex;
         }
         InventoryRow::Edge(edge_index) if open_non_expandable => {
@@ -264,10 +264,10 @@ fn collapse_inventory_row(analysis: &Analysis, app: &mut App, rows: &[InventoryR
         InventoryRow::Block(block_id) => block_id,
         InventoryRow::Edge(edge_index) => analysis.edges[edge_index].source_block,
     };
-    if !app.inventory_expanded[block_id] {
+    if !app.inventory_expanded[block_id.index()] {
         return;
     }
-    app.inventory_expanded[block_id] = false;
+    app.inventory_expanded[block_id.index()] = false;
     app.inventory_selection = inventory_rows(analysis, &app.inventory_expanded)
         .iter()
         .position(|row| *row == InventoryRow::Block(block_id))
@@ -291,7 +291,7 @@ fn inventory_rows(analysis: &Analysis, expanded: &[bool]) -> Vec<InventoryRow> {
     let mut rows = Vec::with_capacity(analysis.blocks.len());
     for block in &analysis.blocks {
         rows.push(InventoryRow::Block(block.id));
-        if expanded.get(block.id).copied().unwrap_or(false)
+        if expanded.get(block.id.index()).copied().unwrap_or(false)
             && inventory_block_expandable(analysis, block.id)
         {
             rows.extend(
@@ -307,7 +307,7 @@ fn inventory_rows(analysis: &Analysis, expanded: &[bool]) -> Vec<InventoryRow> {
     rows
 }
 
-fn inventory_block_expandable(analysis: &Analysis, block_id: usize) -> bool {
+fn inventory_block_expandable(analysis: &Analysis, block_id: BlockId) -> bool {
     analysis
         .edges
         .iter()
@@ -326,7 +326,7 @@ fn keep_inventory_selection_visible(app: &mut App, height: u16) {
 fn jump_block(analysis: &Analysis, app: &mut App, next: bool) {
     let current = analysis
         .block_at(app.cursor)
-        .map(|block| block.id)
+        .map(|block| block.id.index())
         .unwrap_or(0);
     let target = if next {
         (current + 1).min(analysis.blocks.len() - 1)
@@ -340,18 +340,18 @@ fn jump_to_incoming(analysis: &Analysis, app: &mut App) {
     let Some(block) = analysis.block_at(app.cursor) else {
         return;
     };
-    let Some(edge) = first_strong_incoming(analysis, block.id) else {
+    let Some(edge) = first_forward_incoming(analysis, block.id) else {
         return;
     };
     app.history.push(app.cursor);
     app.cursor = edge.file_offset;
 }
 
-fn first_strong_incoming(analysis: &Analysis, block_id: usize) -> Option<&crate::Edge> {
+fn first_forward_incoming(analysis: &Analysis, block_id: BlockId) -> Option<&crate::Edge> {
     analysis
         .edges
         .iter()
-        .find(|edge| edge.target_block == block_id && edge.confidence == EdgeConfidence::Strong)
+        .find(|edge| edge.target_block == block_id && edge.direction == EdgeDirection::Forward)
 }
 
 fn record_at(analysis: &Analysis, offset: usize) -> Option<(&Block, u32)> {
@@ -366,7 +366,7 @@ fn record_at(analysis: &Analysis, offset: usize) -> Option<(&Block, u32)> {
 
 fn record_outgoing_edges(
     analysis: &Analysis,
-    block_id: usize,
+    block_id: BlockId,
     record_index: u32,
 ) -> impl Iterator<Item = &Edge> {
     analysis
@@ -406,7 +406,7 @@ fn jump_next_record_boundary(analysis: &Analysis, app: &mut App) {
         app.cursor = block.payload_offset;
     } else if record_index + 1 < block.count {
         app.cursor = block.payload_offset + (record_index as usize + 1) * block.stride as usize;
-    } else if let Some(next) = analysis.blocks.get(block.id + 1) {
+    } else if let Some(next) = analysis.blocks.get(block.id.index() + 1) {
         app.cursor = next.payload_offset;
     }
 }
@@ -469,7 +469,7 @@ struct ByteStyle {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct HighlightContext {
-    boundary_block: Option<usize>,
+    boundary_block: Option<BlockId>,
     destination: Option<(usize, usize)>,
     incoming: Option<(usize, usize)>,
 }
@@ -482,7 +482,7 @@ impl HighlightContext {
             None
         };
         let destination = analysis.edge_at(app.cursor).map(|edge| {
-            let target = &analysis.blocks[edge.target_block];
+            let target = &analysis.blocks[edge.target_block.index()];
             (
                 target.payload_offset,
                 (target.payload_offset + 4).min(target.payload_end),
@@ -490,7 +490,7 @@ impl HighlightContext {
         });
         let incoming = analysis
             .block_at(app.cursor)
-            .and_then(|block| first_strong_incoming(analysis, block.id))
+            .and_then(|block| first_forward_incoming(analysis, block.id))
             .map(|edge| (edge.file_offset, edge.file_offset + 4));
         Self {
             boundary_block,
@@ -789,7 +789,7 @@ fn draw_inventory(
             0,
             height - 1,
             width,
-            "S/C strong/candidate  up/down select  Enter/Space expand  right/left open/close  Enter edge->hex  g/G file-ends  Ctrl+G graph  v hex  q quit",
+            "F/B forward/backward-self candidates  up/down select  Enter/Space expand  right/left open/close  Enter edge->hex  g/G file-ends  Ctrl+G graph  v hex  q quit",
         )?;
         queue!(stdout, ResetColor)?;
     }
@@ -801,31 +801,32 @@ fn draw_inventory_block(
     analysis: &Analysis,
     app: &App,
     layout: InventoryLayout,
-    block_id: usize,
+    block_id: BlockId,
     y: u16,
     selected: bool,
 ) -> io::Result<()> {
-    let block = &analysis.blocks[block_id];
+    let block = &analysis.blocks[block_id.index()];
     let expandable = inventory_block_expandable(analysis, block_id);
-    let block_cell = if block_id == 0 && expandable && app.inventory_expanded[block_id] {
-        "#000 root ▾".to_owned()
-    } else if block_id == 0 && expandable {
-        "#000 root ▸".to_owned()
-    } else if block_id == 0 {
-        "#000 root".to_owned()
-    } else if expandable && app.inventory_expanded[block_id] {
-        format!("#{block_id:03} ▾")
-    } else if expandable {
-        format!("#{block_id:03} ▸")
-    } else {
-        format!("#{block_id:03}")
-    };
+    let block_cell =
+        if block_id == BlockId::ROOT && expandable && app.inventory_expanded[block_id.index()] {
+            "#000 root ▾".to_owned()
+        } else if block_id == BlockId::ROOT && expandable {
+            "#000 root ▸".to_owned()
+        } else if block_id == BlockId::ROOT {
+            "#000 root".to_owned()
+        } else if expandable && app.inventory_expanded[block_id.index()] {
+            format!("#{block_id:03} ▾")
+        } else if expandable {
+            format!("#{block_id:03} ▸")
+        } else {
+            format!("#{block_id:03}")
+        };
     draw_inventory_cell(stdout, 0, y, layout.block_width, &block_cell, false)?;
 
     if !selected {
         let color = if block.text_preview(&analysis.bytes).is_some() {
             TEXT_COLOR
-        } else if block_id == 0 {
+        } else if block_id == BlockId::ROOT {
             Color::Cyan
         } else {
             Color::White
@@ -894,21 +895,21 @@ fn draw_inventory_edge(
     selected: bool,
 ) -> io::Result<()> {
     let edge = &analysis.edges[edge_index];
-    let target = &analysis.blocks[edge.target_block];
-    let confidence_marker = if edge.confidence == EdgeConfidence::Strong {
-        'S'
+    let target = &analysis.blocks[edge.target_block.index()];
+    let direction_marker = if edge.direction == EdgeDirection::Forward {
+        'F'
     } else {
-        'C'
+        'B'
     };
     let block_cell = format!(
-        "  {confidence_marker} r{}→#{:03}",
+        "  {direction_marker} r{}→#{:03}",
         edge.record_index, edge.target_block
     );
     draw_inventory_cell(stdout, 0, y, layout.block_width, &block_cell, false)?;
     if !selected {
         queue!(
             stdout,
-            SetForegroundColor(if edge.confidence == EdgeConfidence::Strong {
+            SetForegroundColor(if edge.direction == EdgeDirection::Forward {
                 Color::Green
             } else {
                 Color::Yellow
@@ -919,7 +920,7 @@ fn draw_inventory_edge(
     if layout.meaning_width >= 30 {
         meaning.push_str(&format!(
             " → #{:03} ({})",
-            edge.target_block, edge.confidence
+            edge.target_block, edge.direction
         ));
     }
     draw_inventory_cell(
@@ -1107,8 +1108,8 @@ fn draw_details(
         .map(|block| {
             format!(
                 "{} in / {} out",
-                analysis.strong_incoming_count(block.id),
-                analysis.strong_outgoing_count(block.id)
+                analysis.forward_incoming_count(block.id),
+                analysis.forward_outgoing_count(block.id)
             )
         })
         .unwrap_or_else(|| "-".to_owned());
@@ -1120,7 +1121,7 @@ fn draw_details(
         .map(|preview| format!("\"{preview}\""))
         .unwrap_or_else(|| "-".to_owned());
     let incoming = block
-        .and_then(|block| first_strong_incoming(analysis, block.id))
+        .and_then(|block| first_forward_incoming(analysis, block.id))
         .map(|edge| {
             format!(
                 "B{} record {} +0x{:x} @0x{:08x}  (i)",
@@ -1134,7 +1135,7 @@ fn draw_details(
         (14, "count", count),
         (15, "stride", stride),
         (16, "payload size", payload_size),
-        (17, "strong edges", edges),
+        (17, "forward refs", edges),
         (18, "location", location),
         (19, "incoming ref", incoming),
         (20, "text", preview),
@@ -1154,20 +1155,20 @@ fn draw_details(
     let edge = analysis.edge_at(offset);
     let target = edge
         .map(|edge| {
-            let block = &analysis.blocks[edge.target_block];
+            let block = &analysis.blocks[edge.target_block.index()];
             format!("B{} payload 0x{:08x}", block.id, block.payload_offset)
         })
         .unwrap_or_else(|| "-".to_owned());
     let field = edge
         .map(|edge| format!("record {} +0x{:x}", edge.record_index, edge.field_offset))
         .unwrap_or_else(|| "-".to_owned());
-    let confidence = edge
-        .map(|edge| format!("{}  (Enter follows)", edge.confidence))
+    let direction = edge
+        .map(|edge| format!("{}  (Enter follows)", edge.direction))
         .unwrap_or_else(|| "-".to_owned());
     for (y, label, value) in [
         (23, "target", target),
         (24, "field", field),
-        (25, "confidence", confidence),
+        (25, "direction", direction),
     ] {
         draw_detail_line(stdout, x, y, pane_width, label, &value, height)?;
     }
@@ -1245,7 +1246,7 @@ fn draw_record_outgoing(
             stdout,
             SetForegroundColor(if selected {
                 Color::White
-            } else if edge.confidence == EdgeConfidence::Strong {
+            } else if edge.direction == EdgeDirection::Forward {
                 Color::Green
             } else {
                 Color::Yellow
@@ -1267,7 +1268,7 @@ fn draw_record_outgoing(
                 edge.file_offset,
                 edge.target_block,
                 target,
-                edge.confidence
+                edge.direction
             ),
         )?;
         queue!(stdout, ResetColor, SetAttribute(Attribute::Reset))?;
@@ -1394,7 +1395,7 @@ fn row_marker(
     let Some(block_id) = highlights.boundary_block else {
         return ' ';
     };
-    let block = &analysis.blocks[block_id];
+    let block = &analysis.blocks[block_id.index()];
     let starts = (row_start..row_end).contains(&block.header_offset);
     let ends = (row_start..row_end).contains(&block.payload_end.saturating_sub(1));
     match (starts, ends) {
@@ -1428,7 +1429,7 @@ fn byte_style(analysis: &Analysis, highlights: &HighlightContext, offset: usize)
         } else if block.text_preview(&analysis.bytes).is_some() {
             style.foreground = TEXT_COLOR;
         } else {
-            style.foreground = if block.id % 2 == 0 {
+            style.foreground = if block.id.index() % 2 == 0 {
                 Color::Blue
             } else {
                 Color::DarkCyan
@@ -1437,7 +1438,7 @@ fn byte_style(analysis: &Analysis, highlights: &HighlightContext, offset: usize)
     }
 
     if let Some(block_id) = highlights.boundary_block {
-        let block = &analysis.blocks[block_id];
+        let block = &analysis.blocks[block_id.index()];
         if (block.header_offset..block.payload_end).contains(&offset) {
             if offset < block.header_offset + 4 {
                 style.background = Some(COUNT_BACKGROUND);
@@ -1460,8 +1461,8 @@ fn byte_style(analysis: &Analysis, highlights: &HighlightContext, offset: usize)
 
     if let Some(edge) = analysis.edge_at(offset) {
         let alternate = (edge.file_offset / 4) % 2 == 1;
-        match edge.confidence {
-            EdgeConfidence::Strong => {
+        match edge.direction {
+            EdgeDirection::Forward => {
                 style.foreground = if alternate {
                     OFFSET_COLOR_B
                 } else {
@@ -1473,7 +1474,7 @@ fn byte_style(analysis: &Analysis, highlights: &HighlightContext, offset: usize)
                     OFFSET_BACKGROUND_A
                 });
             }
-            EdgeConfidence::Candidate => {
+            EdgeDirection::BackwardOrSelf => {
                 style.foreground = if alternate {
                     Color::Magenta
                 } else {
@@ -1574,7 +1575,7 @@ fn byte_description(analysis: &Analysis, offset: usize) -> String {
         return "RDM magic / byte-order marker".to_owned();
     }
     if let Some(edge) = analysis.edge_at(offset) {
-        return format!("{} offset field", edge.confidence);
+        return format!("{} offset field", edge.direction);
     }
     if (0x10..0x14).contains(&offset) {
         return "root payload offset".to_owned();
@@ -1844,7 +1845,7 @@ mod tests {
             .resize(analysis.blocks.len(), false);
 
         assert_eq!(
-            record_outgoing_edges(&analysis, 1, 0).count(),
+            record_outgoing_edges(&analysis, BlockId::new(1), 0).count(),
             1,
             "record zero should expose its outgoing field"
         );
@@ -1905,15 +1906,15 @@ mod tests {
         state.view = View::Inventory;
         state.inventory_selection = 1;
 
-        assert!(inventory_block_expandable(&analysis, 1));
-        assert!(inventory_block_expandable(&analysis, 0));
+        assert!(inventory_block_expandable(&analysis, BlockId::new(1)));
+        assert!(inventory_block_expandable(&analysis, BlockId::new(0)));
         assert_eq!(
             inventory_rows(&analysis, &state.inventory_expanded),
             vec![
-                InventoryRow::Block(0),
-                InventoryRow::Block(1),
-                InventoryRow::Block(2),
-                InventoryRow::Block(3),
+                InventoryRow::Block(BlockId::new(0)),
+                InventoryRow::Block(BlockId::new(1)),
+                InventoryRow::Block(BlockId::new(2)),
+                InventoryRow::Block(BlockId::new(3)),
             ]
         );
 
@@ -1928,12 +1929,12 @@ mod tests {
         assert_eq!(
             inventory_rows(&analysis, &state.inventory_expanded),
             vec![
-                InventoryRow::Block(0),
-                InventoryRow::Block(1),
+                InventoryRow::Block(BlockId::new(0)),
+                InventoryRow::Block(BlockId::new(1)),
                 InventoryRow::Edge(1),
                 InventoryRow::Edge(2),
-                InventoryRow::Block(2),
-                InventoryRow::Block(3),
+                InventoryRow::Block(BlockId::new(2)),
+                InventoryRow::Block(BlockId::new(3)),
             ]
         );
 
@@ -1962,7 +1963,10 @@ mod tests {
             .map(|block| block.id)
             .collect();
 
-        assert_eq!(expandable, vec![0, 1, 4, 5, 7, 13, 14]);
+        assert_eq!(
+            expandable,
+            [0, 1, 4, 5, 7, 13, 14].map(BlockId::new).to_vec()
+        );
         for edge in &analysis.edges {
             assert!(inventory_block_expandable(&analysis, edge.source_block));
         }

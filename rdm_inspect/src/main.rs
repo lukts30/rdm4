@@ -21,7 +21,7 @@ struct Options {
     #[arg(long, conflicts_with_all = ["graph", "dot"])]
     dump: bool,
 
-    /// Print the inferred high-confidence reference graph as text.
+    /// Print the forward-candidate graph as text.
     #[arg(long, conflicts_with_all = ["dump", "dot"])]
     graph: bool,
 

@@ -1,0 +1,59 @@
+{
+  "inspector_commit": "c9cff94dfda1beed69a495905179db4e2bc2b0f0",
+  "converter_commit": "afbcb1472152a997db00269a96a21e1c2d426469",
+  "converter_sha256": "39961f43879aa374e117371cd96e077a33ac390fe1ee9ef28d5e1426875b7c45",
+  "inspector_batch_sha256": "5f6ebcd42420b22b287ab0f1e92677d4df486129aaf2c92aa6644bfaf5cfb352",
+  "corpora": {
+    "anno2070": {
+      "counts": {
+        "files": 3944,
+        "physical_complete": 3944,
+        "tree_complete": 3944,
+        "preorder": 3944,
+        "LE": 3847,
+        "BE": 97,
+        "unique_contents": 3824,
+        "unique_virtual_paths": 3836
+      },
+      "finding_instances": {},
+      "root_shapes": {
+        "(1, 48)": 3944
+      }
+    },
+    "anno1800": {
+      "counts": {
+        "files": 25177,
+        "physical_complete": 25177,
+        "tree_complete": 25177,
+        "preorder": 25177,
+        "LE": 25177,
+        "unique_contents": 21661,
+        "unique_virtual_paths": 23856
+      },
+      "finding_instances": {
+        "duplicate_bone_names": 39
+      },
+      "root_shapes": {
+        "(1, 48)": 15857,
+        "(1, 52)": 9320
+      }
+    },
+    "generated-audit": {
+      "counts": {
+        "files": 55,
+        "physical_complete": 55,
+        "tree_complete": 55,
+        "preorder": 55,
+        "LE": 55,
+        "unique_contents": 53,
+        "unique_virtual_paths": 55
+      },
+      "finding_instances": {
+        "bone_parent_not_prior": 23
+      },
+      "root_shapes": {
+        "(1, 48)": 55
+      }
+    }
+  }
+}

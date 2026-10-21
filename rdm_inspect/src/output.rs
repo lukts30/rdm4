@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::{Analysis, Block, Edge, EdgeConfidence};
+use crate::{Analysis, Block, BlockId, Edge, EdgeDirection};
 
 const MEANING_WIDTH: usize = 30;
 const TABLE_HEADER: &str =
@@ -20,13 +20,13 @@ fn paint(enabled: bool, code: u8, value: impl AsRef<str>) -> String {
 
 /// Render a complete structural report suitable for a terminal or log file.
 pub fn summary(analysis: &Analysis, color: bool) -> String {
-    let strong_edges = analysis
+    let forward_edges = analysis
         .edges
         .iter()
-        .filter(|edge| edge.confidence == EdgeConfidence::Strong)
+        .filter(|edge| edge.direction == EdgeDirection::Forward)
         .count();
-    let candidate_edges = analysis.edges.len() - strong_edges;
-    let reachable = analysis.strongly_reachable();
+    let candidate_edges = analysis.edges.len() - forward_edges;
+    let reachable = analysis.forward_reachable();
     let reachable_count = reachable.iter().filter(|&&value| value).count();
     let mut output = String::new();
     writeln!(output, "{}", paint(color, 1, TABLE_HEADER)).unwrap();
@@ -71,7 +71,7 @@ pub fn summary(analysis: &Analysis, color: bool) -> String {
     .unwrap();
     writeln!(
         output,
-        "  offsets: {strong_edges} strong, {candidate_edges} lower-confidence"
+        "  offsets: {forward_edges} forward candidates, {candidate_edges} backward/self candidates"
     )
     .unwrap();
     if analysis.warnings.is_empty() {
@@ -84,13 +84,13 @@ pub fn summary(analysis: &Analysis, color: bool) -> String {
     }
 
     writeln!(output, "\n{}", paint(color, 32, "Inferred offset edges:")).unwrap();
-    if strong_edges == 0 {
+    if forward_edges == 0 {
         writeln!(output, "  (none)").unwrap();
     } else {
         for edge in analysis
             .edges
             .iter()
-            .filter(|edge| edge.confidence == EdgeConfidence::Strong)
+            .filter(|edge| edge.direction == EdgeDirection::Forward)
         {
             write_edge(&mut output, edge);
         }
@@ -100,17 +100,13 @@ pub fn summary(analysis: &Analysis, color: bool) -> String {
         writeln!(
             output,
             "\n{}",
-            paint(
-                color,
-                33,
-                "Backward/self boundary matches (lower confidence)"
-            )
+            paint(color, 33, "Backward/self boundary matches")
         )
         .unwrap();
         for edge in analysis
             .edges
             .iter()
-            .filter(|edge| edge.confidence == EdgeConfidence::Candidate)
+            .filter(|edge| edge.direction == EdgeDirection::BackwardOrSelf)
         {
             write_edge(&mut output, edge);
         }
@@ -122,7 +118,7 @@ pub(crate) fn block_meaning(block: &Block, bytes: &[u8], width: usize) -> String
     if width == 0 {
         return String::new();
     }
-    let meaning = if block.id == 0 {
+    let meaning = if block.id == BlockId::ROOT {
         "root record".to_owned()
     } else if block.text_preview(bytes).is_some() {
         format!("probable string \"{}\"", display_text(block, bytes))
@@ -161,7 +157,7 @@ fn truncate(value: &str, width: usize) -> String {
     value.chars().take(width - 1).chain(['…']).collect()
 }
 
-pub(crate) fn incoming_count(analysis: &Analysis, block_id: usize) -> usize {
+pub(crate) fn incoming_count(analysis: &Analysis, block_id: BlockId) -> usize {
     analysis
         .edges
         .iter()
@@ -169,7 +165,7 @@ pub(crate) fn incoming_count(analysis: &Analysis, block_id: usize) -> usize {
         .count()
 }
 
-pub(crate) fn outgoing_count(analysis: &Analysis, block_id: usize) -> usize {
+pub(crate) fn outgoing_count(analysis: &Analysis, block_id: BlockId) -> usize {
     analysis
         .edges
         .iter()
@@ -190,11 +186,11 @@ fn write_edge(output: &mut String, edge: &Edge) {
     .unwrap();
 }
 
-/// Render the high-confidence offset graph as an ASCII tree-like view.
+/// Render the forward-candidate graph as an ASCII tree-like view.
 pub fn graph(analysis: &Analysis) -> String {
     let mut output = String::from("RDM inferred offset graph\n");
     let mut visited = vec![false; analysis.blocks.len()];
-    graph_block(analysis, 0, "", &mut visited, &mut output);
+    graph_block(analysis, BlockId::ROOT, "", &mut visited, &mut output);
 
     let omitted: Vec<_> = visited
         .iter()
@@ -202,32 +198,28 @@ pub fn graph(analysis: &Analysis) -> String {
         .filter_map(|(id, &seen)| (!seen).then_some(id))
         .collect();
     if !omitted.is_empty() {
-        writeln!(output, "\nNot reached by strong edges: {omitted:?}").unwrap();
+        writeln!(output, "\nNot reached by forward candidates: {omitted:?}").unwrap();
     }
     let candidates = analysis
         .edges
         .iter()
-        .filter(|edge| edge.confidence == EdgeConfidence::Candidate)
+        .filter(|edge| edge.direction == EdgeDirection::BackwardOrSelf)
         .count();
     if candidates != 0 {
-        writeln!(
-            output,
-            "Lower-confidence backward/self matches omitted: {candidates}"
-        )
-        .unwrap();
+        writeln!(output, "Backward/self candidates omitted: {candidates}").unwrap();
     }
     output
 }
 
 fn graph_block(
     analysis: &Analysis,
-    block_id: usize,
+    block_id: BlockId,
     prefix: &str,
     visited: &mut [bool],
     output: &mut String,
 ) {
-    let block = &analysis.blocks[block_id];
-    let revisited = std::mem::replace(&mut visited[block_id], true);
+    let block = &analysis.blocks[block_id.index()];
+    let revisited = std::mem::replace(&mut visited[block_id.index()], true);
     writeln!(
         output,
         "{prefix}B{block_id:03} {}  count {}  stride {}{}",
@@ -248,7 +240,7 @@ fn graph_block(
     let outgoing: Vec<_> = analysis
         .edges
         .iter()
-        .filter(|edge| edge.source_block == block_id && edge.confidence == EdgeConfidence::Strong)
+        .filter(|edge| edge.source_block == block_id && edge.direction == EdgeDirection::Forward)
         .collect();
     for (index, edge) in outgoing.iter().enumerate() {
         let last = index + 1 == outgoing.len();
@@ -279,7 +271,7 @@ pub fn dot(analysis: &Analysis) -> String {
         .unwrap();
     }
     for edge in &analysis.edges {
-        let style = if edge.confidence == EdgeConfidence::Strong {
+        let style = if edge.direction == EdgeDirection::Forward {
             "color=\"#2ca02c\""
         } else {
             "color=\"#999999\", style=dashed"
@@ -322,7 +314,7 @@ mod tests {
         assert_eq!(output.matches("Diagnostics:").count(), 1);
         assert_eq!(output.matches(super::TABLE_HEADER).count(), 1);
         assert!(output.contains("Inferred offset edges:\n"));
-        assert!(output.contains("Backward/self boundary matches (lower confidence)\n"));
+        assert!(output.contains("Backward/self boundary matches\n"));
     }
 
     #[test]
