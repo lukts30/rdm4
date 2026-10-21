@@ -3,13 +3,12 @@ use rdm_derive::RdmStructSize;
 use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
-use binrw::binrw;
+use binrw::{binread, binrw};
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
 #[derive(Clone, Debug)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
@@ -980,8 +979,8 @@ mod tests_vertex {
 }
 
 impl crate::rdm_writer::Describe for VertexIdentifier {
-    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::default();
+    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::new(plan);
         r.u32(self.semantic.clone() as u32);
         r.u32(self.storage_type as u32);
         r.u32(self.interpretation.0);

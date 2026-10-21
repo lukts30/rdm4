@@ -30,12 +30,19 @@ struct Graph {
 
 #[derive(Default)]
 pub(crate) struct Record {
+    big_endian: bool,
     bytes: Vec<u8>,
     offsets: Vec<(FieldOffset, BlockId)>,
     children: Vec<BlockId>,
 }
 
 impl Record {
+    pub(crate) fn new(plan: &Plan) -> Self {
+        Self {
+            big_endian: plan.big_endian,
+            ..Self::default()
+        }
+    }
     pub(crate) fn into_bytes(self) -> Vec<u8> {
         assert!(self.offsets.is_empty());
         self.bytes
@@ -44,7 +51,11 @@ impl Record {
         self.bytes.extend_from_slice(bytes);
     }
     pub(crate) fn u32(&mut self, value: u32) {
-        self.bytes(&value.to_le_bytes());
+        self.bytes(&if self.big_endian {
+            value.to_be_bytes()
+        } else {
+            value.to_le_bytes()
+        });
     }
     pub(crate) fn floats(&mut self, values: &[f32]) {
         for value in values {
@@ -77,11 +88,18 @@ pub(crate) trait Describe {
 /// Writer-owned bytes are separate from the structural graph.
 #[derive(Default)]
 pub(crate) struct Plan {
+    big_endian: bool,
     graph: Graph,
     payloads: Vec<Vec<u8>>,
 }
 
 impl Plan {
+    pub(crate) fn new(big_endian: bool) -> Self {
+        Self {
+            big_endian,
+            ..Self::default()
+        }
+    }
     pub(crate) fn records(&mut self, records: Vec<Record>) -> BlockId {
         assert!(!records.is_empty(), "RDM record blocks cannot be empty");
         let stride = records[0].bytes.len();
@@ -147,20 +165,28 @@ impl Plan {
             end <= u64::from(u32::MAX),
             "RDM exceeds 32-bit address space"
         );
+        let encode = |value: u32| {
+            if self.big_endian {
+                value.to_be_bytes()
+            } else {
+                value.to_le_bytes()
+            }
+        };
         for edge in &self.graph.edges {
             let block = &self.graph.blocks[edge.source.0];
             let at = edge.record.0 * block.stride as usize + edge.field.0;
             self.payloads[edge.source.0][at..at + 4]
-                .copy_from_slice(&offsets[edge.target.0].to_le_bytes());
+                .copy_from_slice(&encode(offsets[edge.target.0]));
         }
-        out.write_all(b"RDM\x01")?;
+        out.write_all(b"RDM")?;
+        out.write_all(&[u8::from(!self.big_endian)])?;
         for word in [20u32, 0, 4, offsets[root.0]] {
-            out.write_all(&word.to_le_bytes())?;
+            out.write_all(&encode(word))?;
         }
         for id in order {
             let block = &self.graph.blocks[id.0];
-            out.write_all(&block.count.to_le_bytes())?;
-            out.write_all(&block.stride.to_le_bytes())?;
+            out.write_all(&encode(block.count))?;
+            out.write_all(&encode(block.stride))?;
             out.write_all(&self.payloads[id.0])?;
         }
         Ok(())

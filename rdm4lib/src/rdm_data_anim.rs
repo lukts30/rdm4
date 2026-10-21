@@ -1,4 +1,4 @@
-use binrw::{binrw, BinWriterExt};
+use binrw::binread;
 use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},
@@ -11,14 +11,11 @@ use crate::{
     RDMStructSizeTr,
 };
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct AnimMeta {
-    #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
 
-    #[bw(args_raw = end)]
     pub anims: AnnoPtr<RdmTypedContainer<AnimInner>>,
     pub time_max: u32,
     /// Nominal samples per second.
@@ -26,20 +23,17 @@ pub struct AnimMeta {
     _padding: [u8; 32],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct AnimInner {
-    #[bw(args_raw = end)]
     pub j_name: AnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
+
     pub j_data: AnnoPtr<RdmTypedContainer<Frame>>,
     _padding: [u8; 16],
 }
 
 #[derive(Debug, Copy, Clone)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct Frame {
     pub rotation: [f32; 4],
@@ -50,7 +44,7 @@ pub struct Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use binrw::{BinReaderExt, BinWriterExt};
+    use binrw::BinReaderExt;
     use std::fs;
 
     #[test]
@@ -67,17 +61,12 @@ mod tests {
         let mut dst = Vec::new();
         let mut writer = std::io::Cursor::new(&mut dst);
 
-        writer
-            .write_type_args(&rdm, binrw::Endian::Little, ())
-            .unwrap();
+        rdm.write_rdm(&mut writer).unwrap();
 
         let output_dir = tempfile::tempdir().unwrap();
         let output_path = output_dir.path().join("anim_out.rdm");
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
-        let mut sequential = Vec::new();
-        rdm.write_rdm(&mut sequential).unwrap();
-        assert_eq!(dst, sequential);
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 
@@ -89,13 +78,13 @@ mod tests {
             let mut rdm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
             rdm.header1.meta_anim.sampling_rate = sampling_rate;
             let mut writer = std::io::Cursor::new(Vec::new());
-            writer.write_le(&rdm).unwrap();
+            rdm.write_rdm(&mut writer).unwrap();
 
             let anim = RdAnim::new(writer.into_inner(), "idle".into());
             assert_eq!(anim.sampling_rate, sampling_rate);
             let output = RdAnimWriter2::new(anim);
             let mut writer = std::io::Cursor::new(Vec::new());
-            writer.write_le(&output.export).unwrap();
+            output.export.write_rdm(&mut writer).unwrap();
             writer.set_position(0);
             let written: RdmFile<RdmKindAnim> = writer.read_le().unwrap();
             assert_eq!(written.header1.meta_anim.sampling_rate, sampling_rate);
@@ -142,9 +131,7 @@ impl RdAnimWriter2 {
             .open(&file)
             .expect("I/O error");
 
-        writer
-            .write_type_args(&self.export, binrw::Endian::Little, ())
-            .unwrap();
+        self.export.write_rdm(&mut writer).unwrap();
         info!("Wrote animation {:?}", file);
     }
 
@@ -231,7 +218,7 @@ use crate::rdm_writer::{Describe, Plan, Record};
 impl Describe for AnimMeta {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.name.plan(plan));
         r.offset(self.anims.plan(plan));
         r.u32(self.time_max);
@@ -243,7 +230,7 @@ impl Describe for AnimMeta {
 impl Describe for AnimInner {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.j_name.plan(plan));
         r.offset(self.j_data.plan(plan));
         r.bytes(&self._padding);
@@ -253,7 +240,7 @@ impl Describe for AnimInner {
 impl Describe for Frame {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.floats(&self.rotation);
         r.floats(&self.translation);
         r.floats(&[self.time]);

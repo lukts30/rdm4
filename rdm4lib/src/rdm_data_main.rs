@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinRead, BinWriterExt};
+use binrw::{binread, BinRead};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
@@ -16,28 +16,23 @@ pub trait RDMStructSizeTr {
     fn get_struct_byte_size() -> usize;
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct ModelName {
-    #[bw(args_raw = end)]
     name: NullableAnnoPtr<RdmString>,
     _padding: [u8; 24],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct VertId {
-    #[bw(args_raw = end)]
     pub rdm_container: AnnoPtr<RdmTypedContainer<crate::vertex::VertexIdentifier>>,
     unknown_shader_id: u8,
     _padding: [u8; 19],
 }
 
 #[derive(Debug, Clone)]
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct MeshInfo {
     pub start_index_location: u32,
@@ -52,8 +47,7 @@ impl MeshInfo {
     }
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub(crate) struct IndexFormat {
     #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
@@ -62,47 +56,25 @@ pub(crate) struct IndexFormat {
     _padding: [u8; 16],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct Meta {
     #[br(temp, restore_position, seek_before = SeekFrom::Current(-4))]
-    #[bw(ignore)]
     part_size: u32,
 
-    #[bw(args_raw = end)]
     model_name: AnnoPtr<RdmTypedT<ModelName>>,
-    #[bw(args_raw = end)]
+
     pub format_identifiers: AnnoPtr<RdmTypedT<VertId>>,
-    #[bw(args_raw = end)]
+
     pub(crate) index_format: AnnoPtr<RdmTypedT<IndexFormat>>,
 
-    #[bw(args_raw = {
-        debug!("{:?}", end);
-        *end += mesh_info.get_direct_and_pointed_data_size();
-        debug!("{:?}", end);
-        end
-    })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
-    #[bw(args_raw = end)]
+
     #[br(assert(triangle_list.info.part_size == index_format.element_type.byte_size(),
         "Index type and index-buffer stride disagree"))]
     pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
-    #[bw(args_raw = {
-        let negative_off = mesh_info.get_direct_and_pointed_data_size() + vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
-        *end -= negative_off;
-        end
-    })]
     pub mesh_info: AnnoPtr<RdmTypedContainer<MeshInfo>>,
-
-    #[br(ignore)]
-    #[bw(calc = {
-        let off = vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
-        *end += off;
-        debug!("reset to end {:?}", end);
-    })]
-    d: (),
 
     skeleton_index: i32, // -1 means no skeleton.
     bounds_min: [f32; 3],
@@ -170,41 +142,33 @@ impl Meta {
     }
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct RdmBlobToMat {
-    #[bw(args_raw = end)]
     mat: AnnoPtr<RdmTypedT<RdmMat>>,
     _padding: [u8; 24],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct RdmMat {
-    #[bw(args_raw = end)]
     name: NullableAnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
+
     png: NullableAnnoPtr<RdmString>,
     _padding: [u8; 40],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmBlobToJoint {
-    #[bw(args_raw = end)]
     pub joint: AnnoPtr<RdmTypedContainer<RdmJoint>>,
     _padding: [u8; 32 - 4],
 }
 
 #[derive(Debug)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmJoint {
-    #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
     pub t: [f32; 3],
     pub r: [f32; 4],
@@ -212,32 +176,26 @@ pub struct RdmJoint {
     _padding: [u8; 84 - 20 - 16],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1 {
-    #[bw(args_raw = end)]
     pub header2: NullableAnnoPtr<RdmTypedT<ExportInfo>>,
 
-    #[bw(args_raw = end)]
     pub meta: NullableAnnoPtr<RdmTypedT<Meta>>,
-    #[bw(args_raw = end)]
+
     rdm_blob_to_mat: NullableAnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
-    #[bw(args_raw = end)]
+
     pub skin: NullableAnnoPtr<RdmTypedT<RdmBlobToJoint>>,
 
-    #[bw(args_raw = end)]
     pub meta_anim: NullableAnnoPtr<RdmTypedT<AnimMeta>>,
     _data: [u8; 48 - 5 * 4],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct ExportInfo {
-    #[bw(args_raw = end)]
     pub export_name1: NullableAnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
+
     pub export_name2: NullableAnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
@@ -248,21 +206,18 @@ pub trait RdmFileType {}
 impl RdmFileType for RdmKindMesh {}
 impl RdmFileType for RdmKindAnim {}
 
-#[binrw]
+#[binread]
 #[br(magic = b"RDM")]
-#[bw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
+
 pub struct RdmFile<T: RdmFileType + 'static> {
     #[br(temp, assert(byte_order <= 1))]
-    #[bw(ignore)]
     byte_order: u8,
     #[br(temp, is_big = byte_order == 0, assert(preamble == [0x14, 0, 4, 0x1c]))]
-    #[bw(ignore)]
     preamble: [u32; 4],
     #[br(calc = byte_order == 0)]
-    #[bw(ignore)]
     pub(crate) big_endian: bool,
     #[br(is_big = big_endian)]
-    #[brw(seek_before = SeekFrom::Start(0x00000014))]
+    #[br(seek_before = SeekFrom::Start(0x00000014))]
     #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     // RdmHeader1 size is usually 48 but sometimes 52
     // TODO: fix some rdm anim's have a NULL meta_anim.ptr
@@ -270,78 +225,13 @@ pub struct RdmFile<T: RdmFileType + 'static> {
     #[br(assert(TypeId::of::<RdmKindAnim>() == TypeId::of::<T>() || header1.storage.item[0].meta.ptr != 0 && header1.storage.item[0].meta_anim.ptr == 0, "the input file is not a rdm mesh!"))]
     pub header1: RdmTypedT<RdmHeader1>,
 
-    #[bw(ignore)]
     kind: PhantomData<T>,
-}
-
-pub trait DataAndPointedToSize {
-    fn get_direct_and_pointed_data_size(&self) -> u64;
-}
-
-impl<C, T> DataAndPointedToSize for RdmContainer<true, C, T>
-where
-    C: VectorSize2,
-    C::Storage<T>: RdmContainerRead,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead + RdmContainerWrite + DataAndPointedToSize,
-{
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        let mut sum = 0;
-        for x in self.storage.into_iter() {
-            sum += x.get_direct_and_pointed_data_size();
-        }
-        8 + sum
-    }
-}
-
-impl<C, T> DataAndPointedToSize for RdmContainer<false, C, T>
-where
-    C: VectorSize2,
-    C::Storage<T>: RdmContainerRead,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead + RdmContainerWrite,
-{
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        (self.info.count * self.info.part_size) as u64 + 8
-    }
-}
-
-impl DataAndPointedToSize for ExportInfo {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        ExportInfo::get_struct_byte_size() as u64
-            + self.export_name1.get_direct_and_pointed_data_size()
-            + self.export_name2.get_direct_and_pointed_data_size()
-    }
-}
-
-impl DataAndPointedToSize for MeshInfo {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        MeshInfo::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoChar {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoChar::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoU8 {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoU8::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoU16 {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoU16::get_struct_byte_size() as u64
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use binrw::{BinReaderExt, BinWriterExt};
+    use binrw::BinReaderExt;
     use std::fs;
 
     #[test]
@@ -399,7 +289,7 @@ mod tests {
         let bounds = model.vertex.calculate_bounds();
         let writer = RdWriter2::new(model);
         let mut output = std::io::Cursor::new(Vec::new());
-        output.write_le(&writer.inner).unwrap();
+        writer.inner.write_rdm(&mut output).unwrap();
         output.set_position(0);
         let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
         assert!(!result.big_endian);
@@ -492,18 +382,13 @@ mod tests {
         let mut dst = Vec::new();
         let mut writer = std::io::Cursor::new(&mut dst);
 
-        writer
-            .write_type_args(&rdm, binrw::Endian::Little, ())
-            .unwrap();
+        rdm.write_rdm(&mut writer).unwrap();
 
         let output_dir = tempfile::tempdir().unwrap();
         let output_path = output_dir.path().join("rdm_out.rdm");
         let mut file = fs::File::create(&output_path).unwrap();
         std::io::Write::write_all(&mut file, &dst).unwrap();
 
-        let mut sequential = Vec::new();
-        rdm.write_rdm(&mut sequential).unwrap();
-        assert_eq!(dst, sequential);
         assert_eq!(data, fs::read(output_path).unwrap())
     }
 }
@@ -532,9 +417,7 @@ impl RdWriter2 {
             .open(&file)
             .expect("I/O error");
 
-        writer
-            .write_type_args(&self.inner, binrw::Endian::Little, ())
-            .unwrap();
+        self.inner.write_rdm(&mut writer).unwrap();
         info!("Wrote RDM {:?}", file);
 
         file.as_path().into()
@@ -776,7 +659,7 @@ use crate::rdm_writer::{Describe, Plan, Record};
 impl Describe for ModelName {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.name.plan(plan));
         r.bytes(&self._padding);
         r
@@ -785,7 +668,7 @@ impl Describe for ModelName {
 impl Describe for VertId {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.rdm_container.plan(plan));
         r.bytes(&[self.unknown_shader_id]);
         r.bytes(&self._padding);
@@ -795,7 +678,7 @@ impl Describe for VertId {
 impl Describe for MeshInfo {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.u32(self.start_index_location);
         r.u32(self.index_count);
         r.u32(self.material);
@@ -806,7 +689,7 @@ impl Describe for MeshInfo {
 impl Describe for IndexFormat {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.u32(self.element_type as u32);
         r.bytes(&self._padding);
         r
@@ -815,7 +698,7 @@ impl Describe for IndexFormat {
 impl Describe for RdmBlobToMat {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.mat.plan(plan));
         r.bytes(&self._padding);
         r
@@ -824,7 +707,7 @@ impl Describe for RdmBlobToMat {
 impl Describe for RdmMat {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.name.plan(plan));
         r.offset(self.png.plan(plan));
         r.bytes(&self._padding);
@@ -834,7 +717,7 @@ impl Describe for RdmMat {
 impl Describe for RdmBlobToJoint {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.joint.plan(plan));
         r.bytes(&self._padding);
         r
@@ -843,7 +726,7 @@ impl Describe for RdmBlobToJoint {
 impl Describe for RdmJoint {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.name.plan(plan));
         r.floats(&self.t);
         r.floats(&self.r);
@@ -855,7 +738,7 @@ impl Describe for RdmJoint {
 impl Describe for RdmHeader1 {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.header2.plan(plan));
         r.offset(self.meta.plan(plan));
         r.offset(self.rdm_blob_to_mat.plan(plan));
@@ -868,7 +751,7 @@ impl Describe for RdmHeader1 {
 impl Describe for ExportInfo {
     fn describe(&self, plan: &mut Plan) -> Record {
         let _ = &plan;
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         r.offset(self.export_name1.plan(plan));
         r.offset(self.export_name2.plan(plan));
         r.bytes(&self._data);
@@ -884,7 +767,7 @@ impl Describe for Meta {
         let groups = self.mesh_info.plan(plan);
         let vertices = self.vertex.plan(plan);
         let triangles = self.triangle_list.plan(plan);
-        let mut r = Record::default();
+        let mut r = Record::new(plan);
         for target in [name, format, index, vertices, triangles, groups] {
             r.offset(target);
         }
@@ -899,13 +782,9 @@ impl Describe for Meta {
     }
 }
 impl<T: RdmFileType + 'static> RdmFile<T> {
-    /// Serialize the file as little-endian RDM using sequential output only.
+    /// Serialize using the source byte order and sequential output only.
     pub fn write_rdm(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
-        assert!(
-            !self.big_endian,
-            "raw big-endian buffers require conversion before LE output"
-        );
-        let mut plan = Plan::default();
+        let mut plan = Plan::new(self.big_endian);
         let root = self.header1.plan(&mut plan);
         plan.write(root, writer)
     }

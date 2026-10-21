@@ -209,7 +209,6 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 #[cfg(test)]
 mod tests_intern {
     use super::*;
-    use binrw::{BinWriterExt, Endian};
 
     #[test]
     fn reads_u32_indices_without_truncation() {
@@ -278,13 +277,9 @@ mod tests_intern {
                 .map(rdm_container::AnnoU8)
                 .collect();
             let mut output = std::io::Cursor::new(Vec::new());
-            output.write_type_args(&raw, Endian::Big, ()).unwrap();
-            let mut output = output.into_inner();
-            // The public writer deliberately continues to emit an LE preamble.
-            output[3] = 0;
-            for word in output[4..20].chunks_exact_mut(4) {
-                word.reverse();
-            }
+            raw.big_endian = true;
+            raw.write_rdm(&mut output).unwrap();
+            let output = output.into_inner();
             let actual = RdModell::new(output);
             assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
             let indices = |model: &RdModell| {

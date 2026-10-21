@@ -1,13 +1,13 @@
 use std::any::TypeId;
 use std::fmt;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Seek, SeekFrom};
 use std::ops::Deref;
 use std::str;
 use std::vec::Vec;
 
 use crate::rdm_data_main::{Meta, RdmHeader1};
 use crate::RDMStructSizeTr;
-use binrw::{binread, binrw, binwrite, BinRead, BinWrite};
+use binrw::{binread, BinRead};
 use rdm_derive::RdmStructSize;
 
 pub trait RdmRead: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStructSizeTr {}
@@ -15,9 +15,6 @@ impl<M> RdmRead for M where M: for<'a> BinRead<Args<'a> = ()> + 'static + RDMStr
 
 pub trait RdmContainerRead: for<'a> BinRead<Args<'a> = u32> + 'static {}
 impl<M> RdmContainerRead for M where M: for<'a> BinRead<Args<'a> = u32> + 'static {}
-
-pub trait RdmContainerWrite: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static {}
-impl<M> RdmContainerWrite for M where M: for<'a> BinWrite<Args<'a> = &'a mut u64> + 'static {}
 
 fn stream_len<R: std::io::Read + Seek>(reader: &mut R) -> std::io::Result<u64> {
     let old_pos = reader.stream_position()?;
@@ -102,7 +99,6 @@ impl<T: RdmRead> VectorLen for Vector1<T> {
 }
 
 #[derive(Debug)]
-#[binwrite]
 pub struct RdmContainerPrefix {
     pub count: u32,
     pub part_size: u32,
@@ -330,147 +326,22 @@ where
     }
 }
 
-impl<const PTR_NULLABLE: bool, const N: bool, C, T> BinWrite
-    for AnnoPtr2<PTR_NULLABLE, RdmContainer<N, C, T>>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    C::Storage<T>: RdmContainerWrite,
-    T: RdmRead,
-    T: RdmContainerWrite,
-{
-    type Args<'a> = &'a mut u64;
-
-    fn write_options<W: Write + Seek>(
-        &self,
-        writer: &mut W,
-        endian: binrw::Endian,
-        args: Self::Args<'_>,
-    ) -> binrw::BinResult<()> {
-        if self.0.value.is_none() {
-            if !PTR_NULLABLE {
-                return Err(binrw::Error::AssertFail {
-                    message: "No value for non nullable ptr!".into(),
-                    pos: writer.stream_position().unwrap(),
-                });
-            }
-            0u32.write_options(writer, endian, ()).unwrap();
-            return Ok(());
-        }
-        debug!("write_options_args {:?}", *args);
-        (*args as u32 + 8)
-            .write_options(writer, endian, ())
-            .unwrap();
-
-        let pos_end = writer.stream_position().unwrap();
-        writer.seek(SeekFrom::Start(*args)).unwrap();
-        let pointed_to_data = self.deref().deref();
-        pointed_to_data.write_options(writer, endian, ()).unwrap();
-        *args = writer.stream_position().unwrap();
-        writer.seek(SeekFrom::Start(pos_end)).unwrap();
-
-        Ok(())
-    }
-}
-
-impl<const N: bool, C, T> BinWrite for RdmContainer<N, C, T>
-where
-    C: VectorSize2,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    C::Storage<T>: RdmContainerWrite,
-    T: RdmRead,
-    T: RdmContainerWrite,
-{
-    type Args<'a> = ();
-
-    fn write_options<W: Write + Seek>(
-        &self,
-        writer: &mut W,
-        endian: binrw::Endian,
-        _args: Self::Args<'_>,
-    ) -> binrw::BinResult<()> {
-        self.info.write_options(writer, endian, ())?;
-
-        let pos_start = writer.stream_position().unwrap();
-        let mut end = pos_start + (self.info.count * self.info.part_size) as u64;
-
-        assert!(self.storage.len() == self.info.count || !N);
-        if self.storage.len() != self.info.count && N {
-            dbg!(self.storage.len(), self.info.count, self.info.part_size);
-        }
-
-        self.storage.write_options(writer, endian, &mut end)?;
-
-        let pos_end = writer.stream_position().unwrap();
-
-        assert_eq!(
-            pos_end - pos_start,
-            (self.info.count * self.info.part_size) as u64
-        );
-
-        writer.seek(SeekFrom::Start(end)).unwrap();
-        Ok(())
-    }
-}
-
-impl<Z> BinWrite for VectorN<Z>
-where
-    Z: RdmRead,
-    Z: RdmContainerWrite,
-{
-    type Args<'a> = &'a mut u64;
-
-    fn write_options<W: Write + Seek>(
-        &self,
-        writer: &mut W,
-        endian: binrw::Endian,
-        args: Self::Args<'_>,
-    ) -> binrw::BinResult<()> {
-        for x in self.items.iter() {
-            x.write_options(writer, endian, args)?;
-        }
-        Ok(())
-    }
-}
-
-impl<Z> BinWrite for Vector1<Z>
-where
-    Z: RdmRead,
-    Z: RdmContainerWrite,
-{
-    type Args<'a> = &'a mut u64;
-
-    fn write_options<W: Write + Seek>(
-        &self,
-        writer: &mut W,
-        endian: binrw::Endian,
-        args: Self::Args<'_>,
-    ) -> binrw::BinResult<()> {
-        self.item[0].write_options(writer, endian, args)?;
-        Ok(())
-    }
-}
-
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[repr(transparent)]
 #[derive(RdmStructSize)]
 pub struct AnnoChar(pub u8);
 
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[repr(transparent)]
 #[derive(RdmStructSize)]
 pub struct AnnoU8(pub u8);
 
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[repr(transparent)]
 #[derive(RdmStructSize)]
 pub struct AnnoU16(pub u16);
 
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[repr(transparent)]
 #[derive(RdmStructSize)]
 pub struct AnnoU32(pub u16);
@@ -538,8 +409,8 @@ impl crate::rdm_writer::Describe for AnnoChar {
     fn byte(&self) -> u8 {
         self.0
     }
-    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::default();
+    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::new(plan);
         r.bytes(&[self.0]);
         r
     }
@@ -548,8 +419,8 @@ impl crate::rdm_writer::Describe for AnnoU8 {
     fn byte(&self) -> u8 {
         self.0
     }
-    fn describe(&self, _: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
-        let mut r = crate::rdm_writer::Record::default();
+    fn describe(&self, plan: &mut crate::rdm_writer::Plan) -> crate::rdm_writer::Record {
+        let mut r = crate::rdm_writer::Record::new(plan);
         r.bytes(&[self.0]);
         r
     }
