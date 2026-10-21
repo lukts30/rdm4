@@ -1,16 +1,16 @@
 use bytes::{Buf, Bytes};
-use rdm_derive::RdmStructSize;
+
 use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
-use binrw::binrw;
+use binrw::{binread, binrw};
+use rdm_derive::RdmDescribe;
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
 #[derive(Clone, Debug)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
-#[derive(RdmStructSize)]
+#[binread]
+#[derive(RdmDescribe)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
     #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
@@ -344,17 +344,16 @@ impl VertexFormat2 {
     }
 
     pub fn read_format_via_data(rdm: &RdmFile<RdmKindMesh>) -> Self {
-        let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
+        let meta: &rdm_data_main::Meta = rdm.header1.meta.as_ref().unwrap();
         let format_identifiers = &meta.format_identifiers;
 
         let ids = &format_identifiers.rdm_container;
-        assert_eq!(ids.info.part_size, 16);
 
-        let vec: Vec<VertexIdentifier> = ids.iter().cloned().collect();
+        let vec: Vec<VertexIdentifier> = ids.to_vec();
 
-        let vertex_count = meta.vertex.info.count;
-        let vertex_size = meta.vertex.info.part_size;
-        let mut vertex_buffer: Vec<u8> = meta.vertex.iter().map(|x| x.0).collect();
+        let vertex_count = meta.vertex.count;
+        let vertex_size = meta.vertex.stride;
+        let mut vertex_buffer: Vec<u8> = meta.vertex.bytes.clone();
         if rdm.big_endian {
             // Normalize to the LE representation used by all vertex consumers.
             // Packed N4b/I4b/W4b/etc. are U32 words, not four independent bytes.
@@ -976,5 +975,33 @@ mod tests_vertex {
         for i in 0..6 {
             assert_eq!(&bytes2[i], &bytes[i]);
         }
+    }
+}
+
+impl crate::rdm_writer::Describe for VertexSemantic {
+    fn append_to<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(self.clone() as u32);
+    }
+}
+impl crate::rdm_writer::Describe for StorageType {
+    fn append_to<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(*self as u32);
+    }
+}
+impl crate::rdm_writer::Describe for VertexInterpretation {
+    fn append_to<'a>(
+        &'a self,
+        _: &mut crate::rdm_writer::Plan<'a>,
+        record: &mut crate::rdm_writer::Record,
+    ) {
+        record.append_u32(self.0);
     }
 }

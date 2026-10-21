@@ -136,7 +136,7 @@ mod tests {
         // Original Anno 2070 jellyfish mesh and animation.
         let mesh_path = "rdm/jellyfish_lod0.rdm";
         let source: RdmFile<RdmKindMesh> = File::open(mesh_path).unwrap().read_le().unwrap();
-        assert_eq!(source.header1.meta.info.part_size, 68);
+        assert_eq!(source.header1.meta.as_ref().unwrap().source_stride(), 68);
         let anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
         assert_eq!(anim.sampling_rate, 60);
         let tracks = anim.anim_vec.clone();
