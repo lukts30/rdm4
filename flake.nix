@@ -140,6 +140,7 @@
 
           devShells.default = pkgs.mkShell {
             name = "rdm4-dev";
+            RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
             inputsFrom = [ config.pre-commit.devShell ];
             packages = with pkgs; [
               config.treefmt.build.wrapper
