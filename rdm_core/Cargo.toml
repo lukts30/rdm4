@@ -1,0 +1,15 @@
+[package]
+name = "rdm_core"
+version = "0.0.0"
+publish = false
+authors = ["lukts30 <llukas21307@gmail.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/lukts30/rdm4"
+
+[dependencies]
+half = "1.8.3"
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"
