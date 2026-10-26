@@ -36,6 +36,7 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
+        "aarch64-darwin"
       ];
       perSystem =
         {
@@ -46,15 +47,25 @@
         }:
         let
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
-          gltfValidatorVersion = "2.0.0-dev.3.3";
+          isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+          # macOS build is x86_64 and runs via Rosetta on arm64.
+          gltfValidatorVersion = "2.0.0-dev.3.10";
           gltfValidatorBin = pkgs.stdenvNoCC.mkDerivation {
             pname = "gltf_validator-bin";
             version = gltfValidatorVersion;
 
-            src = pkgs.fetchurl {
-              url = "https://github.com/KhronosGroup/glTF-Validator/releases/download/${gltfValidatorVersion}/gltf_validator-${gltfValidatorVersion}-linux64.tar.xz";
-              hash = "sha256-+Afr011Gu1E8q4ipIOY6wMM1t33PS5HNjQnqZhszW80=";
-            };
+            src = pkgs.fetchurl (
+              if isDarwin then
+                {
+                  url = "https://github.com/KhronosGroup/glTF-Validator/releases/download/${gltfValidatorVersion}/gltf_validator-${gltfValidatorVersion}-macos64.tar.xz";
+                  hash = "sha256-vOic7qALTTGRqHeQGPQXRLhKRTmxJ0ZdY7qDrQ8kP+8=";
+                }
+              else
+                {
+                  url = "https://github.com/KhronosGroup/glTF-Validator/releases/download/${gltfValidatorVersion}/gltf_validator-${gltfValidatorVersion}-linux64.tar.xz";
+                  hash = "sha256-Fo66iHlkElq+F66XiZs40LPP1zwmbHhCTBlJKd3LxSI=";
+                }
+            );
 
             dontConfigure = true;
             dontBuild = true;
@@ -106,13 +117,17 @@
           };
 
           packages = {
-            gltf_validator = pkgs.buildFHSEnv {
-              name = "gltf_validator";
-              targetPkgs = pkgs: [
-                pkgs.stdenv.cc.cc.lib
-              ];
-              runScript = "${gltfValidatorBin}/bin/gltf_validator";
-            };
+            gltf_validator =
+              if isDarwin then
+                gltfValidatorBin
+              else
+                pkgs.buildFHSEnv {
+                  name = "gltf_validator";
+                  targetPkgs = pkgs: [
+                    pkgs.stdenv.cc.cc.lib
+                  ];
+                  runScript = "${gltfValidatorBin}/bin/gltf_validator";
+                };
 
             rdm4-bin = pkgs.rustPlatform.buildRustPackage {
               pname = cargoToml.package.name;
