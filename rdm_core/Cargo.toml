@@ -1,0 +1,17 @@
+[package]
+name = "rdm_core"
+version = "0.0.0"
+publish = false
+authors = ["lukts30 <llukas21307@gmail.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/lukts30/rdm4"
+
+[dependencies]
+facet = "0.46.5"
+facet-reflect = "0.46.5"
+log = "0.4"
+
+[dev-dependencies]
+rdm4lib = { path = "../rdm4lib" }
+binrw = "=0.15.2"
