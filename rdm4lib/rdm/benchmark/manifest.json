@@ -1,0 +1,288 @@
+[
+  {
+    "id": 0,
+    "source": "corpus",
+    "path": "00-stadium_fence_lod4.rdm",
+    "bytes": 271,
+    "sha256": "6ba6eb92e09cad359637bbd8068102e5138245593ea21e014ab7b6fe3e34dac4",
+    "groups": [
+      "neither-mesh-nor-animation"
+    ],
+    "source_path": "data25.rda/data/dlc11/graphics/buildings/special/airship_hangar/rdm/stadium_fence_lod4.rdm"
+  },
+  {
+    "id": 1,
+    "source": "corpus",
+    "path": "01-weaving_machine_simple_idle_01.rdm",
+    "bytes": 340,
+    "sha256": "77ee277cf2b761924a552f72aa09db7637f09f25436e5891f4ca3ce213d507d3",
+    "groups": [
+      "neither-mesh-nor-animation"
+    ],
+    "source_path": "data16.rda/data/dlc06/graphics/buildings/production/production_colony02_14/rdm/weaving_machine_simple_idle_01.rdm"
+  },
+  {
+    "id": 2,
+    "source": "corpus",
+    "path": "02-hook_idle_01.rdm",
+    "bytes": 464,
+    "sha256": "04bceac0c45fff6a2ffc48e0b09bb9e77531256263f251ea3aff413467892833",
+    "groups": [
+      "animation"
+    ],
+    "source_path": "data24.rda/data/dlc11/graphics/buildings/production/dropgoods_factory/anim/hook_idle_01.rdm"
+  },
+  {
+    "id": 3,
+    "source": "corpus",
+    "path": "03-impostor.rdm",
+    "bytes": 648,
+    "sha256": "dd7732a3b3b216b74cc06e5e28b738cb2aac652f886e3ff5d683882b8095fcae",
+    "groups": [
+      "mesh-u16-root48"
+    ],
+    "source_path": "data10.rda/data/graphics/shared_textures/impostor.rdm"
+  },
+  {
+    "id": 4,
+    "source": "corpus",
+    "path": "04-object_cutout.rdm",
+    "bytes": 690,
+    "sha256": "abd31d9e0b3ec100345aa63ba95e651fbfe62f437686e536904bdc1517bfc08e",
+    "groups": [
+      "mesh-u16-root52"
+    ],
+    "source_path": "data20.rda/data/cdlc05/graphics/buildings/ornamental/toilet_02/rdm/object_cutout.rdm"
+  },
+  {
+    "id": 5,
+    "source": "corpus",
+    "path": "05-park_props_system_1x1_03_decal_detail01_lod0.rdm",
+    "bytes": 904,
+    "sha256": "cf76db4dd121225a95d6560ac3052aa4863767422ab5708d0a39e37a42b15cda",
+    "groups": [
+      "mesh-u32"
+    ],
+    "source_path": "data10.rda/data/graphics/buildings/ornamental/park_colony01_props_system/park_props_system_1x1/rdm/park_props_system_1x1_03_decal_detail01_lod0.rdm"
+  },
+  {
+    "id": 6,
+    "source": "corpus",
+    "path": "06-heavy_04_conveyor_lod2.rdm",
+    "bytes": 2141,
+    "sha256": "a50d16197fb12885896081a589038dc2aa0d986e26d07a0b6ce9a347fc3fb73b",
+    "groups": [
+      "multi-model"
+    ],
+    "source_path": "data8.rda/data/graphics/buildings/production/heavy_04/rdm/heavy_04_conveyor_lod2.rdm"
+  },
+  {
+    "id": 7,
+    "source": "corpus",
+    "path": "07-hacienda_beet_lod0.rdm",
+    "bytes": 6956,
+    "sha256": "ab2ea70361ca9d602cfc4604772b481970d1a02719ff0ce2fc0ff8bcec19b82a",
+    "groups": [
+      "mesh-u16-root52"
+    ],
+    "source_path": "data25.rda/data/dlc12/graphics/buildings/special/hacienda/living_space_module/rdm/hacienda_beet_lod0.rdm"
+  },
+  {
+    "id": 8,
+    "source": "corpus",
+    "path": "08-barrel_pile_01_lod3.rdm",
+    "bytes": 11646,
+    "sha256": "aef85763a6527cf013e868e45f9c0b1769a351051b09fdf0c381745ac2bf84f6",
+    "groups": [
+      "mesh-u16-root48"
+    ],
+    "source_path": "data8.rda/data/graphics/props/storage/rdm/barrel_pile_01_lod3.rdm"
+  },
+  {
+    "id": 9,
+    "source": "corpus",
+    "path": "09-hop_worker_stand_01.rdm",
+    "bytes": 17058,
+    "sha256": "2d92730ffabee1436113aa27570c1a6bd5bdaa1ca42f5844d4e18b734761ec0a",
+    "groups": [
+      "animation"
+    ],
+    "source_path": "data8.rda/data/graphics/units/inhabitants/production/hop_worker_01/anims/hop_worker_stand_01.rdm"
+  },
+  {
+    "id": 10,
+    "source": "corpus",
+    "path": "10-park_props_system_1x1_42_decal_detail02_lod0.rdm",
+    "bytes": 38220,
+    "sha256": "048f3e2e701f186bb20da99b81fd95b19302e97abe4e9b0650ec53f58180ae97",
+    "groups": [
+      "mesh-u32"
+    ],
+    "source_path": "data18.rda/data/graphics/buildings/ornamental/park_props_system/park_props_system_1x1/rdm/park_props_system_1x1_42_decal_detail02_lod0.rdm"
+  },
+  {
+    "id": 11,
+    "source": "corpus",
+    "path": "11-dropgoods_factory_depot_mines_static_lod2.rdm",
+    "bytes": 51353,
+    "sha256": "92d89d389f44be0481c62607452e6aab10030f5afd387873552d2ebb6257a077",
+    "groups": [
+      "multi-model"
+    ],
+    "source_path": "data24.rda/data/dlc11/graphics/buildings/production/dropgoods_factory/rdm/dropgoods_factory_depot_mines_static_lod2.rdm"
+  },
+  {
+    "id": 12,
+    "source": "corpus",
+    "path": "12-palace_hall_tpart_building_lod3.rdm",
+    "bytes": 88826,
+    "sha256": "9915e4d8c452a9030c3efc003931971688ed34da4ab99dfb04fac0011874cbe9",
+    "groups": [
+      "mesh-u16-root52"
+    ],
+    "source_path": "data14.rda/data/dlc04/graphics/buildings/special/palace/palace_t_crossing/rdm/palace_hall_tpart_building_lod3.rdm"
+  },
+  {
+    "id": 13,
+    "source": "corpus",
+    "path": "13-music_pavilion_lod1.rdm",
+    "bytes": 105920,
+    "sha256": "50a22aaa0ad5a7a125abb6a3f12bed35fe188dde015658b635295097a50cc0ec",
+    "groups": [
+      "mesh-u16-root48"
+    ],
+    "source_path": "data12.rda/data/dlc02/graphics/buildings/cultural/music_pavilion/rdm/music_pavilion_lod1.rdm"
+  },
+  {
+    "id": 14,
+    "source": "corpus",
+    "path": "14-service_04_decal_detail01_lod0.rdm",
+    "bytes": 201548,
+    "sha256": "4b3f4d3860f3266b9593acb4da7c19bcf38df907364a90e911618a20f255b7fd",
+    "groups": [
+      "mesh-u32"
+    ],
+    "source_path": "data24.rda/data/graphics/buildings/public/service_04/rdm/service_04_decal_detail01_lod0.rdm"
+  },
+  {
+    "id": 15,
+    "source": "corpus",
+    "path": "15-mining_08_slot_01_lod0.rdm",
+    "bytes": 536389,
+    "sha256": "ce8c7f57dd527ef022a1d293c47638cc7d7833874379f32060fa50be13bda32a",
+    "groups": [
+      "multi-model"
+    ],
+    "source_path": "data8.rda/data/graphics/buildings/production/mining_08/rdm/mining_08_slot_01_lod0.rdm"
+  },
+  {
+    "id": 16,
+    "source": "corpus",
+    "path": "16-ai_02_angry_talk_idle.rdm",
+    "bytes": 604258,
+    "sha256": "dda14ada5ee34dcd9d81dda6c4114ef7597febb0bd51d384ccb68ca51b62ac37",
+    "groups": [
+      "animation"
+    ],
+    "source_path": "data8.rda/data/graphics/portraits/narrative/ai_02/anim/ai_02_angry_talk_idle.rdm"
+  },
+  {
+    "id": 17,
+    "source": "corpus",
+    "path": "17-advisor_01_friendly.rdm",
+    "bytes": 2450012,
+    "sha256": "06fe00a97c877b32d91a065aed7be64e10efb823c9f8db819ec7428d694d93b4",
+    "groups": [
+      "animation"
+    ],
+    "source_path": "data8.rda/data/graphics/portraits/narrative/advisor_01/anim/advisor_01_friendly.rdm"
+  },
+  {
+    "id": 18,
+    "source": "corpus",
+    "path": "18-paloma.rdm",
+    "bytes": 3599579,
+    "sha256": "41e48e70700e37a8077a374a080d83be9811a441eac5ba3fa370d4a30733cb31",
+    "groups": [
+      "mesh-u16-root52"
+    ],
+    "source_path": "data24.rda/data/dlc11/graphics/portraits/narrative/paloma/rdm/paloma.rdm"
+  },
+  {
+    "id": 19,
+    "source": "corpus",
+    "path": "19-ai_01.rdm",
+    "bytes": 3638102,
+    "sha256": "65bb1f67ae0b99431b547b8cfa141b8c5aa8867153cc64a08493b1e467854c50",
+    "groups": [
+      "mesh-u16-root48"
+    ],
+    "source_path": "data8.rda/data/graphics/portraits/narrative/ai_01/rdm/ai_01.rdm"
+  },
+  {
+    "id": 20,
+    "source": "corpus",
+    "path": "20-monument_01_04_var3_lod0.rdm",
+    "bytes": 6514302,
+    "sha256": "944f6f268ba782cdbb1e461003e0c891f05d214b4c12d616ef880ab4a8a954e1",
+    "groups": [
+      "multi-model"
+    ],
+    "source_path": "data8.rda/data/graphics/buildings/public/monument_01/monument_01_04/rdm/monument_01_04_var3_lod0.rdm"
+  },
+  {
+    "id": 21,
+    "source": "corpus",
+    "path": "21-3rd_party_08.rdm",
+    "bytes": 7618683,
+    "sha256": "cb3a5d9c2901314fa63565fd0b1e86894f57e593a8a9222e761a38be21ffdfe5",
+    "groups": [
+      "mesh-u32"
+    ],
+    "source_path": "data8.rda/data/graphics/portraits/narrative/3rd_party_08/rdm/3rd_party_08.rdm"
+  },
+  {
+    "id": 22,
+    "source": "anchor",
+    "path": "22-basalt_crusher_others_idle01.rdm",
+    "bytes": 1502,
+    "sha256": "d236661814794402f6194b8642350d99558c8c9a139d2aee97bdd1d140567053",
+    "groups": [
+      "anchor"
+    ],
+    "source_path": "rdm4lib/rdm/basalt_crusher_others_idle01.rdm"
+  },
+  {
+    "id": 23,
+    "source": "anchor",
+    "path": "23-basalt_crusher_others_lod0.rdm",
+    "bytes": 36483,
+    "sha256": "762938fa3d718fab8ae29048487f08ca0abe7aec3e69b29dc1a5a51f6fefff51",
+    "groups": [
+      "anchor"
+    ],
+    "source_path": "rdm4lib/rdm/basalt_crusher_others_lod0.rdm"
+  },
+  {
+    "id": 24,
+    "source": "anchor",
+    "path": "24-jellyfish_idle01.rdm",
+    "bytes": 213495,
+    "sha256": "48a99899f4c4f22c93773ecfdb16ea4d5adaa8f9a7eb20929b8f7b37477fdac4",
+    "groups": [
+      "anchor"
+    ],
+    "source_path": "rdm4lib/rdm/jellyfish_idle01.rdm"
+  },
+  {
+    "id": 25,
+    "source": "anchor",
+    "path": "25-destruction_stone_building_04_decal_detail01_lod0.rdm",
+    "bytes": 1639112,
+    "sha256": "574d9d571ef9411a2c60c6f7d4dbb34f75505ea4bc1b16005705c6127a20969b",
+    "groups": [
+      "anchor"
+    ],
+    "source_path": "rdm4lib/rdm/destruction_stone_building_04_decal_detail01_lod0.rdm"
+  }
+]
