@@ -1,7 +1,8 @@
 # rdm_core
 
 Reads RDM documents into typed records and writes unchanged documents back
-byte for byte. No scene model, glTF or conversion.
+byte for byte. No scene model, glTF or conversion. See [DESIGN.md](DESIGN.md)
+for the design, measurements and comparison with earlier readers.
 
 ```rust
 let document = rdm_core::Document::open("model.rdm")?;
