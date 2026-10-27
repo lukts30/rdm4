@@ -6,25 +6,30 @@ Guidance for AI coding agents operating in this repository.
 
 **rdm4** is a Rust CLI tool that converts 3D model files between the
 proprietary RDM format (Anno 1800) and glTF 2.0. It is a Cargo workspace
-with three crates:
+with five crates:
 
-| Crate        | Path          | Kind                          |
-| ------------ | ------------- | ----------------------------- |
-| `rdm4-bin`   | `src/main.rs` | Binary (CLI entry point)      |
-| `rdm4lib`    | `rdm4lib/`    | Library (core RDM/glTF logic) |
-| `rdm_derive` | `rdm_derive/` | Proc-macro (`RdmStructSize`)  |
+| Crate             | Path               | Kind                                    |
+| ----------------- | ------------------ | --------------------------------------- |
+| `rdm4-bin`        | `src/main.rs`      | Binary (CLI entry point)                |
+| `rdm4lib`         | `rdm4lib/`         | Library (core RDM/glTF logic)           |
+| `rdm_derive`      | `rdm_derive/`      | Proc-macro (`RdmStructSize`)            |
+| `rdm_core`        | `rdm_core/`        | Library (byte-identical RDM read/write) |
+| `rdm_core_derive` | `rdm_core/derive/` | Proc-macro (`#[derive(Record)]`)        |
+
+`rdm_core` is independent of `rdm4lib`; see `rdm_core/README.md`.
 
 ## Repository Layout
 
-Dependency updates may touch three `Cargo.toml` files:
+Dependency updates may touch these `Cargo.toml` files:
 
 - `Cargo.toml` (workspace root / CLI package)
 - `rdm4lib/Cargo.toml` (core conversion logic)
 - `rdm_derive/Cargo.toml` (proc-macro dependencies)
+- `rdm_core/Cargo.toml` and `rdm_core/derive/Cargo.toml`
 
-Cargo recognizes all three crates as workspace members. The root package is
-included implicitly, `rdm_derive` is listed explicitly, and the in-tree
-`rdm4lib` path dependency is included automatically.
+The root package is included implicitly, `rdm_derive`, `rdm_core` and
+`rdm_core/derive` are listed explicitly, and the in-tree `rdm4lib` path
+dependency is included automatically.
 
 ## External Instructions
 

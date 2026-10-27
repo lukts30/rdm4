@@ -746,6 +746,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rdm_core"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "half",
+ "log",
+ "rdm_core_derive",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "rdm_core_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
+
+[[package]]
 name = "rdm_derive"
 version = "0.1.0"
 dependencies = [

@@ -9,7 +9,9 @@ repository = "https://github.com/lukts30/rdm4"
 
 [workspace]
 members = [
-    "rdm_derive"
+    "rdm_derive",
+    "rdm_core",
+    "rdm_core/derive",
 ]
 
 [dependencies]
