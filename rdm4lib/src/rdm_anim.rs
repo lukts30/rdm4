@@ -30,18 +30,18 @@ impl RdAnim {
             "  Endianness: {}",
             if rdmm.big_endian { "big" } else { "little" }
         );
-        let v = &rdmm.header1.meta_anim.anims;
+        let v = &rdmm.header1.meta_anim.as_ref().unwrap().anims;
 
-        let time_max = rdmm.header1.meta_anim.time_max;
+        let time_max = rdmm.header1.meta_anim.as_ref().unwrap().time_max;
         // let name_anim = rdmm.header1.meta.name.as_ascii().into();
 
         let mut anim_vec: Vec<FrameCollection> = Vec::with_capacity(v.len());
 
         for x in v.iter() {
-            let ent_model = x.j_name.as_ascii().into();
+            let ent_model = std::str::from_utf8(&x.j_name).unwrap().into();
             let ent = FrameCollection {
                 name: ent_model,
-                frames: x.j_data.storage.items.clone(),
+                frames: x.j_data.clone(),
             };
             anim_vec.push(ent);
         }
@@ -50,7 +50,7 @@ impl RdAnim {
             anim_vec,
             name: name_anim,
             time_max,
-            sampling_rate: rdmm.header1.meta_anim.sampling_rate,
+            sampling_rate: rdmm.header1.meta_anim.as_ref().unwrap().sampling_rate,
         }
     }
 }

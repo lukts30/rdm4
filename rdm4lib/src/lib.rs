@@ -32,6 +32,7 @@ use vertex::VertexFormat2;
 pub mod rdm_container;
 pub mod rdm_data_anim;
 pub mod rdm_data_main;
+mod rdm_writer;
 
 pub struct RdModell {
     rdmf: Option<RdmFile<RdmKindMesh>>,
@@ -64,7 +65,7 @@ impl RdModell {
     pub fn add_skin(&mut self) {
         let rdm = self.rdmf.as_ref().unwrap();
 
-        let raw_joints = &***rdm.header1.skin.joint;
+        let raw_joints = &rdm.header1.skin.as_ref().unwrap().joint;
         let mut joints_vec = vec![];
 
         for raw_joint in raw_joints {
@@ -88,7 +89,7 @@ impl RdModell {
             let v_transformed = unit_quaternion.transform_vector(&v).scale(-1.0);
 
             let joint = RdJoint {
-                name: String::from(raw_joint.name.as_ascii()),
+                name: String::from_utf8(raw_joint.name.clone()).unwrap(),
                 transition: [v_transformed.x, v_transformed.y, v_transformed.z],
                 quaternion: [
                     quaternion_mat4.x,
@@ -124,7 +125,7 @@ impl RdModell {
 
         debug!(
             "    Stored bounds (min, max): {:?}",
-            rdm.header1.meta.bounds()
+            rdm.header1.meta.as_ref().unwrap().bounds()
         );
         debug!(
             "    Calculated bounds (min, max): {:?}",
@@ -144,17 +145,23 @@ impl RdModell {
             );
             offset += component.get_size();
         }
-        let index_type = rdm.header1.meta.index_format.element_type;
+        let index_type = rdm.header1.meta.as_ref().unwrap().index_format.element_type;
         info!(
             "    Index type: {:?} ({} bytes)",
             index_type,
             index_type.byte_size()
         );
 
-        let triangles_idx_count = rdm.header1.meta.triangle_list_len();
+        let triangles_idx_count = rdm.header1.meta.as_ref().unwrap().triangle_list_len();
         let triangles_real_count = triangles_idx_count / 3;
         let mut triangles = Vec::with_capacity(triangles_real_count as usize);
-        let ts: Vec<_> = rdm.header1.meta.triangle_list(rdm.big_endian).collect();
+        let ts: Vec<_> = rdm
+            .header1
+            .meta
+            .as_ref()
+            .unwrap()
+            .triangle_list(rdm.big_endian)
+            .collect();
         for x in ts.chunks(3) {
             let t = Triangle {
                 indices: [x[0], x[1], x[2]],
@@ -162,7 +169,7 @@ impl RdModell {
             triangles.push(t);
         }
 
-        let mesh_info: Vec<_> = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
+        let mesh_info: Vec<_> = rdm.header1.meta.as_ref().unwrap().mesh_info.to_vec();
         info!("    Triangles: {}", triangles_real_count);
         for (index, primitive) in mesh_info.iter().enumerate() {
             info!("    Primitive #{}", index);
@@ -208,12 +215,11 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 #[cfg(test)]
 mod tests_intern {
     use super::*;
-    use binrw::{BinWriterExt, Endian};
 
     #[test]
     fn reads_u32_indices_without_truncation() {
         let model = RdModell::from("rdm/destruction_stone_building_04_decal_detail01_lod0.rdm");
-        let meta = &model.rdmf.as_ref().unwrap().header1.meta;
+        let meta = model.rdmf.as_ref().unwrap().header1.meta.as_ref().unwrap();
         assert_eq!(meta.index_format.element_type, vertex::StorageType::U32);
         assert_eq!(model.triangle_indices.len(), 37_240);
         let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
@@ -250,9 +256,9 @@ mod tests_intern {
         let expected = RdModell::new(bytes.to_vec());
         for index_size in [2, 4] {
             let mut raw: RdmFile<RdmKindMesh> = std::io::Cursor::new(bytes).read_le().unwrap();
-            let meta = &mut raw.header1.meta;
+            let meta = raw.header1.meta.as_mut().unwrap();
             // Build a BE fixture independently of the reader's normalization.
-            for vertex in meta.vertex.storage.items.chunks_exact_mut(24) {
+            for vertex in meta.vertex.bytes.chunks_exact_mut(24) {
                 for field in vertex[..8].chunks_exact_mut(2) {
                     field.reverse();
                 }
@@ -268,22 +274,17 @@ mod tests_intern {
             } else {
                 vertex::StorageType::U32
             };
-            meta.triangle_list.info.part_size = index_size;
-            meta.triangle_list.storage.items = expected
+            meta.triangle_list.stride = index_size;
+            meta.triangle_list.bytes = expected
                 .triangle_indices
                 .iter()
                 .flat_map(|t| t.indices)
                 .flat_map(|i| i.to_be_bytes()[4 - index_size as usize..].to_vec())
-                .map(rdm_container::AnnoU8)
                 .collect();
             let mut output = std::io::Cursor::new(Vec::new());
-            output.write_type_args(&raw, Endian::Big, ()).unwrap();
-            let mut output = output.into_inner();
-            // The public writer deliberately continues to emit an LE preamble.
-            output[3] = 0;
-            for word in output[4..20].chunks_exact_mut(4) {
-                word.reverse();
-            }
+            raw.big_endian = true;
+            raw.write_rdm(&mut output).unwrap();
+            let output = output.into_inner();
             let actual = RdModell::new(output);
             assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
             let indices = |model: &RdModell| {
