@@ -255,6 +255,74 @@ fn gltf_command_and_alias_match_legacy_output() {
             .args(["--format", "gltf"]),
     );
     assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+    for name in [
+        "excavator_tycoons_lod1.rdm",
+        "destruction_stone_building_04_decal_detail01_lod0.rdm",
+    ] {
+        let expected = legacy_directory.join("variant.glb");
+        let actual = ng_directory.join("variant.glb");
+        succeeds(
+            legacy()
+                .arg("-i")
+                .arg(fixture(name))
+                .arg("-o")
+                .arg(&expected)
+                .arg("--force"),
+        );
+        succeeds(
+            ng().arg("gltf")
+                .arg(fixture(name))
+                .arg("-o")
+                .arg(&actual)
+                .arg("--force"),
+        );
+        assert_eq!(
+            fs::read(actual).unwrap(),
+            fs::read(expected).unwrap(),
+            "{name}"
+        );
+    }
+    let input = fixture("benchmark/06-heavy_04_conveyor_lod2.rdm");
+    let actual = ng_directory.join("selected.glb");
+    let missing_selection = ng()
+        .arg("gltf")
+        .arg(&input)
+        .arg("-o")
+        .arg(&actual)
+        .output()
+        .unwrap();
+    assert_eq!(missing_selection.status.code(), Some(1));
+    assert!(String::from_utf8(missing_selection.stderr)
+        .unwrap()
+        .contains("--mesh-index"));
+    assert!(!actual.exists());
+    succeeds(
+        ng().arg("gltf")
+            .arg(&input)
+            .args(["--mesh-index", "1"])
+            .arg("-o")
+            .arg(&actual),
+    );
+    let bytes = fs::read(&input).unwrap();
+    let word = |at| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let models = word(0x20);
+    let second = models + word(models - 4);
+    let (document, _, _) = gltf::import(actual).unwrap();
+    let primitives: Vec<_> = document.meshes().next().unwrap().primitives().collect();
+    assert_eq!(
+        primitives[0]
+            .get(&gltf::Semantic::Positions)
+            .unwrap()
+            .count(),
+        word(word(second + 12) - 8)
+    );
+    assert_eq!(
+        primitives
+            .iter()
+            .map(|p| p.indices().unwrap().count())
+            .sum::<usize>(),
+        word(word(second + 16) - 8)
+    );
 }
 
 fn make_glb(directory: &Path) -> PathBuf {

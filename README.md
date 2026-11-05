@@ -27,6 +27,7 @@ The subcommand CLI provides conversion and inspection:
 rdm4ng gltf model.rdm -o model.glb
 rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
+rdm4ng gltf multi_model.rdm --mesh-index 1 -o selected.glb
 rdm4ng inspect model.rdm
 rdm4ng inspect model.rdm --format json
 rdm4ng inspect model.rdm --records --format json
@@ -36,6 +37,9 @@ rdm4ng inspect model.rdm --records --format json
 for options. `rdm4-bin` remains available with its existing arguments.
 Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
+
+`rdm4ng gltf` uses the new reader with the existing glTF exporter. Multi-model
+inputs require `--mesh-index` (zero-based). `rdm4-bin` retains the legacy reader.
 
 `inspect` uses the new scanner to list physical blocks and preamble metadata.
 Unknown record layouts are accepted by default. `--records` additionally decodes

@@ -88,6 +88,9 @@ impl From<FileArgs> for Files {
 struct GltfArgs {
     #[command(flatten)]
     files: FileArgs,
+    /// RDM model index; required for files containing multiple models.
+    #[arg(long)]
+    mesh_index: Option<usize>,
     /// Export the available skeleton.
     #[arg(short, long)]
     skeleton: bool,
@@ -137,13 +140,22 @@ pub fn run() -> ExitCode {
     let cli = Cli::parse();
     init_logging(cli.verbose);
     match cli.command {
-        Command::Gltf(args) => commands::gltf(GltfOptions {
-            files: args.files.into(),
-            skeleton: args.skeleton || args.animation.is_some(),
-            animation: args.animation,
-            format: args.format,
-            textures: args.textures,
-        }),
+        Command::Gltf(args) => {
+            let result = commands::gltf_ng(
+                GltfOptions {
+                    files: args.files.into(),
+                    skeleton: args.skeleton || args.animation.is_some(),
+                    animation: args.animation,
+                    format: args.format,
+                    textures: args.textures,
+                },
+                args.mesh_index,
+            );
+            if let Err(error) = result {
+                eprintln!("gltf: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
         Command::Rdm(args) => commands::rdm(RdmOptions {
             files: args.files.into(),
             format: args.format,

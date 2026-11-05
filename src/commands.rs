@@ -1,6 +1,7 @@
 //! Command execution, independent of CLI argument parsing.
 
 use std::{
+    error::Error,
     fs::File,
     io::{self, BufReader, Write},
     path::{Path, PathBuf},
@@ -237,14 +238,13 @@ pub struct RdmOptions {
 
 /// Convert an RDM mesh, optionally with skin and animation, to glTF/GLB.
 pub fn gltf(opts: GltfOptions) {
-    let output = opts.files.destination("gltf");
     let mut rdm = RdModell::from(opts.files.input.as_path());
     if opts.skeleton && opts.animation.is_none() {
         rdm.add_skin();
         info!("  Skin: {} joints", rdm.joints.as_ref().unwrap().len());
     } else if opts.skeleton && opts.animation.is_some() {
         rdm.add_skin();
-        let anim = RdAnim::from(opts.animation.unwrap().as_path());
+        let anim = RdAnim::from(opts.animation.as_ref().unwrap().as_path());
         rdm.add_anim(anim);
         info!(
             "  Skin: {} joints; animation added",
@@ -254,6 +254,52 @@ pub fn gltf(opts: GltfOptions) {
         info!("  Skin and animation: not exported");
     }
 
+    export_gltf(opts, rdm);
+}
+
+/// Convert RDM using the new reader and the existing glTF exporter.
+/// Multi-model inputs require an explicit selection.
+pub fn gltf_ng(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
+    let document = read_document(&opts.files.input)?;
+    let count = document.models.as_ref().map_or(0, Vec::len);
+    let index = match (mesh_index, count) {
+        (Some(index), _) => index,
+        (None, 1) => 0,
+        (None, 0) => return Err("input contains no models".into()),
+        (None, _) => {
+            return Err(format!(
+                "input contains {count} models; select one with --mesh-index (0..{})",
+                count - 1
+            )
+            .into())
+        }
+    };
+    let mut rdm = document.into_model(index, opts.skeleton)?;
+    if let Some(path) = &opts.animation {
+        let name = path
+            .file_stem()
+            .expect("animation path has a filename")
+            .to_string_lossy()
+            .into_owned();
+        rdm.add_anim(read_document(path)?.into_animation(name)?);
+    }
+    info!(
+        "  Model #{index}: {} vertices; {}",
+        rdm.vertex.len(),
+        rdm.vertex
+    );
+    export_gltf(opts, rdm);
+    Ok(())
+}
+
+fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
+    Ok(RdmReader::new(BufReader::new(File::open(path)?))?
+        .read_root::<RdmDocument>()?
+        .value)
+}
+
+fn export_gltf(opts: GltfOptions, mut rdm: RdModell) {
+    let output = opts.files.destination("gltf");
     if let Some(textures) = opts.textures {
         rdm.mat = Some(RdMaterial::new(textures));
     }
