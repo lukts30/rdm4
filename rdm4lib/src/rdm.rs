@@ -2,6 +2,7 @@
 
 mod error;
 mod framing;
+mod layout;
 mod read;
 mod records;
 mod scanner;
@@ -9,7 +10,8 @@ mod wire;
 
 pub use error::RdmError;
 pub use framing::{RdmBlock, RdmBlockInfo, RdmHeader};
+pub use layout::{RdmBlockLayout, RdmReadResult, RdmSourceLayout};
 pub use read::{RdmDecodedBlock, RdmReadField, RdmReadRecord, RdmReader};
-pub use records::{RdmFrame, RdmMeshGroup};
+pub use records::{RdmExportInfo, RdmFrame, RdmMeshGroup};
 pub use scanner::{RdmScanReport, RdmScanner};
 pub use wire::{RdmEndian, RdmFieldLayout, RdmRecordLayout};

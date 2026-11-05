@@ -2,7 +2,12 @@ use std::io::{Read, Seek, SeekFrom};
 
 use super::wire::Scalar;
 
-use super::{RdmBlockInfo, RdmEndian, RdmError, RdmFieldLayout, RdmRecordLayout, RdmScanner};
+use super::{
+    RdmBlockInfo, RdmBlockLayout, RdmEndian, RdmError, RdmFieldLayout, RdmReadResult,
+    RdmRecordLayout, RdmScanner, RdmSourceLayout,
+};
+
+mod references;
 
 /// Typed records and the codec metadata needed to retain their original tails.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,13 +20,14 @@ pub struct RdmDecodedBlock<T> {
     pub tails: Vec<u8>,
 }
 
-/// Decodes selected typed blocks using the scanner's physical index.
-/// Complete reference coverage is not established by reading individual blocks.
+/// Reads typed records through the scanner's physical block index.
+/// `read_root` requires complete ownership; `read_block` decodes selected blocks.
 #[derive(Debug)]
 pub struct RdmReader<R> {
     source: R,
     endian: RdmEndian,
     blocks: Vec<RdmBlockInfo>,
+    layouts: Vec<Option<RdmBlockLayout>>,
 }
 
 impl<R: Read + Seek> RdmReader<R> {
@@ -38,6 +44,7 @@ impl<R: Read + Seek> RdmReader<R> {
             endian: report
                 .endian
                 .expect("successful scan identifies byte order"),
+            layouts: vec![None; report.blocks.len()],
             blocks: report.blocks,
         })
     }
@@ -47,6 +54,32 @@ impl<R: Read + Seek> RdmReader<R> {
         self.endian
     }
 
+    /// Decode a single root and require one known incoming reference per block.
+    /// Failure to account for a block rejects the read; use the scanner to inspect it.
+    pub fn read_root<T: RdmReadRecord>(mut self) -> Result<RdmReadResult<T>, RdmError> {
+        let raw = self.record_bytes::<4>(0x10, "RdmHeader.root")?;
+        let value = self.read_single::<T>(&raw, 0x10, "RdmHeader.root")?;
+        let mut blocks = Vec::with_capacity(self.blocks.len());
+        for (source, layout) in self.blocks.into_iter().zip(self.layouts) {
+            let Some(layout) = layout else {
+                return Err(RdmError::new(
+                    source.offset,
+                    "block ownership",
+                    "one known incoming reference",
+                    "unclaimed block",
+                ));
+            };
+            blocks.push(layout);
+        }
+        Ok(RdmReadResult {
+            value,
+            layout: RdmSourceLayout {
+                endian: self.endian,
+                blocks,
+            },
+        })
+    }
+
     /// Decode all records at an indexed payload boundary. Unknown tails are kept.
     /// The source and index remain available for reading other blocks.
     pub fn read_block<T: RdmReadRecord>(
@@ -54,22 +87,38 @@ impl<R: Read + Seek> RdmReader<R> {
         payload_offset: u32,
     ) -> Result<RdmDecodedBlock<T>, RdmError> {
         let target = payload_offset as usize;
-        let index = self
-            .blocks
+        let index = self.block_index(target, target, T::NAME)?;
+        self.decode_block::<T>(index, T::NAME)
+    }
+
+    fn block_index(
+        &self,
+        target: usize,
+        at: usize,
+        context: &'static str,
+    ) -> Result<usize, RdmError> {
+        self.blocks
             .binary_search_by_key(&target, |block| block.payload.start)
             .map_err(|_| {
                 RdmError::new(
-                    target,
-                    T::NAME,
+                    at,
+                    context,
                     "indexed block payload boundary",
                     format!("{target:#x}"),
                 )
-            })?;
+            })
+    }
+
+    fn decode_block<T: RdmReadRecord>(
+        &mut self,
+        index: usize,
+        context: &'static str,
+    ) -> Result<RdmDecodedBlock<T>, RdmError> {
         let block = self.blocks[index].clone();
         if !T::STRIDES.contains(&block.stride) || T::SIZE > block.stride as usize {
             return Err(RdmError::new(
                 block.offset + 4,
-                T::NAME,
+                context,
                 format!("stride {:?} covering {} known bytes", T::STRIDES, T::SIZE),
                 block.stride,
             ));

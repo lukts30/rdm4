@@ -120,6 +120,9 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
             const SIZE: usize = 0 #(+ <#types as crate::rdm::RdmFieldLayout>::WIDTH)*;
             const STRIDES: &'static [u32] = &[#(#strides),*];
         }
+        impl crate::rdm::RdmFieldLayout for #name {
+            const WIDTH: usize = 4;
+        }
         #(
             const _: () = assert!(
                 <#name as crate::rdm::RdmRecordLayout>::SIZE <= #strides as usize,
@@ -135,6 +138,16 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
                 )?;
                 #(#reads)*
                 Ok(Self { #(#names: #locals),* })
+            }
+        }
+        impl crate::rdm::RdmReadField for #name {
+            type Args<'a> = ();
+
+            fn read_field<R: std::io::Read + std::io::Seek>(
+                reader: &mut crate::rdm::RdmReader<R>, raw: &[u8], at: usize,
+                context: &'static str, _args: (),
+            ) -> Result<Self, crate::rdm::RdmError> {
+                reader.read_single::<Self>(raw, at, context)
             }
         }
     })
