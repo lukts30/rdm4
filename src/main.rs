@@ -269,3 +269,37 @@ fn convert_gltf_to_rdm(opts: Opts) {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_all_blender_addon_vertex_format_options() {
+        use TargetVertexFormat::*;
+
+        let input =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rdm4lib/rdm/gltf/stormtrooper.gltf");
+        // Spellings emitted by the add-on's shell command, after tokenization.
+        for (name, expected) in [
+            ("P4h_N4b_G4b_B4b_T2h", P4h_N4b_G4b_B4b_T2h),
+            ("P4h_N4b_G4b_B4b_T2h_I4b", P4h_N4b_G4b_B4b_T2h_I4b),
+            ("P4h_N4b_G4b_B4b_T2h_I4b_W4b", P4h_N4b_G4b_B4b_T2h_I4b_W4b),
+            ("P3f_N3f_G3f_B3f_T2f_C4b", P3f_N3f_G3f_B3f_T2f_C4b),
+            ("P4h_N4b_G4b_B4b_T2h_C4b_C4b", P4h_N4b_G4b_B4b_T2h_C4b_C4b),
+            ("P4h_T2h_C4b", P4h_T2h_C4b),
+        ] {
+            let options = Opts::try_parse_from([
+                "rdm4-bin",
+                "--input",
+                input.to_str().unwrap(),
+                &format!("--gltf={name}"),
+                "-n",
+                "--outdst",
+                input.parent().unwrap().to_str().unwrap(),
+            ])
+            .unwrap();
+            assert_eq!(options.gltf, Some(expected));
+        }
+    }
+}

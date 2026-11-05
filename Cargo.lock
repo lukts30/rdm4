@@ -722,8 +722,10 @@ version = "0.12.0-alpha.1"
 dependencies = [
  "clap",
  "env_logger",
+ "gltf",
  "log",
  "rdm4lib",
+ "tempfile",
 ]
 
 [[package]]
