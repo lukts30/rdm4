@@ -1,4 +1,4 @@
-//! Check both CLI parsers against the same conversion pipeline.
+//! Check conversion compatibility and the inspection command.
 
 use std::{
     fs,
@@ -33,7 +33,7 @@ fn help_version_and_argument_errors() {
     let help = ng().arg("--help").output().unwrap();
     assert!(help.status.success());
     let text = String::from_utf8(help.stdout).unwrap();
-    for name in ["rdm4ng", "gltf", "rdm", "rdm2gltf", "gltf2rdm"] {
+    for name in ["rdm4ng", "gltf", "rdm", "inspect", "rdm2gltf", "gltf2rdm"] {
         assert!(text.contains(name), "{text}");
     }
     let version = ng().arg("--version").output().unwrap();
@@ -46,6 +46,7 @@ fn help_version_and_argument_errors() {
     for invalid in [
         vec![],
         vec!["rdm"],
+        vec!["inspect"],
         vec!["rdm", input.to_str().unwrap()],
         vec!["rdm", input.to_str().unwrap(), "--format", "invalid"],
         vec![
@@ -67,6 +68,56 @@ fn help_version_and_argument_errors() {
         let output = ng().args(&invalid).output().unwrap();
         assert_eq!(output.status.code(), Some(2), "{invalid:?}");
     }
+}
+
+#[test]
+fn inspect_reports_unknown_blocks_and_retains_partial_results() {
+    use rdm4lib::rdm::{RdmEndian, RdmHeader};
+
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("unknown records.rdm");
+    for endian in [RdmEndian::Little, RdmEndian::Big] {
+        let mut bytes = RdmHeader { endian }.encode().to_vec();
+        for value in [1u32, 3] {
+            bytes.extend_from_slice(&match endian {
+                RdmEndian::Little => value.to_le_bytes(),
+                RdmEndian::Big => value.to_be_bytes(),
+            });
+        }
+        bytes.extend_from_slice(&[0xaa, 0xbb, 0xcc]);
+        for case in ["valid", "preamble", "truncated", "magic"] {
+            let mut data = bytes.clone();
+            match case {
+                "preamble" => data[4..8].fill(0xff),
+                "truncated" => data.push(0xff),
+                "magic" => data[0] = 0,
+                _ => {}
+            }
+            fs::write(&input, data).unwrap();
+            let output = ng().arg("inspect").arg(&input).output().unwrap();
+            assert_eq!(output.status.code(), Some(i32::from(case != "valid")));
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let text = String::from_utf8(output.stdout).unwrap();
+            let expected = match case {
+                "preamble" => "preamble word at 0x4",
+                "truncated" => "Unscanned: 0x1f..0x20",
+                "magic" => "magic at 0x0",
+                _ => "Issues: 0",
+            };
+            assert!(text.contains(expected), "{text}");
+            if case != "magic" {
+                let order = if endian == RdmEndian::Little {
+                    "little"
+                } else {
+                    "big"
+                };
+                assert!(text.contains(&format!("Byte order: {order}")), "{text}");
+                assert!(text.contains("Blocks: 1"), "{text}");
+                assert!(text.contains("0x0000001c..0x0000001f"), "{text}");
+            }
+        }
+    }
+    succeeds(ng().arg("inspect").arg(fixture("fishery_others_lod2.rdm")));
 }
 
 #[test]

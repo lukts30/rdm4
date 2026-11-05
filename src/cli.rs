@@ -1,6 +1,6 @@
 //! Subcommand interface for `rdm4ng`.
 
-use std::path::PathBuf;
+use std::{io, path::PathBuf, process::ExitCode};
 
 use clap::{Args, Parser, Subcommand};
 use rdm4lib::{
@@ -23,7 +23,7 @@ pub fn existing_file(value: &str) -> Result<PathBuf, String> {
 }
 
 #[derive(Parser)]
-#[command(name = "rdm4ng", version, about = "Convert between RDM and glTF/GLB")]
+#[command(name = "rdm4ng", version, about = "Convert and inspect RDM files")]
 struct Cli {
     /// Increase logging verbosity.
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -40,6 +40,15 @@ enum Command {
     /// Convert glTF/GLB to RDM.
     #[command(visible_alias = "gltf2rdm")]
     Rdm(RdmArgs),
+    /// Show byte order, preamble and physical blocks without decoding records.
+    Inspect(InspectArgs),
+}
+
+#[derive(Args)]
+struct InspectArgs {
+    /// Input RDM file. Framing issues are reported with partial results and exit status 1.
+    #[arg(value_parser = existing_file)]
+    input: PathBuf,
 }
 
 #[derive(Args)]
@@ -118,7 +127,7 @@ struct RdmArgs {
 }
 
 /// Parse and execute the `rdm4ng` command line.
-pub fn run() {
+pub fn run() -> ExitCode {
     let cli = Cli::parse();
     init_logging(cli.verbose);
     match cli.command {
@@ -140,5 +149,16 @@ pub fn run() {
             material_indices: args.material_indices,
             joint_names: args.joint_names,
         }),
+        Command::Inspect(args) => {
+            return match commands::inspect(&args.input, io::stdout().lock()) {
+                Ok(true) => ExitCode::SUCCESS,
+                Ok(false) => ExitCode::FAILURE,
+                Err(error) => {
+                    eprintln!("inspect {}: {error}", args.input.display());
+                    ExitCode::FAILURE
+                }
+            };
+        }
     }
+    ExitCode::SUCCESS
 }

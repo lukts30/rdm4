@@ -21,18 +21,23 @@ Create the folder C:\\tools. Copy rdm4-bin.exe to C:\\tools. Choose one of the r
 
 ## rdm4ng
 
-The subcommand CLI uses the existing converter:
+The subcommand CLI provides conversion and inspection:
 
 ```sh
 rdm4ng gltf model.rdm -o model.glb
 rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
+rdm4ng inspect model.rdm
 ```
 
 `rdm2gltf` and `gltf2rdm` are aliases. Use `rdm4ng <command> --help`
 for options. `rdm4-bin` remains available with its existing arguments.
 Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
+
+`inspect` uses the new scanner to list physical blocks and preamble metadata.
+Unknown record layouts are accepted; record fields and references are not yet decoded.
+Framing issues retain partial results and return exit status 1.
 
 ## command-line interface rdm4-bin
 

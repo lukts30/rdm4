@@ -1,11 +1,16 @@
-//! Conversion execution, independent of CLI argument parsing.
+//! Command execution, independent of CLI argument parsing.
 
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::{self, BufReader, Write},
+    path::{Path, PathBuf},
+};
 
 use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
+    rdm::{RdmEndian, RdmScanner},
     rdm_anim::RdAnim,
     rdm_data_anim::RdAnimWriter2,
     rdm_data_main::RdWriter2,
@@ -13,6 +18,48 @@ use rdm4lib::{
     vertex::TargetVertexFormat,
     RdModell,
 };
+
+/// Print physical framing, retaining partial results on format errors.
+/// Returns true when framing is complete and no preamble issues were found;
+/// record layouts and references are not validated.
+pub fn inspect(input: &Path, mut output: impl Write) -> io::Result<bool> {
+    let report = RdmScanner::new(BufReader::new(File::open(input)?)).scan()?;
+    let order = match report.endian {
+        Some(RdmEndian::Little) => "little",
+        Some(RdmEndian::Big) => "big",
+        None => "unknown",
+    };
+    writeln!(output, "File: {}", input.display())?;
+    writeln!(output, "Size: {} bytes", report.source_len)?;
+    writeln!(output, "Byte order: {order}")?;
+    if let Some(words) = report.preamble {
+        writeln!(output, "Preamble (0x04..0x14): {words:#010x?}")?;
+    }
+    writeln!(
+        output,
+        "Blocks: {} (physical framing only)",
+        report.blocks.len()
+    )?;
+    writeln!(
+        output,
+        "  Header      Payload start..end        Count    Stride"
+    )?;
+    for block in &report.blocks {
+        writeln!(
+            output,
+            "  {:#010x}  {:#010x}..{:#010x}  {:>8}  {:>8}",
+            block.offset, block.payload.start, block.payload.end, block.count, block.stride,
+        )?;
+    }
+    if let Some(range) = &report.unscanned {
+        writeln!(output, "Unscanned: {:#x}..{:#x}", range.start, range.end)?;
+    }
+    writeln!(output, "Issues: {}", report.issues.len())?;
+    for issue in &report.issues {
+        writeln!(output, "  {issue}")?;
+    }
+    Ok(report.issues.is_empty() && report.unscanned.is_none())
+}
 
 /// Input and output settings common to both conversion directions.
 pub struct Files {
