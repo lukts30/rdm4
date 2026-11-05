@@ -48,7 +48,7 @@ pub struct RdModell {
 #[derive(Debug, Clone)]
 pub struct RdJoint {
     name: String,
-    transition: [f32; 3],
+    translation: [f32; 3],
     quaternion: [f32; 4],
     parent: u32,
 }

@@ -193,7 +193,7 @@ impl From<RdmJoint> for RdJoint {
         let q = rotation.quaternion().coords;
         Self {
             name: joint.name,
-            transition: [translation.x, translation.y, translation.z],
+            translation: [translation.x, translation.y, translation.z],
             quaternion: [q.x, q.y, q.z, q.w],
             parent: joint.parent,
         }

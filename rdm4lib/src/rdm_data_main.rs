@@ -712,7 +712,7 @@ impl RdWriter2 {
                 let q = Quaternion::new(rw, rx, ry, rz);
                 let unit_quaternion = UnitQuaternion::from_quaternion(q);
 
-                let trans = j.transition;
+                let trans = j.translation;
                 let tx = trans[0];
                 let ty = trans[1];
                 let tz = trans[2];

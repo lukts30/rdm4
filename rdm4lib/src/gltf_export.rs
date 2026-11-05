@@ -457,7 +457,7 @@ impl RdGltfBuilder {
                 let q = Quaternion::new(rw, rx, ry, rz);
                 let uq = UnitQuaternion::from_quaternion(q);
 
-                let child_trans = joint.transition;
+                let child_trans = joint.translation;
                 let tx = child_trans[0];
                 let ty = child_trans[1];
                 let tz = child_trans[2];
@@ -540,7 +540,7 @@ impl RdGltfBuilder {
                     joint.quaternion = [uqc.x, uqc.y, uqc.z, uqc.w];
 
                     let trans_point = isometry.translation;
-                    joint.transition = [trans_point.x, trans_point.y, trans_point.z];
+                    joint.translation = [trans_point.x, trans_point.y, trans_point.z];
                 }
                 children_of_root_node
             }
@@ -558,7 +558,7 @@ impl RdGltfBuilder {
                 name: Some(String::from(&joint.name)),
                 rotation: Some(json::scene::UnitQuaternion(joint.quaternion)),
                 scale: None,
-                translation: Some(joint.transition),
+                translation: Some(joint.translation),
                 skin: None,
                 weights: None,
             };

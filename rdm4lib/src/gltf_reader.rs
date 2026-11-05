@@ -926,7 +926,7 @@ fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u32) -> RdJoi
             quaternion_raw.z,
             quaternion_raw.w,
         ],
-        transition: [translation.x, translation.y, translation.z],
+        translation: [translation.x, translation.y, translation.z],
     }
 }
 
