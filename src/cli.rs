@@ -40,7 +40,7 @@ enum Command {
     /// Convert glTF/GLB to RDM.
     #[command(visible_alias = "gltf2rdm")]
     Rdm(RdmArgs),
-    /// Show byte order, preamble and physical blocks without decoding records.
+    /// Show physical blocks and optionally decode known records.
     Inspect(InspectArgs),
 }
 
@@ -52,6 +52,9 @@ struct InspectArgs {
     /// Report format.
     #[arg(long, value_enum, default_value = "text")]
     format: InspectFormat,
+    /// Decode known records and buffers, checking references and block ownership.
+    #[arg(long)]
+    records: bool,
 }
 
 #[derive(Args)]
@@ -153,7 +156,12 @@ pub fn run() -> ExitCode {
             joint_names: args.joint_names,
         }),
         Command::Inspect(args) => {
-            return match commands::inspect(&args.input, args.format, io::stdout().lock()) {
+            return match commands::inspect(
+                &args.input,
+                args.format,
+                args.records,
+                io::stdout().lock(),
+            ) {
                 Ok(true) => ExitCode::SUCCESS,
                 Ok(false) => ExitCode::FAILURE,
                 Err(error) => {

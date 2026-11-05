@@ -10,7 +10,7 @@ use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
-    rdm::{RdmEndian, RdmScanReport, RdmScanner},
+    rdm::{RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner},
     rdm_anim::RdAnim,
     rdm_data_anim::RdAnimWriter2,
     rdm_data_main::RdWriter2,
@@ -30,14 +30,44 @@ pub enum InspectFormat {
 
 impl InspectFormat {
     /// Render an existing scan report without reading the source again.
-    pub fn write(
+    pub fn write(self, input: &Path, report: &RdmScanReport, output: impl Write) -> io::Result<()> {
+        self.write_with_records(input, report, None, output)
+    }
+
+    fn write_with_records(
         self,
         input: &Path,
         report: &RdmScanReport,
+        document: Option<&RdmDocument>,
         mut output: impl Write,
     ) -> io::Result<()> {
         match self {
-            Self::Text => inspect_text(input, report, output),
+            Self::Text => {
+                inspect_text(input, report, &mut output)?;
+                if let Some(document) = document {
+                    let models = document.models.as_deref().unwrap_or_default();
+                    writeln!(output, "Models: {}", models.len())?;
+                    for (i, model) in models.iter().enumerate() {
+                        writeln!(
+                            output,
+                            "  [{i}] {}: {} vertices, {} indices, {} groups; {}",
+                            model.name.name.as_deref().unwrap_or("<unnamed>"),
+                            model.vertices.count,
+                            model.indices.values.len(),
+                            model.groups.len(),
+                            model.vertex_format
+                        )?;
+                    }
+                    writeln!(
+                        output,
+                        "Materials: {}; joints: {}; animations: {}",
+                        document.materials.as_ref().map_or(0, Vec::len),
+                        document.skin.as_ref().map_or(0, |skin| skin.joints.len()),
+                        document.animations.as_ref().map_or(0, Vec::len)
+                    )?;
+                }
+                Ok(())
+            }
             Self::Json => {
                 use serde_json::json;
 
@@ -62,6 +92,7 @@ impl InspectFormat {
                         "offset": issue.offset(), "context": issue.context(),
                         "expected": issue.expected(), "actual": issue.actual(),
                     })).collect::<Vec<_>>(),
+                    "records": document.map(record_summary),
                 });
                 serde_json::to_writer_pretty(&mut output, &value)?;
                 writeln!(output)
@@ -70,13 +101,53 @@ impl InspectFormat {
     }
 }
 
-/// Print physical framing, retaining partial results on format errors.
-/// Returns true when framing is complete and no preamble issues were found;
-/// record layouts and references are not validated.
-pub fn inspect(input: &Path, format: InspectFormat, output: impl Write) -> io::Result<bool> {
-    let report = RdmScanner::new(BufReader::new(File::open(input)?)).scan()?;
-    format.write(input, &report, output)?;
+/// Inspect framing and optionally decode all known records and buffers.
+/// Format errors retain the framing report and return false.
+pub fn inspect(
+    input: &Path,
+    format: InspectFormat,
+    records: bool,
+    output: impl Write,
+) -> io::Result<bool> {
+    let mut source = BufReader::new(File::open(input)?);
+    let mut report = RdmScanner::new(&mut source).scan()?;
+    let mut document = None;
+    if records && report.issues.is_empty() && report.unscanned.is_none() {
+        match RdmReader::new(source).and_then(|reader| reader.read_root::<RdmDocument>()) {
+            Ok(decoded) => document = Some(decoded.value),
+            Err(error) => report.issues.push(error),
+        }
+    }
+    format.write_with_records(input, &report, document.as_ref(), output)?;
     Ok(report.issues.is_empty() && report.unscanned.is_none())
+}
+
+fn record_summary(document: &RdmDocument) -> serde_json::Value {
+    use serde_json::json;
+    json!({
+        "export_info": document.export_info.as_ref().map(|info| json!({
+            "source_path": info.source_path, "rmp_name": info.rmp_name,
+        })),
+        "models": document.models.iter().flatten().map(|model| json!({
+            "name": model.name.name, "vertex_format": model.vertex_format.to_string(),
+            "vertex_count": model.vertices.count, "index_count": model.indices.values.len(),
+            "index_storage": format!("{:?}", model.index_format.storage_type),
+            "skeleton_index": model.skeleton_index,
+            "bounds_min": model.bounds_min, "bounds_max": model.bounds_max,
+            "groups": model.groups.iter().map(|group| json!({
+                "first_index": group.first_index, "index_count": group.index_count,
+                "material": group.material,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "materials": document.materials.iter().flatten().map(|entry| json!({
+            "name": entry.material.name, "texture": entry.material.texture,
+        })).collect::<Vec<_>>(),
+        "joint_count": document.skin.as_ref().map_or(0, |skin| skin.joints.len()),
+        "animations": document.animations.iter().flatten().map(|animation| json!({
+            "name": animation.name, "track_count": animation.tracks.len(),
+            "time_max": animation.time_max, "sampling_rate": animation.sampling_rate,
+        })).collect::<Vec<_>>(),
+    })
 }
 
 fn inspect_text(input: &Path, report: &RdmScanReport, mut output: impl Write) -> io::Result<()> {

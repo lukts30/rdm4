@@ -175,6 +175,36 @@ fn inspect_reports_unknown_blocks_and_retains_partial_results() {
         }
     }
     succeeds(ng().arg("inspect").arg(fixture("fishery_others_lod2.rdm")));
+    for (name, models) in [
+        ("fishery_others_lod2.rdm", 1),
+        ("benchmark/15-mining_08_slot_01_lod0.rdm", 258),
+        ("excavator_tycoons_lod1.rdm", 1),
+        ("basalt_crusher_others_idle01.rdm", 0),
+    ] {
+        let output = ng()
+            .arg("inspect")
+            .arg(fixture(name))
+            .args(["--records", "--format", "json"])
+            .output()
+            .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(output.status.success(), "{name}: {report}");
+        assert_eq!(
+            report["records"]["models"].as_array().unwrap().len(),
+            models
+        );
+        assert!(report["issues"].as_array().unwrap().is_empty());
+    }
+    let output = ng()
+        .arg("inspect")
+        .arg(fixture("fishery_others_lod2.rdm"))
+        .arg("--records")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("Models: 1"));
 }
 
 #[test]
