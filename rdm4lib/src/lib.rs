@@ -20,6 +20,7 @@ extern crate approx;
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod gltf_reader_vertex;
+pub mod rdm;
 pub mod rdm_anim;
 pub mod rdm_material;
 pub mod vertex;
