@@ -1,20 +1,12 @@
-extern crate rdm4lib;
-
-use rdm4lib::gltf_reader::ResolveNodeName;
-use rdm4lib::rdm_data_anim::RdAnimWriter2;
-use rdm4lib::rdm_data_main::RdWriter2;
-use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat, RdModell};
-
-use rdm4lib::gltf_export;
-use rdm4lib::rdm_anim::RdAnim;
-
-use rdm4lib::{gltf_reader, rdm_material::RdMaterial};
-
-#[macro_use]
-extern crate log;
-
 use clap::{ArgAction, Parser};
-use env_logger::Env;
+use log::info;
+use rdm4_bin::{
+    commands::{self, Files, GltfOptions, RdmOptions},
+    init_logging,
+};
+use rdm4lib::{
+    gltf_export::GltfExportFormat, gltf_reader::ResolveNodeName, vertex::TargetVertexFormat,
+};
 use std::path::PathBuf;
 
 fn cli_in_is_file(v: &str) -> Result<PathBuf, String> {
@@ -163,110 +155,45 @@ struct Opts {
 }
 
 fn main() {
-    let opts: Opts = Opts::parse();
-    match opts.verbose {
-        0 => env_logger::Builder::from_env(Env::default().default_filter_or("info")).init(),
-        1 => env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init(),
-        2 => env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init(),
-        _ => warn!("Don't be crazy"),
-    }
+    let opts = Opts::parse();
+    init_logging(opts.verbose);
     entry_do_work(opts);
 }
 
-fn entry_do_work(mut opts: Opts) {
-    if let Some(ref mut out) = opts.out {
-        if opts.in_is_out_filename {
-            let k = opts.input.file_stem().unwrap();
-            assert!(
-                out.is_dir(),
-                "in_is_out_filename: output must not be a file!"
-            );
-            out.push(k);
-
-            if opts.gltf.is_some() {
-                out.set_extension("rdm");
-            } else {
-                out.set_extension("gltf");
-            }
-        }
-    }
-
+fn entry_do_work(opts: Opts) {
     info!("Material index overrides: {:?}", opts.overide_mesh_idx);
-    // Gets a value for config if supplied by user, or defaults to "default.conf"
     info!("Using input file: {:?}", opts.input);
     info!("Export skeleton: {}", opts.skeleton);
     info!(
         "Export animation: {}, external animation: {:?}",
         opts.animation, opts.rdanimation
     );
-    if opts.gltf.is_none() {
-        convert_rdm_to_gltf(opts);
+    let files = Files {
+        input: opts.input,
+        output: opts.out,
+        input_name: opts.in_is_out_filename,
+        force: opts.force,
+    };
+    if let Some(format) = opts.gltf {
+        commands::rdm(RdmOptions {
+            files,
+            format,
+            mesh_index: opts.gltf_mesh_index,
+            skeleton: opts.skeleton,
+            animation: opts.animation,
+            no_transform: opts.no_transform,
+            mirror_x: opts.negative_x_and_v0v2v1,
+            material_indices: opts.overide_mesh_idx,
+            joint_names: opts.gltf_node_joint_name_src,
+        });
     } else {
-        convert_gltf_to_rdm(opts);
-    }
-}
-
-fn convert_rdm_to_gltf(opts: Opts) {
-    let mut rdm = RdModell::from(opts.input.as_path());
-    if opts.skeleton && opts.rdanimation.is_none() {
-        rdm.add_skin();
-        info!("  Skin: {} joints", rdm.joints.as_ref().unwrap().len());
-    } else if opts.skeleton && opts.rdanimation.is_some() {
-        rdm.add_skin();
-        let anim = RdAnim::from(opts.rdanimation.unwrap().as_path());
-        rdm.add_anim(anim);
-        info!(
-            "  Skin: {} joints; animation added",
-            rdm.joints.as_ref().unwrap().len()
-        );
-    } else {
-        info!("  Skin and animation: not exported");
-    }
-
-    if let Some(diffusetexture) = opts.diffusetexture {
-        rdm.mat = Some(RdMaterial::new(diffusetexture));
-    }
-    info!("Building glTF");
-
-    gltf_export::build(rdm, opts.out, !opts.force, opts.gltf_export_format);
-}
-
-fn convert_gltf_to_rdm(opts: Opts) {
-    let f_path = opts.input.as_path();
-    let i_gltf = gltf_reader::ImportedGltf::try_import(
-        f_path,
-        opts.gltf_mesh_index,
-        opts.gltf_node_joint_name_src,
-    )
-    .unwrap();
-
-    let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-        &i_gltf,
-        opts.gltf.unwrap(),
-        opts.skeleton,
-        opts.negative_x_and_v0v2v1,
-        opts.no_transform,
-        opts.overide_mesh_idx,
-    );
-
-    if opts.skeleton && opts.animation {
-        let jj = rdm.joints.as_ref().unwrap();
-
-        match gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333) {
-            Some(mut anims) => {
-                for anim in anims.drain(..) {
-                    let exp_rdm = RdAnimWriter2::new(anim);
-                    exp_rdm.write_anim_rdm(opts.out.clone(), !opts.force);
-                }
-            }
-            None => error!("Could not read animation. Does the glTF contain any animations ?"),
-        }
-    }
-
-    let exp_rdm = RdWriter2::new(rdm);
-    exp_rdm.write_rdm(opts.out, !opts.force);
-    if opts.skeleton && !opts.no_transform {
-        error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
+        commands::gltf(GltfOptions {
+            files,
+            skeleton: opts.skeleton,
+            animation: opts.rdanimation,
+            format: opts.gltf_export_format,
+            textures: opts.diffusetexture,
+        });
     }
 }
 
