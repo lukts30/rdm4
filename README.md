@@ -31,6 +31,8 @@ rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
 
 `rdm2gltf` and `gltf2rdm` are aliases. Use `rdm4ng <command> --help`
 for options. `rdm4-bin` remains available with its existing arguments.
+Release archives and the default Nix package include both executables.
+Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
 ## command-line interface rdm4-bin
 
