@@ -1,5 +1,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
+use crate::vertex::{StorageType, VertexInterpretation, VertexSemantic};
+
 use super::wire::Scalar;
 
 use super::{
@@ -199,5 +201,77 @@ impl<T: Scalar> RdmReadField for T {
             return Err(RdmError::new(at, context, T::WIDTH, raw.len()));
         }
         Ok(reader.endian().decode(raw))
+    }
+}
+
+impl RdmFieldLayout for StorageType {
+    const WIDTH: usize = 4;
+}
+
+impl RdmReadField for StorageType {
+    type Args<'a> = ();
+
+    fn read_field<R: Read + Seek>(
+        reader: &mut RdmReader<R>,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<Self, RdmError> {
+        let code = u32::read_field(reader, raw, at, context, ())?;
+        match code {
+            3 | 5 | 6 | 7 => Ok(Self::from(code)),
+            _ => Err(RdmError::new(
+                at,
+                context,
+                "storage code 3, 5, 6 or 7",
+                code,
+            )),
+        }
+    }
+}
+
+impl RdmFieldLayout for VertexSemantic {
+    const WIDTH: usize = 4;
+}
+
+impl RdmReadField for VertexSemantic {
+    type Args<'a> = ();
+
+    fn read_field<R: Read + Seek>(
+        reader: &mut RdmReader<R>,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<Self, RdmError> {
+        let code = u32::read_field(reader, raw, at, context, ())?;
+        match code {
+            0..=7 | 255 => Ok(<Self as From<u32>>::from(code)),
+            _ => Err(RdmError::new(
+                at,
+                context,
+                "semantic code 0..=7 or 255",
+                code,
+            )),
+        }
+    }
+}
+
+impl RdmFieldLayout for VertexInterpretation {
+    const WIDTH: usize = 4;
+}
+
+impl RdmReadField for VertexInterpretation {
+    type Args<'a> = ();
+
+    fn read_field<R: Read + Seek>(
+        reader: &mut RdmReader<R>,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<Self, RdmError> {
+        u32::read_field(reader, raw, at, context, ()).map(Self)
     }
 }

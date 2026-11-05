@@ -5,9 +5,10 @@ use std::{collections::BTreeSet, fs, io::Cursor, path::PathBuf};
 use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
-    rdm::{RdmAnimation, RdmMaterialEntry, RdmReader, RdmSkin},
+    rdm::{RdmAnimation, RdmIndexFormat, RdmMaterialEntry, RdmReader, RdmSkin, RdmVertexFormat},
     rdm_anim::RdAnim,
     rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
+    vertex::VertexIdentifier,
     RdModell,
 };
 use serde_json::Value;
@@ -114,10 +115,45 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
         assert_eq!(stride, number(&fixture.expected["first_model"]["stride"]));
         let mut vertices = 0;
         let mut indices = 0;
+        let mut reader = RdmReader::new(Cursor::new(&bytes)).unwrap();
         for index in 0..count {
             let model = models + index * stride;
             vertices += word(&bytes, word(&bytes, model + 0x0c) - 8);
             indices += word(&bytes, word(&bytes, model + 0x10) - 8);
+            let format_at = word(&bytes, model + 4);
+            let format = reader
+                .read_block::<RdmVertexFormat>(format_at as u32)
+                .unwrap();
+            let attributes = word(&bytes, format_at);
+            let legacy: Vec<VertexIdentifier> = (0..word(&bytes, attributes - 8))
+                .map(|i| {
+                    Cursor::new(&bytes[attributes + i * 16..])
+                        .read_le()
+                        .unwrap()
+                })
+                .collect();
+            assert_eq!(
+                format.records[0].attributes, legacy,
+                "{path:?} model {index}"
+            );
+            assert_eq!(
+                format.tails,
+                bytes[format_at + 4..format_at + 24],
+                "{path:?}"
+            );
+            let index_format_at = word(&bytes, model + 8);
+            let format = reader
+                .read_block::<RdmIndexFormat>(index_format_at as u32)
+                .unwrap();
+            assert_eq!(
+                format.records[0].storage_type as usize,
+                word(&bytes, index_format_at)
+            );
+            assert_eq!(
+                format.tails,
+                bytes[index_format_at + 4..index_format_at + 20],
+                "{path:?}"
+            );
         }
         assert_eq!(
             vertices,

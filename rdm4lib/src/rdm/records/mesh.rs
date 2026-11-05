@@ -1,5 +1,7 @@
 use rdm_derive::RdmRecord;
 
+use crate::vertex::{StorageType, VertexIdentifier};
+
 /// Source scene and resource names stored in an RDM export-info block.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
 #[rdm(strides(72))]
@@ -8,6 +10,22 @@ pub struct RdmExportInfo {
     pub source_path: Option<String>,
     /// Resource `.rmp` file name, when present.
     pub rmp_name: Option<String>,
+}
+
+/// Vertex attribute table used to interpret a model's vertex buffer.
+#[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
+#[rdm(strides(24))]
+pub struct RdmVertexFormat {
+    /// Attributes in their order within each vertex.
+    pub attributes: Vec<VertexIdentifier>,
+}
+
+/// Scalar representation of the model's index buffer.
+#[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
+#[rdm(strides(20))]
+pub struct RdmIndexFormat {
+    /// Buffer decoding additionally requires an unsigned integer type.
+    pub storage_type: StorageType,
 }
 
 /// An index range drawn with one material.

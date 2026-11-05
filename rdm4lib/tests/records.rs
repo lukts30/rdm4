@@ -5,6 +5,7 @@ use std::{
 };
 
 use rdm4lib::rdm::{RdmEndian, RdmHeader, RdmMeshGroup, RdmReader};
+use rdm4lib::vertex::VertexIdentifier;
 use serde_json::Value;
 
 fn sample(endian: RdmEndian, stride: u32) -> Vec<u8> {
@@ -82,6 +83,41 @@ fn typed_reader_requires_supported_preamble_and_complete_framing() {
     bytes.pop();
     let error = RdmReader::new(Cursor::new(bytes)).unwrap_err();
     assert_eq!(error.context(), "block payload");
+}
+
+#[test]
+fn descriptors_report_unknown_codes_and_preserve_interpretation_in_both_orders() {
+    for endian in [RdmEndian::Little, RdmEndian::Big] {
+        for (semantic, storage, error) in [
+            (0, 6, None),
+            (255, 3, None),
+            (99, 7, Some((28, "VertexIdentifier.semantic"))),
+            (0, 99, Some((32, "VertexIdentifier.storage_type"))),
+        ] {
+            let mut bytes = RdmHeader { endian }.encode().to_vec();
+            for value in [1u32, 16, semantic, storage, u32::MAX, 4] {
+                bytes.extend_from_slice(&match endian {
+                    RdmEndian::Little => value.to_le_bytes(),
+                    RdmEndian::Big => value.to_be_bytes(),
+                });
+            }
+            let result = RdmReader::new(Cursor::new(bytes))
+                .unwrap()
+                .read_block::<VertexIdentifier>(28);
+            if let Some((offset, context)) = error {
+                let error = result.unwrap_err();
+                assert_eq!(error.offset(), offset);
+                assert_eq!(error.context(), context);
+                assert_eq!(error.actual(), "99");
+            } else {
+                let descriptor = result.unwrap().records.pop().unwrap();
+                assert_eq!(descriptor.storage_type as u32, storage);
+                assert_eq!(descriptor.semantic as u32, semantic);
+                assert_eq!(descriptor.interpretation.0, u32::MAX);
+                assert_eq!(descriptor.storage_count, 4);
+            }
+        }
+    }
 }
 
 fn word(bytes: &[u8], at: usize) -> usize {

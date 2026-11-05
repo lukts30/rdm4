@@ -1,5 +1,5 @@
 use bytes::{Buf, Bytes};
-use rdm_derive::RdmStructSize;
+use rdm_derive::{RdmRecord, RdmStructSize};
 use std::{fmt, str::FromStr};
 
 use crate::{rdm_data_main::RdmFile, *};
@@ -7,10 +7,11 @@ use binrw::binrw;
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
-#[derive(RdmStructSize)]
+#[derive(RdmStructSize, RdmRecord)]
+#[rdm(strides(16))]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
     #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
