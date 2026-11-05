@@ -1,15 +1,13 @@
-use binrw::{binrw, BinReaderExt, BinWriterExt};
+use binrw::binrw;
 use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},
+    io::{BufWriter, Write},
     path::PathBuf,
 };
 
+use crate::RDMStructSizeTr;
 use crate::{rdm_anim::RdAnim, rdm_container::*};
-use crate::{
-    rdm_data_main::{RdmFile, RdmKindAnim},
-    RDMStructSizeTr,
-};
 
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
@@ -50,6 +48,7 @@ pub struct Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rdm_data_main::{RdmFile, RdmKindAnim};
     use binrw::{BinReaderExt, BinWriterExt};
     use std::fs;
 
@@ -91,8 +90,10 @@ mod tests {
             let anim = RdAnim::new(writer.into_inner(), "idle".into());
             assert_eq!(anim.sampling_rate, sampling_rate);
             let output = RdAnimWriter2::new(anim);
-            let mut writer = std::io::Cursor::new(Vec::new());
-            writer.write_le(&output.export).unwrap();
+            let writer = std::io::Cursor::new(Vec::new());
+            let mut writer = crate::rdm::RdmWriter::new(writer, crate::rdm::RdmEndian::Little)
+                .write_root(&output.export)
+                .unwrap();
             writer.set_position(0);
             let written: RdmFile<RdmKindAnim> = writer.read_le().unwrap();
             assert_eq!(written.header1.meta_anim.sampling_rate, sampling_rate);
@@ -109,9 +110,10 @@ mod tests {
     }
 }
 
+/// Compatibility entrypoint backed by the current document writer.
 pub struct RdAnimWriter2 {
     name: String,
-    export: RdmFile<RdmKindAnim>,
+    export: crate::rdm::RdmDocument,
 }
 
 impl RdAnimWriter2 {
@@ -131,7 +133,7 @@ impl RdAnimWriter2 {
         file.set_extension("rdm");
 
         info!("Writing animation {:?}", file);
-        let mut writer = OpenOptions::new()
+        let writer = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
@@ -139,87 +141,19 @@ impl RdAnimWriter2 {
             .open(&file)
             .expect("I/O error");
 
-        writer
-            .write_type_args(&self.export, binrw::Endian::Little, ())
-            .unwrap();
+        crate::rdm::RdmWriter::new(BufWriter::new(writer), crate::rdm::RdmEndian::Little)
+            .write_root(&self.export)
+            .expect("cannot write animation records")
+            .flush()
+            .expect("cannot flush animation output");
         info!("Wrote animation {:?}", file);
     }
 
+    /// Adapt the animation for the current record writer.
     pub fn new(anim_input: RdAnim) -> Self {
-        use super::*;
-
-        let data = include_bytes!("../rdm/basalt_crusher_others_idle01.rdm");
-        let mut reader = std::io::Cursor::new(&data);
-        let mut anim: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
-
-        let export_name = br"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max";
-
-        anim.header1.header2.export_name1.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: export_name.len() as u32,
-                    part_size: 1,
-                },
-                storage: rdm_container::VectorN {
-                    items: export_name.map(AnnoChar).into(),
-                },
-            }),
-        };
-
-        let model_str: &[u8; 26] = br"basalt_crusher_others_lod0";
-        anim.header1.meta_anim.name.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: model_str.len() as u32,
-                    part_size: 1,
-                },
-                storage: rdm_container::VectorN {
-                    items: model_str.map(AnnoChar).into(),
-                },
-            }),
-        };
-
-        anim.header1.meta_anim.sampling_rate = anim_input.sampling_rate;
-        anim.header1.meta_anim.time_max = anim_input.time_max;
-        info!("SEQUENCE EndTime (Max): {}", anim_input.time_max);
-
-        let mut anim_data: Vec<AnimInner> = vec![];
-        for x in anim_input.anim_vec {
-            let o: AnimInner = AnimInner {
-                j_name: AnnoPtr2(RdmFilePtr {
-                    ptr: 0,
-                    value: Some(RdmContainer {
-                        info: RdmContainerPrefix {
-                            count: x.name.len() as u32,
-                            part_size: 1,
-                        },
-                        storage: rdm_container::VectorN {
-                            items: x.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
-                        },
-                    }),
-                }),
-                j_data: AnnoPtr2(RdmFilePtr {
-                    ptr: 0,
-                    value: Some(RdmContainer {
-                        info: RdmContainerPrefix {
-                            count: x.frames.len() as u32,
-                            part_size: 32,
-                        },
-                        storage: rdm_container::VectorN { items: x.frames },
-                    }),
-                }),
-                _padding: [0; 16],
-            };
-            anim_data.push(o);
-        }
-        anim.header1.meta_anim.anims.info.count = anim_data.len() as u32;
-        anim.header1.meta_anim.anims.storage.items = anim_data;
-
-        RdAnimWriter2 {
-            name: anim_input.name,
-            export: anim,
+        Self {
+            name: anim_input.name.clone(),
+            export: anim_input.into(),
         }
     }
 }

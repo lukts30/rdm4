@@ -1,11 +1,11 @@
 use std::{
     any::TypeId,
     fs::{self, OpenOptions},
-    io::SeekFrom,
+    io::{BufWriter, SeekFrom, Write},
     path::PathBuf,
 };
 
-use binrw::{binrw, BinRead, BinReaderExt, BinWriterExt};
+use binrw::{binrw, BinRead};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
@@ -364,8 +364,10 @@ mod tests {
         }
         let bounds = model.vertex.calculate_bounds();
         let writer = RdWriter2::new(model);
-        let mut output = std::io::Cursor::new(Vec::new());
-        output.write_le(&writer.inner).unwrap();
+        let output = std::io::Cursor::new(Vec::new());
+        let mut output = crate::rdm::RdmWriter::new(output, crate::rdm::RdmEndian::Little)
+            .write_root(&writer.inner)
+            .unwrap();
         output.set_position(0);
         let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
         assert!(!result.big_endian);
@@ -390,7 +392,11 @@ mod tests {
         let round = |value| half::f16::from_f32(value).to_f32();
         assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
         assert_eq!(
-            RdWriter2::new(model).inner.header1.meta.bounds(),
+            {
+                let document = RdWriter2::new(model).inner;
+                let model = &document.models.as_ref().unwrap()[0];
+                (model.bounds_min, model.bounds_max)
+            },
             calculated
         );
     }
@@ -417,7 +423,11 @@ mod tests {
             calculated
         );
         assert_eq!(
-            RdWriter2::new(model).inner.header1.meta.bounds(),
+            {
+                let document = RdWriter2::new(model).inner;
+                let model = &document.models.as_ref().unwrap()[0];
+                (model.bounds_min, model.bounds_max)
+            },
             calculated
         );
     }
@@ -477,8 +487,9 @@ mod tests {
     }
 }
 
+/// Compatibility entrypoint backed by the current document writer.
 pub struct RdWriter2 {
-    inner: RdmFile<RdmKindMesh>,
+    inner: crate::rdm::RdmDocument,
 }
 
 impl RdWriter2 {
@@ -493,7 +504,7 @@ impl RdWriter2 {
         }
 
         info!("Writing RDM {:?}", file);
-        let mut writer = OpenOptions::new()
+        let writer = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
@@ -501,242 +512,20 @@ impl RdWriter2 {
             .open(&file)
             .expect("I/O error");
 
-        writer
-            .write_type_args(&self.inner, binrw::Endian::Little, ())
-            .unwrap();
+        crate::rdm::RdmWriter::new(BufWriter::new(writer), crate::rdm::RdmEndian::Little)
+            .write_root(&self.inner)
+            .expect("cannot write RDM records")
+            .flush()
+            .expect("cannot flush RDM output");
         info!("Wrote RDM {:?}", file);
 
         file.as_path().into()
     }
 
+    /// Adapt the model for the current record writer.
     pub fn new(rdm_in: RdModell) -> RdWriter2 {
-        use super::*;
-        // let data = fs::read("rdm/basalt_crusher_others_lod0.rdm").unwrap();
-        let data = include_bytes!("../rdm/basalt_crusher_others_lod0.rdm");
-
-        let mut reader = std::io::Cursor::new(&data);
-        let mut rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
-
-        let export_name = br"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max";
-
-        rdm.header1.header2.export_name1.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: export_name.len() as u32,
-                    part_size: 1,
-                },
-                storage: rdm_container::VectorN {
-                    items: export_name.map(AnnoChar).into(),
-                },
-            }),
-        };
-
-        // unknown maybe shader id
-        // 0: no anim
-        // 1: _Ib4
-        // 2:
-        // 3: I4b_W4b (eve)
-        // 4: I4b_W4b (other npc)
-        rdm.header1.meta.format_identifiers.unknown_shader_id =
-            if rdm_in.has_skin() { 1 } else { 0 };
-
-        rdm.header1.meta.skeleton_index = if rdm_in.has_skin() { 0 } else { -1 };
-
-        rdm.header1.meta.format_identifiers.rdm_container.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: rdm_in.vertex.identifiers.len() as u32,
-                    part_size: 16,
-                },
-                storage: rdm_container::VectorN {
-                    items: rdm_in.vertex.identifiers.clone().into(),
-                },
-            }),
-        };
-
-        rdm.header1.meta.mesh_info.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: rdm_in.mesh_info.len() as u32,
-                    part_size: 28,
-                },
-                storage: rdm_container::VectorN {
-                    items: rdm_in.mesh_info.clone(),
-                },
-            }),
-        };
-
-        (rdm.header1.meta.bounds_min, rdm.header1.meta.bounds_max) =
-            rdm_in.vertex.calculate_bounds();
-
-        rdm.header1.meta.index_format.element_type = StorageType::U16;
-        rdm.header1.meta.triangle_list.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: rdm_in.triangle_indices.len() as u32 * 3,
-                    part_size: StorageType::U16.byte_size(),
-                },
-                storage: rdm_container::VectorN {
-                    items: {
-                        let mut p = 0;
-                        let mut o = Vec::new();
-                        for x in &rdm_in.triangle_indices {
-                            o.push(AnnoU16(u16::try_from(x.indices[0]).unwrap()));
-                            o.push(AnnoU16(u16::try_from(x.indices[1]).unwrap()));
-                            o.push(AnnoU16(u16::try_from(x.indices[2]).unwrap()));
-                            p = p.max(x.indices[0]);
-                            p = p.max(x.indices[1]);
-                            p = p.max(x.indices[2]);
-                        }
-                        info!("Max Triangle List Index: {}", p);
-
-                        o.iter()
-                            .map(|x| x.0)
-                            .flat_map(u16::to_le_bytes)
-                            .map(AnnoU8)
-                            .collect()
-                    },
-                },
-            }),
-        };
-
-        rdm.header1.meta.vertex.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: rdm_in.vertex.len(),
-                    part_size: rdm_in.vertex.get_size(),
-                },
-                storage: rdm_container::VectorN {
-                    items: rdm_in
-                        .vertex
-                        .as_bytes()
-                        .iter()
-                        .map(|x| AnnoU8(*x))
-                        .collect::<Vec<_>>(),
-                },
-            }),
-        };
-
-        let material = br"Default Standard12432142134";
-        let dummy_png_path = br"d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png";
-
-        let mut mats = vec![];
-        for _ in 0..MeshInfo::get_max_material(&rdm_in.mesh_info) + 1 {
-            let dummy_mat = RdmBlobToMat {
-                mat: AnnoPtr2(RdmFilePtr {
-                    ptr: 0,
-                    value: Some(RdmContainer {
-                        info: RdmContainerPrefix {
-                            count: 1,
-                            part_size: 48,
-                        },
-                        storage: rdm_container::Vector1 {
-                            item: [RdmMat {
-                                name: AnnoPtr2(RdmFilePtr {
-                                    ptr: 0,
-                                    value: Some(RdmContainer {
-                                        info: RdmContainerPrefix {
-                                            count: material.len() as u32,
-                                            part_size: 1,
-                                        },
-                                        storage: rdm_container::VectorN {
-                                            items: material.map(AnnoChar).into(),
-                                        },
-                                    }),
-                                }),
-                                png: AnnoPtr2(RdmFilePtr {
-                                    ptr: 0,
-                                    value: Some(RdmContainer {
-                                        info: RdmContainerPrefix {
-                                            count: dummy_png_path.len() as u32,
-                                            part_size: 1,
-                                        },
-                                        storage: rdm_container::VectorN {
-                                            items: dummy_png_path.map(AnnoChar).into(),
-                                        },
-                                    }),
-                                }),
-                                _padding: [0; 40],
-                            }],
-                        },
-                    }),
-                }),
-                _padding: Default::default(),
-            };
-            mats.push(dummy_mat);
+        Self {
+            inner: crate::rdm::RdmDocument::try_from(rdm_in).expect("invalid export model"),
         }
-
-        if rdm_in.has_skin() {
-            let mut replacement_raw_joints = vec![];
-            for j in &rdm_in.joints.unwrap() {
-                let joint_quaternion = j.quaternion;
-
-                let rx = joint_quaternion[0];
-                let ry = joint_quaternion[1];
-                let rz = joint_quaternion[2];
-                let rw = joint_quaternion[3];
-
-                let q = Quaternion::new(rw, rx, ry, rz);
-                let unit_quaternion = UnitQuaternion::from_quaternion(q);
-
-                let trans = j.translation;
-                let tx = trans[0];
-                let ty = trans[1];
-                let tz = trans[2];
-                let v: Vector3<f32> = Vector3::new(tx, ty, tz);
-
-                // undo rotation since it will be applied on load
-                // rdm -> internal representation -> rdm: v vector in add_skin should be equal to v_init
-                let v_init = unit_quaternion.inverse_transform_vector(&v).scale(-1.0);
-                let rot = unit_quaternion.quaternion().coords;
-
-                let res = RdmJoint {
-                    name: AnnoPtr2(RdmFilePtr {
-                        ptr: 0,
-                        value: Some(RdmContainer {
-                            info: RdmContainerPrefix {
-                                count: j.name.len() as u32,
-                                part_size: 1,
-                            },
-                            storage: rdm_container::VectorN {
-                                items: j.name.as_bytes().iter().map(|c| AnnoChar(*c)).collect(),
-                            },
-                        }),
-                    }),
-                    t: [v_init.x, v_init.y, v_init.z],
-                    r: [rot.x, rot.y, rot.z, rot.w],
-                    parent_id: j.parent,
-                    _padding: [0; 48],
-                };
-
-                replacement_raw_joints.push(res);
-            }
-            assert_eq!(rdm.header1.skin.joint.info.part_size, 84);
-            rdm.header1.skin.joint.info.count = replacement_raw_joints.len() as u32;
-            rdm.header1.skin.joint.storage.items = replacement_raw_joints;
-        } else {
-            rdm.header1.skin.0 = RdmFilePtr {
-                ptr: 0,
-                value: None,
-            }
-        }
-
-        rdm.header1.rdm_blob_to_mat.0 = RdmFilePtr {
-            ptr: 0,
-            value: Some(RdmContainer {
-                info: RdmContainerPrefix {
-                    count: mats.len() as u32,
-                    part_size: 28,
-                },
-                storage: rdm_container::VectorN { items: mats },
-            }),
-        };
-
-        RdWriter2 { inner: rdm }
     }
 }

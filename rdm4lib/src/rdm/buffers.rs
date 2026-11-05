@@ -29,35 +29,60 @@ impl RdmReadField for RdmVertices {
     ) -> Result<Self, RdmError> {
         let stride = vertex_stride(format, at, context)? as usize;
         let (block, bytes) = reader.read_payload(raw, at, context, stride)?;
-        let mut offset = 0;
-        let mut attributes = Vec::with_capacity(format.attributes.len());
-        for attribute in &format.attributes {
-            let size =
-                attribute.storage_type.byte_size() as usize * attribute.storage_count as usize;
-            let range = offset..offset + size;
-            let endian = reader.endian();
-            let values = match attribute.storage_type {
-                StorageType::U16 => {
-                    RdmAttributeValues::U16(column::<u16>(&bytes, stride, range, endian))
-                }
-                StorageType::U32 => {
-                    RdmAttributeValues::U32(column::<u32>(&bytes, stride, range, endian))
-                }
-                StorageType::F16 => {
-                    RdmAttributeValues::F16(column::<f16>(&bytes, stride, range, endian))
-                }
-                StorageType::F32 => {
-                    RdmAttributeValues::F32(column::<f32>(&bytes, stride, range, endian))
-                }
-            };
-            attributes.push(values);
-            offset += size;
-        }
-        Ok(Self {
-            count: block.count as usize,
-            attributes,
-        })
+        vertices_from_bytes(
+            &bytes,
+            block.count as usize,
+            format,
+            reader.endian(),
+            block.payload.start,
+            context,
+        )
     }
+}
+
+pub(super) fn vertices_from_bytes(
+    bytes: &[u8],
+    count: usize,
+    format: &RdmVertexFormat,
+    endian: RdmEndian,
+    at: usize,
+    context: &'static str,
+) -> Result<RdmVertices, RdmError> {
+    let stride = vertex_stride(format, at, context)? as usize;
+    let size = count.checked_mul(stride).ok_or_else(|| {
+        RdmError::new(at, context, "representable vertex buffer size", "overflow")
+    })?;
+    if bytes.len() != size {
+        return Err(RdmError::new(
+            at,
+            context,
+            format!("{size} vertex bytes"),
+            bytes.len(),
+        ));
+    }
+    let mut offset = 0;
+    let mut attributes = Vec::with_capacity(format.attributes.len());
+    for attribute in &format.attributes {
+        let size = attribute.storage_type.byte_size() as usize * attribute.storage_count as usize;
+        let range = offset..offset + size;
+        let values = match attribute.storage_type {
+            StorageType::U16 => {
+                RdmAttributeValues::U16(column::<u16>(bytes, stride, range, endian))
+            }
+            StorageType::U32 => {
+                RdmAttributeValues::U32(column::<u32>(bytes, stride, range, endian))
+            }
+            StorageType::F16 => {
+                RdmAttributeValues::F16(column::<f16>(bytes, stride, range, endian))
+            }
+            StorageType::F32 => {
+                RdmAttributeValues::F32(column::<f32>(bytes, stride, range, endian))
+            }
+        };
+        attributes.push(values);
+        offset += size;
+    }
+    Ok(RdmVertices { count, attributes })
 }
 
 fn column<T: Scalar>(

@@ -4,8 +4,6 @@ use std::{fs::File, io::BufReader, path::Path};
 
 use half::f16;
 
-use nalgebra::*;
-
 #[macro_use]
 extern crate log;
 
@@ -110,6 +108,28 @@ mod tests_intern {
         assert_eq!(model.triangle_indices.len(), 37_240);
         let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
         assert_eq!(indices.max(), Some(74_479));
+        let expected = model.vertex.as_bytes().to_vec();
+        let document = rdm::RdmDocument::try_from(model).unwrap();
+        assert_eq!(
+            document.models.as_ref().unwrap()[0]
+                .index_format
+                .storage_type,
+            vertex::StorageType::U32
+        );
+        let output = rdm::RdmWriter::new(std::io::Cursor::new(Vec::new()), rdm::RdmEndian::Little)
+            .write_root(&document)
+            .unwrap()
+            .into_inner();
+        let model = RdModell::new(output);
+        assert_eq!(model.vertex.as_bytes(), expected);
+        assert_eq!(
+            model
+                .triangle_indices
+                .iter()
+                .flat_map(|triangle| triangle.indices)
+                .max(),
+            Some(74_479)
+        );
     }
 
     #[test]

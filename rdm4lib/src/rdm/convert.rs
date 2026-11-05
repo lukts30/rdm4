@@ -4,14 +4,123 @@ use std::error::Error;
 
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
-use super::{buffers::vertex_bytes, RdmDocument, RdmEndian, RdmJoint, RdmModel};
+use super::{
+    buffers::{vertex_bytes, vertices_from_bytes},
+    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmFrame, RdmIndexFormat, RdmIndices,
+    RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName, RdmSkin,
+    RdmTrack, RdmVertexFormat,
+};
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
     rdm_data_anim::Frame,
     rdm_data_main::MeshInfo,
-    vertex::VertexFormat2,
+    vertex::{StorageType, VertexFormat2},
     RdJoint, RdModell, Triangle,
 };
+
+impl TryFrom<RdModell> for RdmDocument {
+    type Error = Box<dyn Error>;
+
+    /// Build a fresh mesh document with the existing exporter's metadata defaults.
+    fn try_from(model: RdModell) -> Result<Self, Self::Error> {
+        let with_skin = model.has_skin();
+        let format = RdmVertexFormat {
+            attributes: model.vertex.identifiers.to_vec(),
+            selector: u8::from(with_skin),
+        };
+        let vertices = vertices_from_bytes(
+            model.vertex.as_bytes(),
+            model.vertex.len() as usize,
+            &format,
+            RdmEndian::Little,
+            0,
+            "RdmModel.vertices",
+        )?;
+        let indices: Vec<_> = model
+            .triangle_indices
+            .iter()
+            .flat_map(|triangle| triangle.indices)
+            .collect();
+        let storage_type = if indices.iter().any(|&index| index > u32::from(u16::MAX)) {
+            StorageType::U32
+        } else {
+            StorageType::U16
+        };
+        let (bounds_min, bounds_max) = model.vertex.calculate_bounds();
+        let max_material = model
+            .mesh_info
+            .iter()
+            .map(|group| group.material)
+            .max()
+            .ok_or("mesh has no material groups")?;
+        let mesh = RdmModel {
+            name: RdmModelName {
+                name: Some("basalt_crusher_others_lod0".into()),
+            },
+            vertex_format: format,
+            index_format: RdmIndexFormat { storage_type },
+            vertices,
+            indices: RdmIndices { values: indices },
+            groups: model
+                .mesh_info
+                .into_iter()
+                .map(|group| RdmMeshGroup {
+                    first_index: group.start_index_location,
+                    index_count: group.index_count,
+                    material: group.material,
+                })
+                .collect(),
+            skeleton_index: if with_skin { 0 } else { -1 },
+            bounds_min,
+            bounds_max,
+        };
+        Ok(Self {
+            export_info: Some(RdmExportInfo {
+                source_path: Some(r"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max".into()),
+                rmp_name: Some("Anno5_Building_Skin_1Blend.rmp".into()),
+            }),
+            models: Some(vec![mesh]),
+            materials: Some((0..=max_material).map(|_| RdmMaterialEntry {
+                material: RdmMaterial {
+                    name: Some("Default Standard12432142134".into()),
+                    texture: Some("d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png".into()),
+                },
+            }).collect()),
+            skin: model.joints.map(|joints| RdmSkin {
+                joints: joints.into_iter().map(RdmJoint::from).collect(),
+            }),
+            animations: None,
+        })
+    }
+}
+
+impl From<RdAnim> for RdmDocument {
+    /// Build a standalone animation document, retaining the legacy export defaults.
+    fn from(animation: RdAnim) -> Self {
+        Self {
+            export_info: Some(RdmExportInfo {
+                source_path: Some(r"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max".into()),
+                rmp_name: Some("Anno5_Building_Anim_UnCompressed.rmp".into()),
+            }),
+            models: None,
+            materials: None,
+            skin: None,
+            animations: Some(vec![RdmAnimation {
+                name: "basalt_crusher_others_lod0".into(),
+                time_max: animation.time_max,
+                sampling_rate: animation.sampling_rate,
+                tracks: animation.anim_vec.into_iter().map(|track| RdmTrack {
+                    joint_name: track.name,
+                    frames: track.frames.into_iter().map(|frame| RdmFrame {
+                        rotation: frame.rotation,
+                        translation: frame.translation,
+                        time: frame.time,
+                    }).collect(),
+                }).collect(),
+            }]),
+        }
+    }
+}
 
 impl RdmDocument {
     /// Adapt one selected model for the existing exporter, optionally with its skeleton.
@@ -143,6 +252,24 @@ impl From<RdmJoint> for RdJoint {
             name: joint.name,
             translation: [translation.x, translation.y, translation.z],
             quaternion: [q.x, q.y, q.z, q.w],
+            parent: joint.parent,
+        }
+    }
+}
+
+impl From<RdJoint> for RdmJoint {
+    fn from(joint: RdJoint) -> Self {
+        let [rx, ry, rz, rw] = joint.quaternion;
+        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(rw, rx, ry, rz));
+        let [tx, ty, tz] = joint.translation;
+        let translation = rotation
+            .inverse_transform_vector(&Vector3::new(tx, ty, tz))
+            .scale(-1.0);
+        let q = rotation.quaternion().coords;
+        Self {
+            name: joint.name,
+            translation: [translation.x, translation.y, translation.z],
+            rotation: [q.x, q.y, q.z, q.w],
             parent: joint.parent,
         }
     }

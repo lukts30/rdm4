@@ -256,7 +256,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "2f6993eb99b4a0c89ee9723c822d18034cc772900331d1cb80e403b96339d398",
+            "8f048b28e18b12aa1d078e42eb3fe7dcc8bb5017b529c09b8bfb6eb11973fc75",
         );
     }
 
@@ -315,7 +315,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "f11a0a18cd89df95799719dc9b77cfda0d2b87d5080b506f9a257c0d51acda88",
+            "f7612fc465e1a0f27687ed7371c88f945b71858bddbe963bb39389644e41b206",
         );
     }
 
@@ -335,8 +335,7 @@ mod tests {
         assert_eq!(rdm.vertex.len(), 5184);
 
         let jj = &rdm.joints.unwrap();
-        let mut anims =
-            gltf_reader::ImportedGltf::read_animation(&i_gltf, &jj, 6, 0.33333).unwrap();
+        let mut anims = gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333).unwrap();
 
         assert_eq!(anims.len(), 1);
         let anim = anims.pop().unwrap();
@@ -368,7 +367,7 @@ mod tests {
         let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
         check_hash(
             &dest_path,
-            "188da4dc618ab2c80c88386d5272071a1999ccb524f72c05b22748ce21bd74df",
+            "48a52be827288189f8ec8bbf28d7c0cb50305b51c7513285472c5fcc8c7b9714",
         );
     }
 
