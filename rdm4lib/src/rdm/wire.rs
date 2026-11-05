@@ -137,7 +137,7 @@ pub trait RdmRecordLayout {
     const NAME: &'static str;
     /// Bytes covered by the declared fields, excluding preserved tails.
     const SIZE: usize;
-    /// Accepted record strides.
+    /// Accepted record strides; the first is used for fresh output.
     const STRIDES: &'static [u32];
 }
 

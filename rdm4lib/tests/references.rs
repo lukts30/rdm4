@@ -101,6 +101,11 @@ fn follows_references_in_field_order_independent_of_physical_order() {
             .unwrap()
             .into_inner();
         assert_eq!(read_root::<Root>(&output).unwrap().value, result.value);
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_preserving(&result.value, result.layout)
+            .unwrap()
+            .into_inner();
+        assert_eq!(output, sample(endian));
     }
 }
 
@@ -343,7 +348,48 @@ fn preserves_parent_and_child_tails_in_original_byte_order() {
             .blocks
             .iter()
             .all(|block| block.source.stride == 8 && block.tails.iter().all(|&byte| byte == 0)));
+        let mut edited = result.value;
+        edited.children[0].value = 99;
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_preserving(&edited, result.layout)
+            .unwrap()
+            .into_inner();
+        patch(&mut bytes, 44, 99, endian);
+        assert_eq!(output, bytes);
     }
+}
+
+#[test]
+fn preserving_rejects_changed_shapes_and_byte_order() {
+    let bytes = sample(RdmEndian::Little);
+    let mut decoded = read_root::<Root>(&bytes).unwrap();
+    let mut target = Cursor::new(Vec::new());
+    let error = RdmWriter::new(&mut target, RdmEndian::Big)
+        .write_preserving(&decoded.value, decoded.layout.clone())
+        .unwrap_err();
+    assert_eq!((error.offset(), error.context()), (3, "source byte order"));
+    assert!(target.into_inner().is_empty());
+    for (optional, expected) in [
+        (None, "all source blocks retained"),
+        (
+            Some("longer".to_string()),
+            "Root.optional: 3 records, stride 1",
+        ),
+    ] {
+        decoded.value.optional = optional;
+        let error = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_preserving(&decoded.value, decoded.layout.clone())
+            .unwrap_err();
+        assert_eq!((error.offset(), error.context()), (36, "Root.optional"));
+        assert_eq!(error.expected(), expected);
+    }
+    decoded.value.optional = Some("oak".into());
+    decoded.value.many.push(Leaf { value: 12 });
+    let error = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+        .write_preserving(&decoded.value, decoded.layout)
+        .unwrap_err();
+    assert_eq!((error.offset(), error.context()), (32, "Root.many"));
+    assert_eq!(error.expected(), "Root.many: 2 records, stride 4");
 }
 
 #[test]

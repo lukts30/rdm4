@@ -127,6 +127,21 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
                 .read_root::<RdmDocument>()
                 .unwrap();
             assert_eq!(written.value, document.value, "{path:?}");
+            assert_eq!(written.layout.blocks[0].source.stride, 48);
+            assert!(written
+                .layout
+                .blocks
+                .iter()
+                .all(|block| block.tails.iter().all(|&byte| byte == 0)));
+            if count != 0 {
+                let models = written
+                    .layout
+                    .blocks
+                    .iter()
+                    .find(|block| block.context == "RdmDocument.models")
+                    .unwrap();
+                assert_eq!(models.source.stride, 92);
+            }
             if endian == RdmEndian::Little && count != 0 {
                 let new_models = word(&output, 0x20);
                 // Compare the first model's encoded buffers directly with fixture bytes.

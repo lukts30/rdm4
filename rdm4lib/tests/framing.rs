@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use rdm4lib::rdm::{RdmBlock, RdmEndian, RdmHeader, RdmScanner};
+use rdm4lib::rdm::{RdmBlock, RdmDocument, RdmEndian, RdmHeader, RdmReader, RdmScanner, RdmWriter};
 
 const LITTLE: [u8; 20] = [
     b'R', b'D', b'M', 1, 20, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 28, 0, 0, 0,
@@ -76,7 +76,7 @@ fn invalid_block_sizes_return_contextual_errors() {
 }
 
 #[test]
-fn scans_every_fixture_identically_from_memory_and_buffered_files() {
+fn scans_and_preserves_every_fixture_from_seekable_sources() {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rdm");
     let paths: Vec<_> = [base.clone(), base.join("benchmark")]
         .into_iter()
@@ -113,6 +113,15 @@ fn scans_every_fixture_identically_from_memory_and_buffered_files() {
             blocks += 1;
         }
         assert_eq!(at, bytes.len(), "{path:?}");
+        let decoded = RdmReader::new(BufReader::new(fs::File::open(&path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        let output = RdmWriter::new(Cursor::new(Vec::new()), header.endian)
+            .write_preserving(&decoded.value, decoded.layout)
+            .unwrap()
+            .into_inner();
+        assert_eq!(output, bytes, "{path:?}");
     }
     assert_eq!(blocks, 3786);
 }

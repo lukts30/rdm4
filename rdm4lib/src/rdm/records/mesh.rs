@@ -20,9 +20,10 @@ pub struct RdmDocument {
     pub animations: Option<Vec<RdmAnimation>>,
 }
 
-/// Model metadata and decoded buffers. Unknown record tails live in the source layout.
+/// Model metadata and decoded buffers. Fresh output uses the 92-byte variant.
+/// Unknown record tails live in the source layout.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(68, 92), write)]
+#[rdm(strides(92, 68), write)]
 pub struct RdmModel {
     /// Optional name stored through a wrapper record.
     pub name: RdmModelName,
