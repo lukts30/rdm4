@@ -7,6 +7,7 @@ mod layout;
 mod read;
 mod records;
 mod scanner;
+mod split;
 mod wire;
 
 pub use error::RdmError;
@@ -19,4 +20,5 @@ pub use records::{
     RdmSkin, RdmTrack, RdmVertexFormat, RdmVertices,
 };
 pub use scanner::{RdmScanReport, RdmScanner};
+pub use split::RdmSplitter;
 pub use wire::{RdmEndian, RdmFieldLayout, RdmRecordLayout};
