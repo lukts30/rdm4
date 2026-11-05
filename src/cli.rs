@@ -23,7 +23,11 @@ pub fn existing_file(value: &str) -> Result<PathBuf, String> {
 }
 
 #[derive(Parser)]
-#[command(name = "rdm4ng", version, about = "Convert and inspect RDM files")]
+#[command(
+    name = "rdm4ng",
+    version,
+    about = "Convert, inspect and split RDM files"
+)]
 struct Cli {
     /// Increase logging verbosity.
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -42,6 +46,21 @@ enum Command {
     Rdm(RdmArgs),
     /// Show physical blocks and optionally decode known records.
     Inspect(InspectArgs),
+    /// Write one RDM per model record, retaining shared file records.
+    Split(SplitArgs),
+}
+
+#[derive(Args)]
+struct SplitArgs {
+    /// Input RDM file.
+    #[arg(value_parser = existing_file)]
+    input: PathBuf,
+    /// Output directory; created when needed.
+    #[arg(short, long)]
+    output: PathBuf,
+    /// Replace existing split files.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(Args)]
@@ -181,6 +200,14 @@ pub fn run() -> ExitCode {
                     ExitCode::FAILURE
                 }
             };
+        }
+        Command::Split(args) => {
+            if let Err(error) =
+                commands::split(&args.input, &args.output, args.force, io::stdout().lock())
+            {
+                eprintln!("split: {error}");
+                return ExitCode::FAILURE;
+            }
         }
     }
     ExitCode::SUCCESS

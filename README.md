@@ -28,6 +28,7 @@ rdm4ng gltf model.rdm -o model.glb
 rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
 rdm4ng gltf multi_model.rdm --mesh-index 1 -o selected.glb
+rdm4ng split multi_model.rdm -o split_models
 rdm4ng inspect model.rdm
 rdm4ng inspect model.rdm --format json
 rdm4ng inspect model.rdm --records --format json
@@ -40,6 +41,10 @@ Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
 `rdm4ng gltf` uses the new reader with the existing glTF exporter. Multi-model
 inputs require `--mesh-index` (zero-based). `rdm4-bin` retains the legacy reader.
+
+`split` writes `<stem>.model-000.rdm`, etc., one per model. It preserves source
+byte order, strides and opaque tails, retaining shared materials, skeleton and
+animations. All blocks must have known owners. Existing outputs require `--force`.
 
 `inspect` uses the new scanner to list physical blocks and preamble metadata.
 Unknown record layouts are accepted by default. `--records` additionally decodes

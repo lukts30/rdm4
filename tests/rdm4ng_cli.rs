@@ -33,7 +33,9 @@ fn help_version_and_argument_errors() {
     let help = ng().arg("--help").output().unwrap();
     assert!(help.status.success());
     let text = String::from_utf8(help.stdout).unwrap();
-    for name in ["rdm4ng", "gltf", "rdm", "inspect", "rdm2gltf", "gltf2rdm"] {
+    for name in [
+        "rdm4ng", "gltf", "rdm", "inspect", "split", "rdm2gltf", "gltf2rdm",
+    ] {
         assert!(text.contains(name), "{text}");
     }
     let version = ng().arg("--version").output().unwrap();
@@ -47,6 +49,8 @@ fn help_version_and_argument_errors() {
         vec![],
         vec!["rdm"],
         vec!["inspect"],
+        vec!["split"],
+        vec!["split", input.to_str().unwrap()],
         vec!["inspect", input.to_str().unwrap(), "--format", "invalid"],
         vec!["rdm", input.to_str().unwrap()],
         vec!["rdm", input.to_str().unwrap(), "--format", "invalid"],
@@ -69,6 +73,124 @@ fn help_version_and_argument_errors() {
         let output = ng().args(&invalid).output().unwrap();
         assert_eq!(output.status.code(), Some(2), "{invalid:?}");
     }
+}
+
+#[test]
+fn split_preserves_model_records_and_shared_data() {
+    use rdm4lib::rdm::{RdmDocument, RdmReader};
+    use std::io::Cursor;
+
+    let output = tempfile::tempdir().unwrap();
+    for (case, name) in [
+        "fishery_others_lod2.rdm",
+        "excavator_tycoons_lod1.rdm",
+        "basalt_crusher_others_lod0.rdm",
+        "benchmark/06-heavy_04_conveyor_lod2.rdm",
+        "benchmark/11-dropgoods_factory_depot_mines_static_lod2.rdm",
+        "benchmark/15-mining_08_slot_01_lod0.rdm",
+        "benchmark/20-monument_01_04_var3_lod0.rdm",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let input = fixture(name);
+        let bytes = fs::read(&input).unwrap();
+        let expected = RdmReader::new(Cursor::new(&bytes))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        let models = expected.value.models.as_ref().unwrap();
+        let directory = output.path().join(case.to_string());
+        let result = ng()
+            .arg("split")
+            .arg(&input)
+            .arg("-o")
+            .arg(&directory)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let paths: Vec<_> = String::from_utf8(result.stdout)
+            .unwrap()
+            .lines()
+            .map(PathBuf::from)
+            .collect();
+        assert_eq!(paths.len(), models.len());
+        for (index, path) in paths.iter().enumerate() {
+            let split_bytes = fs::read(path).unwrap();
+            let actual = RdmReader::new(Cursor::new(&split_bytes))
+                .unwrap()
+                .read_root::<RdmDocument>()
+                .unwrap();
+            assert_eq!(
+                actual.value.models.as_deref(),
+                Some(&models[index..index + 1]),
+                "{name} model {index}"
+            );
+            assert_eq!(actual.value.export_info, expected.value.export_info);
+            assert_eq!(actual.value.materials, expected.value.materials);
+            assert_eq!(actual.value.skin, expected.value.skin);
+            assert_eq!(actual.value.animations, expected.value.animations);
+            assert_eq!(actual.layout.endian, expected.layout.endian);
+            let original = expected
+                .layout
+                .blocks
+                .iter()
+                .find(|b| b.reference_offset == 0x20)
+                .unwrap();
+            let written = actual
+                .layout
+                .blocks
+                .iter()
+                .find(|b| b.reference_offset == 0x20)
+                .unwrap();
+            let tail = original.source.stride as usize - original.known_size;
+            assert_eq!(
+                written.tails,
+                original.tails[index * tail..(index + 1) * tail]
+            );
+            if models.len() == 1 {
+                assert_eq!(split_bytes, bytes);
+            }
+        }
+        if case == 3 {
+            let first = fs::read(&paths[0]).unwrap();
+            let second = fs::read(&paths[1]).unwrap();
+            fs::remove_file(&paths[0]).unwrap();
+            let collision = ng()
+                .arg("split")
+                .arg(&input)
+                .arg("-o")
+                .arg(&directory)
+                .output()
+                .unwrap();
+            assert_eq!(collision.status.code(), Some(1));
+            assert!(!paths[0].exists());
+            assert_eq!(fs::read(&paths[1]).unwrap(), second);
+            succeeds(
+                ng().arg("split")
+                    .arg(&input)
+                    .arg("-o")
+                    .arg(&directory)
+                    .arg("--force"),
+            );
+            assert_eq!(fs::read(&paths[0]).unwrap(), first);
+        }
+        assert_eq!(fs::read(input).unwrap(), bytes);
+    }
+    let directory = output.path().join("no models");
+    let result = ng()
+        .arg("split")
+        .arg(fixture("basalt_crusher_others_idle01.rdm"))
+        .arg("-o")
+        .arg(&directory)
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(1));
+    assert!(!directory.exists());
 }
 
 #[test]

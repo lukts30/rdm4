@@ -2,7 +2,7 @@
 
 use std::{
     error::Error,
-    fs::File,
+    fs::{self, File},
     io::{self, BufReader, Write},
     path::{Path, PathBuf},
 };
@@ -11,7 +11,7 @@ use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
-    rdm::{RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner},
+    rdm::{RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner, RdmSplitter},
     rdm_anim::RdAnim,
     rdm_data_anim::RdAnimWriter2,
     rdm_data_main::RdWriter2,
@@ -19,6 +19,54 @@ use rdm4lib::{
     vertex::TargetVertexFormat,
     RdModell,
 };
+
+/// Split model records into indexed RDM files and print their paths.
+pub fn split(
+    input: &Path,
+    directory: &Path,
+    force: bool,
+    mut output: impl Write,
+) -> Result<(), Box<dyn Error>> {
+    let mut splitter = RdmSplitter::new(BufReader::new(File::open(input)?))?;
+    let paths: Vec<_> = (0..splitter.model_count())
+        .map(|index| {
+            let mut name = input
+                .file_stem()
+                .expect("input has a filename")
+                .to_os_string();
+            name.push(format!(".model-{index:03}.rdm"));
+            directory.join(name)
+        })
+        .collect();
+    for path in &paths {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_dir() => {
+                return Err(format!("output is a directory: {}", path.display()).into())
+            }
+            Ok(_) if !force => {
+                return Err(format!(
+                    "output exists: {} (use --force to replace files)",
+                    path.display()
+                )
+                .into())
+            }
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        }
+    }
+    fs::create_dir_all(directory)?;
+    for (index, path) in paths.iter().enumerate() {
+        let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+        splitter.write_model(index, &mut temporary)?;
+        if force {
+            temporary.persist(path)?;
+        } else {
+            temporary.persist_noclobber(path)?;
+        }
+        writeln!(output, "{}", path.display())?;
+    }
+    Ok(())
+}
 
 /// Output representation for inspection reports.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
