@@ -1,11 +1,6 @@
-use binrw::BinReaderExt;
+use rdm_data_main::MeshInfo;
 use rdm_data_main::*;
-use rdm_data_main::{MeshInfo, RdmFile};
-use std::path::Path;
-
-use std::fs::File;
-
-use std::str;
+use std::{fs::File, io::BufReader, path::Path};
 
 use half::f16;
 
@@ -35,7 +30,7 @@ pub mod rdm_data_anim;
 pub mod rdm_data_main;
 
 pub struct RdModell {
-    rdmf: Option<RdmFile<RdmKindMesh>>,
+    pending_joints: Option<Vec<RdJoint>>,
     pub mesh_info: Vec<MeshInfo>,
     pub joints: Option<Vec<RdJoint>>,
     pub triangle_indices: Vec<Triangle>,
@@ -62,103 +57,30 @@ impl RdModell {
         self.anim = Some(anim);
     }
 
+    /// Activate the skeleton loaded with the model.
     pub fn add_skin(&mut self) {
-        let rdm = self.rdmf.as_ref().unwrap();
-
-        self.joints = Some(
-            rdm.header1
-                .skin
-                .joint
-                .iter()
-                .map(|joint| {
-                    RdJoint::from(rdm::RdmJoint {
-                        name: joint.name.as_ascii().into(),
-                        translation: joint.t,
-                        rotation: joint.r,
-                        parent: joint.parent_id,
-                    })
-                })
-                .collect(),
-        );
+        if self.joints.is_none() {
+            self.joints = Some(
+                self.pending_joints
+                    .take()
+                    .expect("requested skeleton is absent"),
+            );
+        }
     }
 
-    fn new(buf: Vec<u8>) -> Self {
-        let mut reader = std::io::Cursor::new(&buf);
+    fn read<R: std::io::Read + std::io::Seek>(source: R) -> Self {
+        rdm::RdmReader::new(source)
+            .expect("invalid RDM framing")
+            .read_root::<rdm::RdmDocument>()
+            .expect("invalid RDM records")
+            .value
+            .into_model(0, false)
+            .expect("input has no usable model")
+    }
 
-        let rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
-        info!(
-            "  Endianness: {}",
-            if rdm.big_endian { "big" } else { "little" }
-        );
-
-        let vvert = VertexFormat2::read_format_via_data(&rdm);
-        info!("  Mesh #0");
-        info!(
-            "    Vertices: {}, format: {}, stride: {} bytes",
-            vvert.len(),
-            vvert,
-            vvert.get_size()
-        );
-
-        debug!(
-            "    Stored bounds (min, max): {:?}",
-            rdm.header1.meta.bounds()
-        );
-        debug!(
-            "    Calculated bounds (min, max): {:?}",
-            vvert.calculate_bounds()
-        );
-
-        let mut offset = 0;
-        for component in &vvert.identifiers {
-            debug!(
-                "      {:?}: type={:?}, count={}, interpretation={}, offset={}, bytes={}",
-                component.semantic,
-                component.storage_type,
-                component.storage_count,
-                component.interpretation.0,
-                offset,
-                component.get_size()
-            );
-            offset += component.get_size();
-        }
-        let index_type = rdm.header1.meta.index_format.element_type;
-        info!(
-            "    Index type: {:?} ({} bytes)",
-            index_type,
-            index_type.byte_size()
-        );
-
-        let triangles_idx_count = rdm.header1.meta.triangle_list_len();
-        let triangles_real_count = triangles_idx_count / 3;
-        let mut triangles = Vec::with_capacity(triangles_real_count as usize);
-        let ts: Vec<_> = rdm.header1.meta.triangle_list(rdm.big_endian).collect();
-        for x in ts.chunks(3) {
-            let t = Triangle {
-                indices: [x[0], x[1], x[2]],
-            };
-            triangles.push(t);
-        }
-
-        let mesh_info: Vec<_> = rdm.header1.meta.0.mesh_info.iter().cloned().collect();
-        info!("    Triangles: {}", triangles_real_count);
-        for (index, primitive) in mesh_info.iter().enumerate() {
-            info!("    Primitive #{}", index);
-            info!(
-                "      Material: {}, first index: {}, index count: {}",
-                primitive.material, primitive.start_index_location, primitive.index_count
-            );
-        }
-
-        RdModell {
-            rdmf: Some(rdm),
-            mesh_info,
-            joints: None,
-            triangle_indices: triangles,
-            vertex: vvert,
-            anim: None,
-            mat: None,
-        }
+    #[cfg(test)]
+    fn new(bytes: Vec<u8>) -> Self {
+        Self::read(std::io::Cursor::new(bytes))
     }
 }
 
@@ -170,29 +92,21 @@ pub struct Triangle {
 
 impl<P: AsRef<Path>> From<P> for RdModell {
     fn from(f_path: P) -> Self {
-        let mut f = File::open(&f_path).unwrap();
-        let metadata = f.metadata().unwrap();
-        let len = metadata.len() as usize;
-        let mut buffer = vec![0; len];
-        std::io::Read::read_exact(&mut f, &mut buffer).expect("I/O ERROR");
-
-        let buffer_len = buffer.len();
-
-        info!("Loaded {:?} ({} bytes)", f_path.as_ref(), buffer_len);
-        RdModell::new(buffer)
+        info!("Loaded {:?}", f_path.as_ref());
+        Self::read(BufReader::new(
+            File::open(f_path).expect("cannot open RDM file"),
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests_intern {
     use super::*;
-    use binrw::{BinWriterExt, Endian};
+    use binrw::{BinReaderExt, BinWriterExt, Endian};
 
     #[test]
     fn reads_u32_indices_without_truncation() {
         let model = RdModell::from("rdm/destruction_stone_building_04_decal_detail01_lod0.rdm");
-        let meta = &model.rdmf.as_ref().unwrap().header1.meta;
-        assert_eq!(meta.index_format.element_type, vertex::StorageType::U32);
         assert_eq!(model.triangle_indices.len(), 37_240);
         let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
         assert_eq!(indices.max(), Some(74_479));
@@ -214,8 +128,9 @@ mod tests_intern {
             let mut invalid = bytes.to_vec();
             invalid[index_format..index_format + 4].copy_from_slice(&code.to_le_bytes());
             assert!(
-                std::io::Cursor::new(invalid)
-                    .read_le::<RdmFile<RdmKindMesh>>()
+                rdm::RdmReader::new(std::io::Cursor::new(invalid))
+                    .unwrap()
+                    .read_root::<rdm::RdmDocument>()
                     .is_err(),
                 "accepted {case}"
             );

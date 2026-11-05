@@ -2,7 +2,7 @@ use bytes::{Buf, Bytes};
 use rdm_derive::{RdmRecord, RdmStructSize};
 use std::{fmt, str::FromStr};
 
-use crate::{rdm_data_main::RdmFile, *};
+use crate::*;
 use binrw::binrw;
 
 /// One 16-byte descriptor for an attribute in each vertex.
@@ -342,42 +342,6 @@ impl VertexFormat2 {
             vertex_buffer,
             weight_sum: None,
         }
-    }
-
-    pub fn read_format_via_data(rdm: &RdmFile<RdmKindMesh>) -> Self {
-        let meta: &rdm_data_main::Meta = &rdm.header1.meta.0;
-        let format_identifiers = &meta.format_identifiers;
-
-        let ids = &format_identifiers.rdm_container;
-        assert_eq!(ids.info.part_size, 16);
-
-        let vec: Vec<VertexIdentifier> = ids.iter().cloned().collect();
-
-        let vertex_count = meta.vertex.info.count;
-        let vertex_size = meta.vertex.info.part_size;
-        let mut vertex_buffer: Vec<u8> = meta.vertex.iter().map(|x| x.0).collect();
-        if rdm.big_endian {
-            // Normalize to the LE representation used by all vertex consumers.
-            // Packed N4b/I4b/W4b/etc. are U32 words, not four independent bytes.
-            for vertex in vertex_buffer.chunks_exact_mut(vertex_size as usize) {
-                let mut offset = 0;
-                for id in &vec {
-                    let width = id.storage_type.byte_size() as usize;
-                    let end = offset + id.get_size() as usize;
-                    for component in vertex[offset..end].chunks_exact_mut(width) {
-                        component.reverse();
-                    }
-                    offset = end;
-                }
-            }
-        }
-
-        Self::new(
-            vec.into_boxed_slice(),
-            vertex_count,
-            vertex_size,
-            Bytes::from(vertex_buffer),
-        )
     }
 
     #[allow(clippy::needless_lifetimes)]

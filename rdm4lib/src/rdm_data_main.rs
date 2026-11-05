@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinRead, BinWriterExt};
+use binrw::{binrw, BinRead, BinReaderExt, BinWriterExt};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
@@ -129,44 +129,6 @@ impl Meta {
     /// Stored minimum and maximum XYZ bounds.
     pub fn bounds(&self) -> ([f32; 3], [f32; 3]) {
         (self.bounds_min, self.bounds_max)
-    }
-
-    pub fn triangle_list_len(&self) -> u32 {
-        self.triangle_list.info.count
-    }
-
-    /// Decode indices using the source file's byte order.
-    pub fn triangle_list(&self, big_endian: bool) -> impl Iterator<Item = u32> + '_ {
-        let index_type = self.index_format.element_type;
-        let part_size = index_type.byte_size() as usize;
-        let convert = match index_type {
-            StorageType::U16 => |chunk: &[AnnoU8]| -> u32 {
-                let chunk: [u8; 2] = [chunk[0].0, chunk[1].0];
-                let value: u32 = u16::from_le_bytes(chunk).into();
-                value
-            },
-            StorageType::U32 => |chunk: &[AnnoU8]| -> u32 {
-                let chunk: [u8; 4] = [chunk[0].0, chunk[1].0, chunk[2].0, chunk[3].0];
-                let value: u32 = u32::from_le_bytes(chunk);
-                value
-            },
-            _ => panic!("Index format requires U16 or U32"),
-        };
-
-        let result = self
-            .triangle_list
-            .storage
-            .items
-            .chunks_exact(part_size)
-            .map(move |chunk| {
-                let value = convert(chunk);
-                match (big_endian, index_type) {
-                    (true, StorageType::U16) => (value as u16).swap_bytes().into(),
-                    (true, StorageType::U32) => value.swap_bytes(),
-                    _ => value,
-                }
-            });
-        result
     }
 }
 
@@ -344,6 +306,10 @@ mod tests {
     use binrw::{BinReaderExt, BinWriterExt};
     use std::fs;
 
+    fn read_source(path: &str) -> RdmFile<RdmKindMesh> {
+        fs::File::open(path).unwrap().read_le().unwrap()
+    }
+
     #[test]
     fn reads_68_byte_metadata_without_consuming_the_next_block() {
         for (source, endian) in [
@@ -382,9 +348,9 @@ mod tests {
 
     #[test]
     fn converts_be_68_byte_metadata_to_le_92_byte_metadata() {
-        use crate::vertex::{N3f, N4b, VertexFormat2};
+        use crate::vertex::{N3f, N4b};
         let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
-        let source = model.rdmf.as_ref().unwrap();
+        let source = read_source("rdm/n_nature_small_stone_02_lod0.rdm");
         assert!(source.big_endian);
         assert_eq!(source.header1.meta.info.part_size, 68);
         // The packed normal must be decoded as a BE word, not four unchanged bytes.
@@ -406,7 +372,7 @@ mod tests {
         assert_eq!(result.header1.meta.info.part_size, 92);
         assert_eq!(result.header1.meta._unknown_words, [0; 10]);
         assert_eq!(
-            VertexFormat2::read_format_via_data(&result).calculate_bounds(),
+            RdModell::new(output.into_inner()).vertex.calculate_bounds(),
             bounds
         );
     }
@@ -414,7 +380,10 @@ mod tests {
     #[test]
     fn writes_bounds_from_quantized_vertices_instead_of_source_bounds() {
         let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
-        let stored = model.rdmf.as_ref().unwrap().header1.meta.bounds();
+        let stored = read_source("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm")
+            .header1
+            .meta
+            .bounds();
         let calculated = model.vertex.calculate_bounds();
         assert_eq!(model.vertex.identifiers[0].storage_type, StorageType::F16);
         assert_ne!(stored, calculated);
@@ -441,7 +410,10 @@ mod tests {
             [0x3cf1c51e, 0x3fc6c946, 0x3e9ba652]
         );
         assert_eq!(
-            model.rdmf.as_ref().unwrap().header1.meta.bounds(),
+            read_source("rdm/eden_line_flagpole_variation_cloth_lod0.rdm")
+                .header1
+                .meta
+                .bounds(),
             calculated
         );
         assert_eq!(
@@ -457,8 +429,8 @@ mod tests {
             include_bytes!("../rdm/ark_waterfall2.rdm").as_slice(),
         ] {
             let rdm: RdmFile<RdmKindMesh> = std::io::Cursor::new(data).read_le().unwrap();
-            let vertices = crate::vertex::VertexFormat2::read_format_via_data(&rdm);
-            assert_eq!(rdm.header1.meta.bounds(), vertices.calculate_bounds());
+            let model = RdModell::new(data.to_vec());
+            assert_eq!(rdm.header1.meta.bounds(), model.vertex.calculate_bounds());
         }
     }
 

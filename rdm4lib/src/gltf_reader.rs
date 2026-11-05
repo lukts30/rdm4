@@ -409,7 +409,7 @@ impl<'a> ImportedGltf {
         // todo!("TODO : FIX ME !!!");
         let mesh_info_vec = gltf_imp.4;
         RdModell {
-            rdmf: None,
+            pending_joints: None,
             mesh_info: mesh_info_vec,
             joints: joints_vec,
             triangle_indices: triangles,

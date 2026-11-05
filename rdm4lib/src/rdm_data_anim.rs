@@ -1,4 +1,4 @@
-use binrw::{binrw, BinWriterExt};
+use binrw::{binrw, BinReaderExt, BinWriterExt};
 use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},

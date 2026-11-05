@@ -23,9 +23,16 @@ impl RdmDocument {
             .nth(index)
             .ok_or_else(|| format!("model index {index} out of range for {count} models"))?;
         let mut model = RdModell::try_from(model)?;
+        model.pending_joints = self
+            .skin
+            .map(|skin| skin.joints.into_iter().map(RdJoint::from).collect());
         if with_skin {
-            let skin = self.skin.ok_or("requested skeleton is absent")?;
-            model.joints = Some(skin.joints.into_iter().map(RdJoint::from).collect());
+            model.joints = Some(
+                model
+                    .pending_joints
+                    .take()
+                    .ok_or("requested skeleton is absent")?,
+            );
         }
         Ok(model)
     }
@@ -130,7 +137,7 @@ impl TryFrom<RdmModel> for RdModell {
             offset += id.storage_type.byte_size() as usize * components;
         }
         Ok(Self {
-            rdmf: None,
+            pending_joints: None,
             joints: None,
             anim: None,
             mat: None,

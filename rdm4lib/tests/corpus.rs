@@ -332,19 +332,24 @@ fn migrated_animation_records_match_legacy_values_across_the_corpus() {
         let decoded = reader.read_block::<RdmAnimation>(at as u32).unwrap();
         assert_eq!(decoded.records.len(), 1, "{path:?}");
         let animation = &decoded.records[0];
-        let legacy = RdAnim::from(&path);
+        let legacy: RdmFile<RdmKindAnim> = Cursor::new(&bytes).read_le().unwrap();
+        let legacy = &legacy.header1.meta_anim;
         assert_eq!(animation.time_max, legacy.time_max, "{path:?}");
         assert_eq!(animation.sampling_rate, legacy.sampling_rate, "{path:?}");
-        assert_eq!(animation.tracks.len(), legacy.anim_vec.len(), "{path:?}");
+        assert_eq!(animation.tracks.len(), legacy.anims.len(), "{path:?}");
         let name_at = word(&bytes, at);
         assert_eq!(
             animation.name.as_bytes(),
             &bytes[name_at..name_at + word(&bytes, name_at - 8)]
         );
-        for (track, legacy) in animation.tracks.iter().zip(&legacy.anim_vec) {
-            assert_eq!(track.joint_name, legacy.name, "{path:?}");
-            assert_eq!(track.frames.len(), legacy.frames.len(), "{path:?}");
-            for (frame, legacy) in track.frames.iter().zip(&legacy.frames) {
+        for (track, legacy) in animation.tracks.iter().zip(legacy.anims.iter()) {
+            assert_eq!(track.joint_name, legacy.j_name.as_ascii(), "{path:?}");
+            assert_eq!(
+                track.frames.len(),
+                legacy.j_data.storage.items.len(),
+                "{path:?}"
+            );
+            for (frame, legacy) in track.frames.iter().zip(&legacy.j_data.storage.items) {
                 assert_eq!(
                     frame.rotation.map(f32::to_bits),
                     legacy.rotation.map(f32::to_bits)
