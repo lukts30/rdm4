@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, fs, io::Cursor, path::PathBuf};
 use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
-    rdm::{RdmAnimation, RdmIndexFormat, RdmMaterialEntry, RdmReader, RdmSkin, RdmVertexFormat},
+    rdm::{RdmAnimation, RdmAttributeValues, RdmDocument, RdmMaterialEntry, RdmReader, RdmSkin},
     rdm_anim::RdAnim,
     rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
     vertex::VertexIdentifier,
@@ -108,6 +108,12 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
             word(&bytes, models - 8)
         };
         assert_eq!(count, fixture.model_count(), "{path:?}");
+        let document = RdmReader::new(Cursor::new(&bytes))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        let decoded_models = document.value.models.as_deref().unwrap_or_default();
+        assert_eq!(decoded_models.len(), count, "{path:?}");
         if count == 0 {
             continue;
         }
@@ -115,15 +121,11 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
         assert_eq!(stride, number(&fixture.expected["first_model"]["stride"]));
         let mut vertices = 0;
         let mut indices = 0;
-        let mut reader = RdmReader::new(Cursor::new(&bytes)).unwrap();
-        for index in 0..count {
+        for (index, decoded) in decoded_models.iter().enumerate() {
             let model = models + index * stride;
             vertices += word(&bytes, word(&bytes, model + 0x0c) - 8);
             indices += word(&bytes, word(&bytes, model + 0x10) - 8);
             let format_at = word(&bytes, model + 4);
-            let format = reader
-                .read_block::<RdmVertexFormat>(format_at as u32)
-                .unwrap();
             let attributes = word(&bytes, format_at);
             let legacy: Vec<VertexIdentifier> = (0..word(&bytes, attributes - 8))
                 .map(|i| {
@@ -133,27 +135,63 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
                 })
                 .collect();
             assert_eq!(
-                format.records[0].attributes, legacy,
+                decoded.vertex_format.attributes, legacy,
                 "{path:?} model {index}"
             );
+            let vertex_at = word(&bytes, model + 0x0c);
+            let vertex_stride = word(&bytes, vertex_at - 4);
+            assert_eq!(decoded.vertices.count, word(&bytes, vertex_at - 8));
+            let mut offset = 0;
+            for (attribute, values) in decoded
+                .vertex_format
+                .attributes
+                .iter()
+                .zip(&decoded.vertices.attributes)
+            {
+                let actual: Vec<u32> = match values {
+                    RdmAttributeValues::U16(v) => v.iter().map(|&v| u32::from(v)).collect(),
+                    RdmAttributeValues::U32(v) => v.clone(),
+                    RdmAttributeValues::F16(v) => {
+                        v.iter().map(|v| u32::from(v.to_bits())).collect()
+                    }
+                    RdmAttributeValues::F32(v) => v.iter().map(|v| v.to_bits()).collect(),
+                };
+                let width = attribute.storage_type.byte_size() as usize;
+                let size = width * attribute.storage_count as usize;
+                let expected: Vec<u32> = (0..decoded.vertices.count)
+                    .flat_map(|i| {
+                        let at = vertex_at + i * vertex_stride + offset;
+                        bytes[at..at + size].chunks_exact(width).map(|raw| {
+                            if width == 2 {
+                                u32::from(u16::from_le_bytes(raw.try_into().unwrap()))
+                            } else {
+                                u32::from_le_bytes(raw.try_into().unwrap())
+                            }
+                        })
+                    })
+                    .collect();
+                assert_eq!(actual, expected, "{path:?} model {index}");
+                offset += size;
+            }
+            let index_at = word(&bytes, model + 0x10);
+            let index_stride = word(&bytes, index_at - 4);
+            assert_eq!(decoded.indices.values.len(), word(&bytes, index_at - 8));
             assert_eq!(
-                format.tails,
-                bytes[format_at + 4..format_at + 24],
-                "{path:?}"
+                decoded.index_format.storage_type as usize,
+                word(&bytes, word(&bytes, model + 8))
             );
-            let index_format_at = word(&bytes, model + 8);
-            let format = reader
-                .read_block::<RdmIndexFormat>(index_format_at as u32)
-                .unwrap();
-            assert_eq!(
-                format.records[0].storage_type as usize,
-                word(&bytes, index_format_at)
-            );
-            assert_eq!(
-                format.tails,
-                bytes[index_format_at + 4..index_format_at + 20],
-                "{path:?}"
-            );
+            for (i, &value) in decoded.indices.values.iter().enumerate() {
+                let at = index_at + i * index_stride;
+                assert_eq!(
+                    value,
+                    if index_stride == 2 {
+                        u32::from(u16::from_le_bytes(bytes[at..at + 2].try_into().unwrap()))
+                    } else {
+                        word(&bytes, at) as u32
+                    },
+                    "{path:?} model {index}"
+                );
+            }
         }
         assert_eq!(
             vertices,

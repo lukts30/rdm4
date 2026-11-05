@@ -1,9 +1,31 @@
 use std::io::{Read, Seek};
 
 use super::{RdmReadField, RdmReadRecord, RdmReader};
-use crate::rdm::{RdmBlockLayout, RdmError, RdmFieldLayout};
+use crate::rdm::{RdmBlockInfo, RdmBlockLayout, RdmError, RdmFieldLayout};
 
 impl<R: Read + Seek> RdmReader<R> {
+    pub(super) fn read_payload(
+        &mut self,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        stride: usize,
+    ) -> Result<(RdmBlockInfo, Vec<u8>), RdmError> {
+        let index = self.claim_reference(raw, at, context, stride)?;
+        let block = self.blocks[index].clone();
+        if block.stride as usize != stride {
+            return Err(RdmError::new(
+                block.offset + 4,
+                context,
+                format!("buffer stride {stride} from its format"),
+                block.stride,
+            ));
+        }
+        let mut bytes = vec![0; block.payload.len()];
+        self.read_into(block.payload.start, &mut bytes, context)?;
+        Ok((block, bytes))
+    }
+
     fn claim_reference(
         &mut self,
         raw: &[u8],

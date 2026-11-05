@@ -2,6 +2,87 @@ use rdm_derive::RdmRecord;
 
 use crate::vertex::{StorageType, VertexIdentifier};
 
+use super::RdmAnimation;
+
+/// Owned file contents, independent of source layout and byte order.
+#[derive(Debug, Clone, PartialEq, RdmRecord)]
+#[rdm(strides(48, 52))]
+pub struct RdmDocument {
+    /// Source scene and resource names.
+    pub export_info: Option<RdmExportInfo>,
+    /// All models in file order.
+    pub models: Option<Vec<RdmModel>>,
+    /// Material table shared by the models.
+    pub materials: Option<Vec<RdmMaterialEntry>>,
+    /// Optional skeleton.
+    pub skin: Option<RdmSkin>,
+    /// Optional animations.
+    pub animations: Option<Vec<RdmAnimation>>,
+}
+
+/// Model metadata and decoded buffers. Unknown record tails live in the source layout.
+#[derive(Debug, Clone, PartialEq, RdmRecord)]
+#[rdm(strides(68, 92))]
+pub struct RdmModel {
+    /// Optional name stored through a wrapper record.
+    pub name: RdmModelName,
+    /// Attribute layout in each vertex.
+    pub vertex_format: RdmVertexFormat,
+    /// Original index scalar type.
+    pub index_format: RdmIndexFormat,
+    /// Values decoded using the preceding vertex format.
+    #[rdm(args(vertex_format))]
+    pub vertices: RdmVertices,
+    /// Indices checked against the preceding vertex count.
+    #[rdm(args(index_format, vertices))]
+    pub indices: RdmIndices,
+    /// Draw ranges and their materials.
+    pub groups: Vec<RdmMeshGroup>,
+    /// Skeleton index, or -1 for an unskinned model.
+    pub skeleton_index: i32,
+    /// Stored minimum XYZ bounds.
+    pub bounds_min: [f32; 3],
+    /// Stored maximum XYZ bounds.
+    pub bounds_max: [f32; 3],
+}
+
+/// Name wrapper referenced by a model.
+#[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
+#[rdm(strides(28))]
+pub struct RdmModelName {
+    /// Optional model name.
+    pub name: Option<String>,
+}
+
+/// Decoded vertex attributes, in descriptor order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RdmVertices {
+    /// Number of vertices.
+    pub count: usize,
+    /// Each column contains count times storage_count values, in vertex order.
+    pub attributes: Vec<RdmAttributeValues>,
+}
+
+/// Scalar values of one vertex attribute; packed values remain integer words.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RdmAttributeValues {
+    /// Unsigned 16-bit components.
+    U16(Vec<u16>),
+    /// Unsigned 32-bit components or packed words.
+    U32(Vec<u32>),
+    /// Half-precision components.
+    F16(Vec<half::f16>),
+    /// Single-precision components.
+    F32(Vec<f32>),
+}
+
+/// Decoded indices, widened from the original U16 or U32 representation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RdmIndices {
+    /// Indices into the model's vertex buffer.
+    pub values: Vec<u32>,
+}
+
 /// Source scene and resource names stored in an RDM export-info block.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
 #[rdm(strides(72))]
@@ -18,6 +99,18 @@ pub struct RdmExportInfo {
 pub struct RdmVertexFormat {
     /// Attributes in their order within each vertex.
     pub attributes: Vec<VertexIdentifier>,
+}
+
+impl std::fmt::Display for RdmVertexFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, attribute) in self.attributes.iter().enumerate() {
+            if i != 0 {
+                f.write_str("_")?;
+            }
+            write!(f, "{attribute}")?;
+        }
+        Ok(())
+    }
 }
 
 /// Scalar representation of the model's index buffer.

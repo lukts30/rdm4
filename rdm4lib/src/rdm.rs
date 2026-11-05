@@ -13,8 +13,9 @@ pub use framing::{RdmBlock, RdmBlockInfo, RdmHeader};
 pub use layout::{RdmBlockLayout, RdmReadResult, RdmSourceLayout};
 pub use read::{RdmDecodedBlock, RdmReadField, RdmReadRecord, RdmReader};
 pub use records::{
-    RdmAnimation, RdmExportInfo, RdmFrame, RdmIndexFormat, RdmJoint, RdmMaterial, RdmMaterialEntry,
-    RdmMeshGroup, RdmSkin, RdmTrack, RdmVertexFormat,
+    RdmAnimation, RdmAttributeValues, RdmDocument, RdmExportInfo, RdmFrame, RdmIndexFormat,
+    RdmIndices, RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName,
+    RdmSkin, RdmTrack, RdmVertexFormat, RdmVertices,
 };
 pub use scanner::{RdmScanReport, RdmScanner};
 pub use wire::{RdmEndian, RdmFieldLayout, RdmRecordLayout};
