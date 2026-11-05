@@ -1,3 +1,5 @@
+//! Legacy mesh schema and compatibility export entrypoint.
+
 use std::{
     any::TypeId,
     fs::{self, OpenOptions},
@@ -5,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-use binrw::{binrw, BinRead};
+use binrw::{binread, BinRead};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
@@ -16,28 +18,23 @@ pub trait RDMStructSizeTr {
     fn get_struct_byte_size() -> usize;
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct ModelName {
-    #[bw(args_raw = end)]
-    name: NullableAnnoPtr<RdmString>,
+    _name: NullableAnnoPtr<RdmString>,
     _padding: [u8; 24],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct VertId {
-    #[bw(args_raw = end)]
     pub rdm_container: AnnoPtr<RdmTypedContainer<crate::vertex::VertexIdentifier>>,
-    unknown_shader_id: u8,
+    _selector: u8,
     _padding: [u8; 19],
 }
 
 #[derive(Debug, Clone)]
-#[binrw]
-#[bw(import_raw(_dst: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct MeshInfo {
     pub start_index_location: u32,
@@ -52,8 +49,7 @@ impl MeshInfo {
     }
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub(crate) struct IndexFormat {
     #[br(assert(matches!(element_type, StorageType::U16 | StorageType::U32),
@@ -62,49 +58,24 @@ pub(crate) struct IndexFormat {
     _padding: [u8; 16],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct Meta {
     #[br(temp, restore_position, seek_before = SeekFrom::Current(-4))]
-    #[bw(ignore)]
     part_size: u32,
 
-    #[bw(args_raw = end)]
-    model_name: AnnoPtr<RdmTypedT<ModelName>>,
-    #[bw(args_raw = end)]
+    _model_name: AnnoPtr<RdmTypedT<ModelName>>,
     pub format_identifiers: AnnoPtr<RdmTypedT<VertId>>,
-    #[bw(args_raw = end)]
-    pub(crate) index_format: AnnoPtr<RdmTypedT<IndexFormat>>,
+    _index_format: AnnoPtr<RdmTypedT<IndexFormat>>,
 
-    #[bw(args_raw = {
-        debug!("{:?}", end);
-        *end += mesh_info.get_direct_and_pointed_data_size();
-        debug!("{:?}", end);
-        end
-    })]
     pub vertex: AnnoPtr<RdmUntypedContainer>,
-    #[bw(args_raw = end)]
-    #[br(assert(triangle_list.info.part_size == index_format.element_type.byte_size(),
+    #[br(assert(triangle_list.info.part_size == _index_format.element_type.byte_size(),
         "Index type and index-buffer stride disagree"))]
     pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
-    #[bw(args_raw = {
-        let negative_off = mesh_info.get_direct_and_pointed_data_size() + vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
-        *end -= negative_off;
-        end
-    })]
     pub mesh_info: AnnoPtr<RdmTypedContainer<MeshInfo>>,
 
-    #[br(ignore)]
-    #[bw(calc = {
-        let off = vertex.get_direct_and_pointed_data_size() + triangle_list.get_direct_and_pointed_data_size();
-        *end += off;
-        debug!("reset to end {:?}", end);
-    })]
-    d: (),
-
-    skeleton_index: i32, // -1 means no skeleton.
+    _skeleton_index: i32, // -1 means no skeleton.
     bounds_min: [f32; 3],
     bounds_max: [f32; 3],
     #[br(parse_with = read_meta_words, args(part_size))]
@@ -132,41 +103,32 @@ impl Meta {
     }
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct RdmBlobToMat {
-    #[bw(args_raw = end)]
-    mat: AnnoPtr<RdmTypedT<RdmMat>>,
+    _mat: AnnoPtr<RdmTypedT<RdmMat>>,
     _padding: [u8; 24],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 struct RdmMat {
-    #[bw(args_raw = end)]
-    name: NullableAnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
-    png: NullableAnnoPtr<RdmString>,
+    _name: NullableAnnoPtr<RdmString>,
+    _png: NullableAnnoPtr<RdmString>,
     _padding: [u8; 40],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmBlobToJoint {
-    #[bw(args_raw = end)]
     pub joint: AnnoPtr<RdmTypedContainer<RdmJoint>>,
     _padding: [u8; 32 - 4],
 }
 
 #[derive(Debug)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmJoint {
-    #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
     pub t: [f32; 3],
     pub r: [f32; 4],
@@ -174,32 +136,23 @@ pub struct RdmJoint {
     _padding: [u8; 84 - 20 - 16],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct RdmHeader1 {
-    #[bw(args_raw = end)]
     pub header2: NullableAnnoPtr<RdmTypedT<ExportInfo>>,
 
-    #[bw(args_raw = end)]
     pub meta: NullableAnnoPtr<RdmTypedT<Meta>>,
-    #[bw(args_raw = end)]
-    rdm_blob_to_mat: NullableAnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
-    #[bw(args_raw = end)]
+    _materials: NullableAnnoPtr<RdmTypedContainer<RdmBlobToMat>>,
     pub skin: NullableAnnoPtr<RdmTypedT<RdmBlobToJoint>>,
 
-    #[bw(args_raw = end)]
     pub meta_anim: NullableAnnoPtr<RdmTypedT<AnimMeta>>,
     _data: [u8; 48 - 5 * 4],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct ExportInfo {
-    #[bw(args_raw = end)]
     pub export_name1: NullableAnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
     pub export_name2: NullableAnnoPtr<RdmString>,
     _data: [u8; 72 - 8],
 }
@@ -210,21 +163,17 @@ pub trait RdmFileType {}
 impl RdmFileType for RdmKindMesh {}
 impl RdmFileType for RdmKindAnim {}
 
-#[binrw]
+#[binread]
 #[br(magic = b"RDM")]
-#[bw(magic = b"RDM\x01\x14\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x1c\x00\x00\x00")]
 pub struct RdmFile<T: RdmFileType + 'static> {
     #[br(temp, assert(byte_order <= 1))]
-    #[bw(ignore)]
     byte_order: u8,
     #[br(temp, is_big = byte_order == 0, assert(preamble == [0x14, 0, 4, 0x1c]))]
-    #[bw(ignore)]
     preamble: [u32; 4],
     #[br(calc = byte_order == 0)]
-    #[bw(ignore)]
-    pub(crate) big_endian: bool,
-    #[br(is_big = big_endian)]
-    #[brw(seek_before = SeekFrom::Start(0x00000014))]
+    pub(crate) _big_endian: bool,
+    #[br(is_big = _big_endian)]
+    #[br(seek_before = SeekFrom::Start(0x00000014))]
     #[br(assert(header1.header2.ptr == 0x1C + header1.info.part_size))]
     // RdmHeader1 size is usually 48 but sometimes 52
     // TODO: fix some rdm anim's have a NULL meta_anim.ptr
@@ -232,78 +181,13 @@ pub struct RdmFile<T: RdmFileType + 'static> {
     #[br(assert(TypeId::of::<RdmKindAnim>() == TypeId::of::<T>() || header1.storage.item[0].meta.ptr != 0 && header1.storage.item[0].meta_anim.ptr == 0, "the input file is not a rdm mesh!"))]
     pub header1: RdmTypedT<RdmHeader1>,
 
-    #[bw(ignore)]
     kind: PhantomData<T>,
-}
-
-pub trait DataAndPointedToSize {
-    fn get_direct_and_pointed_data_size(&self) -> u64;
-}
-
-impl<C, T> DataAndPointedToSize for RdmContainer<true, C, T>
-where
-    C: VectorSize2,
-    C::Storage<T>: RdmContainerRead,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead + RdmContainerWrite + DataAndPointedToSize,
-{
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        let mut sum = 0;
-        for x in self.storage.into_iter() {
-            sum += x.get_direct_and_pointed_data_size();
-        }
-        8 + sum
-    }
-}
-
-impl<C, T> DataAndPointedToSize for RdmContainer<false, C, T>
-where
-    C: VectorSize2,
-    C::Storage<T>: RdmContainerRead,
-    for<'a> &'a C::Storage<T>: IntoIterator<Item = &'a T>,
-    T: RdmRead + RdmContainerWrite,
-{
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        (self.info.count * self.info.part_size) as u64 + 8
-    }
-}
-
-impl DataAndPointedToSize for ExportInfo {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        ExportInfo::get_struct_byte_size() as u64
-            + self.export_name1.get_direct_and_pointed_data_size()
-            + self.export_name2.get_direct_and_pointed_data_size()
-    }
-}
-
-impl DataAndPointedToSize for MeshInfo {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        MeshInfo::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoChar {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoChar::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoU8 {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoU8::get_struct_byte_size() as u64
-    }
-}
-
-impl DataAndPointedToSize for AnnoU16 {
-    fn get_direct_and_pointed_data_size(&self) -> u64 {
-        AnnoU16::get_struct_byte_size() as u64
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use binrw::{BinReaderExt, BinWriterExt};
+    use binrw::BinReaderExt;
     use std::fs;
 
     fn read_source(path: &str) -> RdmFile<RdmKindMesh> {
@@ -351,7 +235,7 @@ mod tests {
         use crate::vertex::{N3f, N4b};
         let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
         let source = read_source("rdm/n_nature_small_stone_02_lod0.rdm");
-        assert!(source.big_endian);
+        assert!(source._big_endian);
         assert_eq!(source.header1.meta.info.part_size, 68);
         // The packed normal must be decoded as a BE word, not four unchanged bytes.
         let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
@@ -370,7 +254,7 @@ mod tests {
             .unwrap();
         output.set_position(0);
         let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
-        assert!(!result.big_endian);
+        assert!(!result._big_endian);
         assert_eq!(result.header1.meta.info.part_size, 92);
         assert_eq!(result.header1.meta._unknown_words, [0; 10]);
         assert_eq!(
@@ -458,32 +342,7 @@ mod tests {
 
         assert_eq!(ExportInfo::get_struct_byte_size(), 72);
 
-        assert_eq!(AnnoU16::get_struct_byte_size(), 2);
         assert_eq!(AnnoU8::get_struct_byte_size(), 1);
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn preserves_mesh_bytes_when_read_and_written() {
-        let data = fs::read("rdm/fishery_others_cutout_lod0.rdm").unwrap();
-
-        let mut reader = std::io::Cursor::new(&data);
-
-        let rdm: RdmFile<RdmKindMesh> = reader.read_le().unwrap();
-
-        let mut dst = Vec::new();
-        let mut writer = std::io::Cursor::new(&mut dst);
-
-        writer
-            .write_type_args(&rdm, binrw::Endian::Little, ())
-            .unwrap();
-
-        let output_dir = tempfile::tempdir().unwrap();
-        let output_path = output_dir.path().join("rdm_out.rdm");
-        let mut file = fs::File::create(&output_path).unwrap();
-        std::io::Write::write_all(&mut file, &dst).unwrap();
-
-        assert_eq!(data, fs::read(output_path).unwrap())
     }
 }
 

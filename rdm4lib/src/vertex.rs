@@ -3,13 +3,12 @@ use rdm_derive::{RdmRecord, RdmStructSize};
 use std::{fmt, str::FromStr};
 
 use crate::*;
-use binrw::binrw;
+use binrw::binread;
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize, RdmRecord)]
 #[rdm(strides(16), write)]
 pub struct VertexIdentifier {
@@ -61,15 +60,15 @@ impl fmt::Display for VertexIdentifier {
 /// For packed U32 attributes, Anno 2070's format-name builder
 /// uses `4c` for codes 3 through 5 and `4b` for other codes.
 #[repr(transparent)]
-#[binrw]
+#[binread]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VertexInterpretation(pub u32);
 
 /// Role of an attribute within a vertex, encoded by the RDM semantic ID.
 #[repr(u32)]
 #[derive(Debug, Clone, Eq, PartialEq)]
-#[binrw]
-#[brw(repr(u32))]
+#[binread]
+#[br(repr(u32))]
 pub enum VertexSemantic {
     Position = 0x0,
     Normal = 0x1,
@@ -431,8 +430,8 @@ impl VertexFormat2 {
 }
 
 /// Supported RDM scalar storage codes, shared by vertex and index formats.
-#[binrw]
-#[brw(repr(u32))]
+#[binread]
+#[br(repr(u32))]
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum StorageType {
@@ -871,13 +870,17 @@ mod tests_vertex {
 
     #[test]
     fn preserves_unknown_interpretation_codes_when_read_and_written() {
-        use binrw::{BinReaderExt, BinWriterExt};
+        use crate::rdm::{RdmEndian, RdmWriteField, RdmWriter};
+        use binrw::BinReaderExt;
         let mut cursor = std::io::Cursor::new(99u32.to_le_bytes());
         let value: VertexInterpretation = cursor.read_le().unwrap();
         assert_eq!(value, VertexInterpretation(99));
-        let mut output = std::io::Cursor::new(Vec::new());
-        output.write_le(&value).unwrap();
-        assert_eq!(output.into_inner(), 99u32.to_le_bytes());
+        let mut writer = RdmWriter::new(std::io::Cursor::new(Vec::new()), RdmEndian::Little);
+        let mut output = [0; 4];
+        value
+            .write_field(&mut writer, &mut output, 0, "interpretation", ())
+            .unwrap();
+        assert_eq!(output, 99u32.to_le_bytes());
     }
 
     #[test]

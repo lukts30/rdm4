@@ -100,7 +100,6 @@ impl<P: AsRef<Path>> From<P> for RdModell {
 #[cfg(test)]
 mod tests_intern {
     use super::*;
-    use binrw::{BinReaderExt, BinWriterExt, Endian};
 
     #[test]
     fn reads_u32_indices_without_truncation() {
@@ -161,42 +160,19 @@ mod tests_intern {
     fn decodes_be_vertices_and_both_index_widths_like_le() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
         let expected = RdModell::new(bytes.to_vec());
-        for index_size in [2, 4] {
-            let mut raw: RdmFile<RdmKindMesh> = std::io::Cursor::new(bytes).read_le().unwrap();
-            let meta = &mut raw.header1.meta;
-            // Build a BE fixture independently of the reader's normalization.
-            for vertex in meta.vertex.storage.items.chunks_exact_mut(24) {
-                for field in vertex[..8].chunks_exact_mut(2) {
-                    field.reverse();
-                }
-                for field in vertex[8..20].chunks_exact_mut(4) {
-                    field.reverse();
-                }
-                for field in vertex[20..].chunks_exact_mut(2) {
-                    field.reverse();
-                }
-            }
-            meta.index_format.element_type = if index_size == 2 {
-                vertex::StorageType::U16
-            } else {
-                vertex::StorageType::U32
-            };
-            meta.triangle_list.info.part_size = index_size;
-            meta.triangle_list.storage.items = expected
-                .triangle_indices
-                .iter()
-                .flat_map(|t| t.indices)
-                .flat_map(|i| i.to_be_bytes()[4 - index_size as usize..].to_vec())
-                .map(rdm_container::AnnoU8)
-                .collect();
-            let mut output = std::io::Cursor::new(Vec::new());
-            output.write_type_args(&raw, Endian::Big, ()).unwrap();
-            let mut output = output.into_inner();
-            // The public writer deliberately continues to emit an LE preamble.
-            output[3] = 0;
-            for word in output[4..20].chunks_exact_mut(4) {
-                word.reverse();
-            }
+        for storage_type in [vertex::StorageType::U16, vertex::StorageType::U32] {
+            let mut document = rdm::RdmReader::new(std::io::Cursor::new(bytes))
+                .unwrap()
+                .read_root::<rdm::RdmDocument>()
+                .unwrap()
+                .value;
+            document.models.as_mut().unwrap()[0]
+                .index_format
+                .storage_type = storage_type;
+            let output = rdm::RdmWriter::new(std::io::Cursor::new(Vec::new()), rdm::RdmEndian::Big)
+                .write_root(&document)
+                .unwrap()
+                .into_inner();
             let actual = RdModell::new(output);
             assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
             let indices = |model: &RdModell| {
@@ -209,7 +185,7 @@ mod tests_intern {
             assert_eq!(
                 indices(&actual),
                 indices(&expected),
-                "{index_size}-byte indices"
+                "{storage_type:?} indices"
             );
         }
     }

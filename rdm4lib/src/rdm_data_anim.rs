@@ -1,4 +1,6 @@
-use binrw::binrw;
+//! Legacy animation schema and compatibility export entrypoint.
+
+use binrw::binread;
 use rdm_derive::RdmStructSize;
 use std::{
     fs::{self, OpenOptions},
@@ -9,14 +11,11 @@ use std::{
 use crate::RDMStructSizeTr;
 use crate::{rdm_anim::RdAnim, rdm_container::*};
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct AnimMeta {
-    #[bw(args_raw = end)]
     pub name: AnnoPtr<RdmString>,
 
-    #[bw(args_raw = end)]
     pub anims: AnnoPtr<RdmTypedContainer<AnimInner>>,
     pub time_max: u32,
     /// Nominal samples per second.
@@ -24,20 +23,16 @@ pub struct AnimMeta {
     _padding: [u8; 32],
 }
 
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct AnimInner {
-    #[bw(args_raw = end)]
     pub j_name: AnnoPtr<RdmString>,
-    #[bw(args_raw = end)]
     pub j_data: AnnoPtr<RdmTypedContainer<Frame>>,
     _padding: [u8; 16],
 }
 
 #[derive(Debug, Copy, Clone)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
+#[binread]
 #[derive(RdmStructSize)]
 pub struct Frame {
     pub rotation: [f32; 4],
@@ -49,45 +44,15 @@ pub struct Frame {
 mod tests {
     use super::*;
     use crate::rdm_data_main::{RdmFile, RdmKindAnim};
-    use binrw::{BinReaderExt, BinWriterExt};
-    use std::fs;
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn preserves_animation_bytes_when_read_and_written() {
-        use crate::rdm_data_main::{RdmFile, RdmKindAnim};
-
-        let data = fs::read("rdm/basalt_crusher_others_work01.rdm").unwrap();
-        //let data = fs::read("rdm/basalt_crusher_others_idle01.rdm").unwrap();
-
-        let mut reader = std::io::Cursor::new(&data);
-        let rdm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
-
-        let mut dst = Vec::new();
-        let mut writer = std::io::Cursor::new(&mut dst);
-
-        writer
-            .write_type_args(&rdm, binrw::Endian::Little, ())
-            .unwrap();
-
-        let output_dir = tempfile::tempdir().unwrap();
-        let output_path = output_dir.path().join("anim_out.rdm");
-        let mut file = fs::File::create(&output_path).unwrap();
-        std::io::Write::write_all(&mut file, &dst).unwrap();
-        assert_eq!(data, fs::read(output_path).unwrap())
-    }
+    use binrw::BinReaderExt;
 
     #[test]
     fn preserves_sampling_rate_when_loading_and_writing_animation() {
-        for sampling_rate in [1, 30, 60, 78] {
-            let data = include_bytes!("../rdm/basalt_crusher_others_idle01.rdm");
-            let mut reader = std::io::Cursor::new(data);
-            let mut rdm: RdmFile<RdmKindAnim> = reader.read_le().unwrap();
-            rdm.header1.meta_anim.sampling_rate = sampling_rate;
-            let mut writer = std::io::Cursor::new(Vec::new());
-            writer.write_le(&rdm).unwrap();
-
-            let anim = RdAnim::new(writer.into_inner(), "idle".into());
+        for sampling_rate in [1u32, 30, 60, 78] {
+            let mut data = include_bytes!("../rdm/basalt_crusher_others_idle01.rdm").to_vec();
+            let animation = u32::from_le_bytes(data[0x2c..0x30].try_into().unwrap()) as usize;
+            data[animation + 12..animation + 16].copy_from_slice(&sampling_rate.to_le_bytes());
+            let anim = RdAnim::new(data, "idle".into());
             assert_eq!(anim.sampling_rate, sampling_rate);
             let output = RdAnimWriter2::new(anim);
             let writer = std::io::Cursor::new(Vec::new());
