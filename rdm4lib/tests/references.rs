@@ -1,23 +1,23 @@
 use std::{
     fs,
-    io::{BufReader, Cursor, Read, Seek},
+    io::{BufReader, Cursor, Read, Seek, Write},
     path::PathBuf,
 };
 
 use rdm4lib::rdm::{
     self, RdmEndian, RdmError, RdmExportInfo, RdmFieldLayout, RdmHeader, RdmReadField,
-    RdmReadResult, RdmReader,
+    RdmReadResult, RdmReader, RdmWriteField, RdmWriter,
 };
 use rdm_derive::RdmRecord;
 
 #[derive(Debug, PartialEq, RdmRecord)]
-#[rdm(strides(4))]
+#[rdm(strides(4), write)]
 struct Leaf {
     value: u32,
 }
 
 #[derive(Debug, PartialEq, RdmRecord)]
-#[rdm(strides(12))]
+#[rdm(strides(12), write)]
 struct Root {
     one: Leaf,
     many: Vec<Leaf>,
@@ -96,6 +96,11 @@ fn follows_references_in_field_order_independent_of_physical_order() {
             .blocks
             .iter()
             .all(|block| block.tails.is_empty()));
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_root(&result.value)
+            .unwrap()
+            .into_inner();
+        assert_eq!(read_root::<Root>(&output).unwrap().value, result.value);
     }
 }
 
@@ -108,6 +113,13 @@ fn optional_null_references_do_not_claim_a_block() {
         let result = read_root::<Root>(&bytes).unwrap();
         assert_eq!(result.value.optional, None);
         assert_eq!(result.layout.blocks.len(), 3);
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_root(&result.value)
+            .unwrap()
+            .into_inner();
+        let written = read_root::<Root>(&output).unwrap();
+        assert_eq!(written.value, result.value);
+        assert_eq!(written.layout.blocks.len(), 3);
     }
 }
 
@@ -234,8 +246,30 @@ impl RdmReadField for ScaledLeaf {
     }
 }
 
+impl RdmWriteField for ScaledLeaf {
+    type Args<'a> = &'a u32;
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        factor: Self::Args<'_>,
+    ) -> Result<(), RdmError> {
+        writer.write_single(
+            &Leaf {
+                value: self.0 / factor,
+            },
+            raw,
+            at,
+            context,
+        )
+    }
+}
+
 #[derive(RdmRecord)]
-#[rdm(strides(8))]
+#[rdm(strides(8), write)]
 struct ContextRoot {
     factor: u32,
     #[rdm(args(factor))]
@@ -254,20 +288,25 @@ fn optional_reference_fields_forward_borrowed_gat_args() {
         let result = read_root::<ContextRoot>(&bytes).unwrap();
         assert_eq!(result.value.factor, 3);
         assert_eq!(
-            result.value.child.map(|child| child.0),
+            result.value.child.as_ref().map(|child| child.0),
             if target == 0 { None } else { Some(21) }
         );
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_root(&result.value)
+            .unwrap()
+            .into_inner();
+        assert_eq!(output, bytes);
     }
 }
 
-#[derive(RdmRecord)]
-#[rdm(strides(8))]
+#[derive(Debug, PartialEq, RdmRecord)]
+#[rdm(strides(8), write)]
 struct PaddedRoot {
     children: Vec<PaddedLeaf>,
 }
 
-#[derive(RdmRecord)]
-#[rdm(strides(8))]
+#[derive(Debug, PartialEq, RdmRecord)]
+#[rdm(strides(8), write)]
 struct PaddedLeaf {
     value: u32,
 }
@@ -293,7 +332,50 @@ fn preserves_parent_and_child_tails_in_original_byte_order() {
             result.layout.blocks[1].tails,
             [&bytes[48..52], &bytes[56..60]].concat()
         );
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_root(&result.value)
+            .unwrap()
+            .into_inner();
+        let written = read_root::<PaddedRoot>(&output).unwrap();
+        assert_eq!(written.value, result.value);
+        assert!(written
+            .layout
+            .blocks
+            .iter()
+            .all(|block| block.source.stride == 8 && block.tails.iter().all(|&byte| byte == 0)));
     }
+}
+
+#[test]
+fn writing_rejects_empty_required_blocks_and_invalid_reference_destinations() {
+    let mut root = Root {
+        one: Leaf { value: 7 },
+        many: Vec::new(),
+        optional: None,
+    };
+    for (empty_text, context, at) in [(false, "Root.many", 32), (true, "Root.optional", 36)] {
+        if empty_text {
+            root.many.push(Leaf { value: 10 });
+            root.optional = Some(String::new());
+        }
+        let error = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_root(&root)
+            .unwrap_err();
+        assert_eq!((error.context(), error.offset()), (context, at));
+        assert_eq!(error.expected(), "nonzero count fitting u32");
+    }
+    let mut writer = RdmWriter::new(Cursor::new(vec![0xa5; 4]), RdmEndian::Little);
+    for (at, width) in [(0, 3), (usize::MAX, 4), (4, 4)] {
+        let error = writer
+            .write_single(&root.one, &mut [0; 4][..width], at, "reference")
+            .unwrap_err();
+        assert_eq!((error.context(), error.offset()), ("reference", at));
+    }
+    assert_eq!(writer.into_inner().into_inner(), [0xa5; 4]);
+    let error = RdmWriter::new(Cursor::new(vec![0xa5]), RdmEndian::Little)
+        .write_root(&root.one)
+        .unwrap_err();
+    assert_eq!(error.expected(), "empty output");
 }
 
 #[derive(Debug, RdmRecord)]

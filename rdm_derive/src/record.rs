@@ -141,6 +141,16 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     }
     let write_impl = write.then(|| {
         quote! {
+            impl crate::rdm::RdmWriteField for #name {
+                type Args<'a> = ();
+
+                fn write_field<W: std::io::Write + std::io::Seek>(
+                    &self, writer: &mut crate::rdm::RdmWriter<W>, raw: &mut [u8], at: usize,
+                    context: &'static str, _args: (),
+                ) -> Result<(), crate::rdm::RdmError> {
+                    writer.write_single(self, raw, at, context)
+                }
+            }
             impl crate::rdm::RdmWriteRecord for #name {
                 fn write<W: std::io::Write + std::io::Seek>(
                     &self, writer: &mut crate::rdm::RdmWriter<W>, at: usize,

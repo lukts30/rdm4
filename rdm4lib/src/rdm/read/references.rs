@@ -1,7 +1,7 @@
 use std::io::{Read, Seek};
 
 use super::{RdmReadField, RdmReadRecord, RdmReader};
-use crate::rdm::{RdmBlockInfo, RdmBlockLayout, RdmError, RdmFieldLayout};
+use crate::rdm::{RdmBlockInfo, RdmBlockLayout, RdmError, RdmFieldLayout, RdmRecordLayout};
 
 impl<R: Read + Seek> RdmReader<R> {
     pub(super) fn read_payload(
@@ -113,7 +113,7 @@ impl<R: Read + Seek> RdmReader<R> {
     }
 }
 
-impl<T: RdmReadRecord> RdmFieldLayout for Vec<T> {
+impl<T: RdmRecordLayout> RdmFieldLayout for Vec<T> {
     const WIDTH: usize = 4;
 }
 
@@ -169,7 +169,7 @@ impl RdmReadField for String {
 }
 
 /// Only reference field types should be wrapped in `Option`.
-impl<T: RdmReadField> RdmFieldLayout for Option<T> {
+impl<T: RdmFieldLayout> RdmFieldLayout for Option<T> {
     const WIDTH: usize = 4;
 }
 

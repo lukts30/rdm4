@@ -5,7 +5,10 @@ use std::{collections::BTreeSet, fs, io::Cursor, path::PathBuf};
 use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
-    rdm::{RdmAnimation, RdmAttributeValues, RdmDocument, RdmMaterialEntry, RdmReader, RdmSkin},
+    rdm::{
+        RdmAnimation, RdmAttributeValues, RdmDocument, RdmEndian, RdmMaterialEntry, RdmReader,
+        RdmSkin, RdmWriter,
+    },
     rdm_anim::RdAnim,
     rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
     vertex::VertexIdentifier,
@@ -360,6 +363,17 @@ fn migrated_animation_records_match_legacy_values_across_the_corpus() {
                 );
                 assert_eq!(frame.time.to_bits(), legacy.time.to_bits());
             }
+        }
+        // Exercise nested track lists and strings without switching the file writer yet.
+        for endian in [RdmEndian::Little, RdmEndian::Big] {
+            let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+                .write_root(animation)
+                .unwrap();
+            let written = RdmReader::new(output)
+                .unwrap()
+                .read_root::<RdmAnimation>()
+                .unwrap();
+            assert_eq!(&written.value, animation, "{path:?}");
         }
         animations += 1;
     }

@@ -2,7 +2,7 @@ use rdm_derive::RdmRecord;
 
 /// Named animation and its joint tracks.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(48))]
+#[rdm(strides(48), write)]
 pub struct RdmAnimation {
     /// Name stored in the animation record.
     pub name: String,
@@ -16,7 +16,7 @@ pub struct RdmAnimation {
 
 /// Keyframes affecting one named joint.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(24))]
+#[rdm(strides(24), write)]
 pub struct RdmTrack {
     /// Joint name used to match the skeleton.
     pub joint_name: String,
