@@ -26,7 +26,7 @@ pub struct RdmTrack {
 
 /// One animation keyframe, with quaternion components in `x, y, z, w` order.
 #[derive(Debug, Clone, Copy, PartialEq, RdmRecord)]
-#[rdm(strides(32))]
+#[rdm(strides(32), write)]
 pub struct RdmFrame {
     /// Rotation quaternion.
     pub rotation: [f32; 4],

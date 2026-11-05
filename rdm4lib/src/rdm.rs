@@ -9,6 +9,7 @@ mod records;
 mod scanner;
 mod split;
 mod wire;
+mod write;
 
 pub use error::RdmError;
 pub use framing::{RdmBlock, RdmBlockInfo, RdmHeader};
@@ -22,3 +23,4 @@ pub use records::{
 pub use scanner::{RdmScanReport, RdmScanner};
 pub use split::RdmSplitter;
 pub use wire::{RdmEndian, RdmFieldLayout, RdmRecordLayout};
+pub use write::{RdmWriteField, RdmWriteRecord, RdmWriter};

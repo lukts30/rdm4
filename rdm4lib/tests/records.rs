@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use rdm4lib::rdm::{RdmEndian, RdmHeader, RdmMeshGroup, RdmReader};
+use rdm4lib::rdm::{RdmEndian, RdmHeader, RdmMeshGroup, RdmReader, RdmWriteRecord, RdmWriter};
 use rdm4lib::vertex::VertexIdentifier;
 use serde_json::Value;
 
@@ -54,6 +54,16 @@ fn indexed_records_are_owned_and_preserve_all_tail_bytes_in_both_orders() {
         );
         assert_eq!(decoded.source.payload, 28..84);
         assert_eq!(decoded.tails, [0xa5; 32]);
+        let expected = sample(endian, 28);
+        let mut output = expected.clone();
+        for at in [28, 56] {
+            output[at..at + 12].fill(0);
+        }
+        let mut writer = RdmWriter::new(Cursor::new(output), endian);
+        for (i, record) in decoded.records.iter().enumerate() {
+            record.write(&mut writer, 28 + i * 28).unwrap();
+        }
+        assert_eq!(writer.into_inner().into_inner(), expected);
     }
 }
 

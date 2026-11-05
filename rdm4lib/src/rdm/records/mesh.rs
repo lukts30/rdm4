@@ -123,7 +123,7 @@ pub struct RdmIndexFormat {
 
 /// An index range drawn with one material.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(28))]
+#[rdm(strides(28), write)]
 pub struct RdmMeshGroup {
     /// First index in the model's index buffer.
     pub first_index: u32,

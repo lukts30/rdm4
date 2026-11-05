@@ -1,4 +1,4 @@
-//! Layout and field decoding adapted from `feat/rdm-core-derive-reader`.
+//! Layout and field codecs adapted from `feat/rdm-core-derive-reader`.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -30,14 +30,19 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
         ));
     }
     let mut strides = Vec::<LitInt>::new();
+    let mut write = false;
     for attr in input
         .attrs
         .iter()
         .filter(|attr| attr.path().is_ident("rdm"))
     {
         attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("write") {
+                write = true;
+                return Ok(());
+            }
             if !meta.path.is_ident("strides") {
-                return Err(meta.error("expected `strides(...)`"));
+                return Err(meta.error("expected `strides(...)` or `write`"));
             }
             let content;
             syn::parenthesized!(content in meta.input);
@@ -94,11 +99,23 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
         .collect();
     let mut previous = quote!(0usize);
     let mut reads = Vec::new();
+    let mut writes = Vec::new();
     for (i, field) in fields.iter().enumerate() {
         let offset = format_ident!("__RDM_OFFSET_{i}");
         let ty = &field.ty;
         let local = &locals[i];
         let context = format!("{name}.{}", field.name);
+        let field_name = &field.name;
+        let write_args: Vec<_> = field
+            .args
+            .iter()
+            .map(|&index| &fields[index].name)
+            .collect();
+        let write_args = match write_args.as_slice() {
+            [] => quote!(()),
+            [single] => quote!(&self.#single),
+            _ => quote!((#(&self.#write_args),*)),
+        };
         let args: Vec<_> = field.args.iter().map(|&index| &locals[index]).collect();
         let args = match args.as_slice() {
             [] => quote!(()),
@@ -112,9 +129,31 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
                 at + #offset, #context, #args,
             )?;
         });
+        writes.push(quote! {
+            const #offset: usize = #previous;
+            <#ty as crate::rdm::RdmWriteField>::write_field(
+                &self.#field_name, writer,
+                &mut bytes[#offset..#offset + <#ty as crate::rdm::RdmFieldLayout>::WIDTH],
+                at + #offset, #context, #write_args,
+            )?;
+        });
         previous = quote!(#offset + <#ty as crate::rdm::RdmFieldLayout>::WIDTH);
     }
+    let write_impl = write.then(|| {
+        quote! {
+            impl crate::rdm::RdmWriteRecord for #name {
+                fn write<W: std::io::Write + std::io::Seek>(
+                    &self, writer: &mut crate::rdm::RdmWriter<W>, at: usize,
+                ) -> Result<(), crate::rdm::RdmError> {
+                    let mut bytes = [0u8; <Self as crate::rdm::RdmRecordLayout>::SIZE];
+                    #(#writes)*
+                    writer.record_bytes(at, &bytes, <Self as crate::rdm::RdmRecordLayout>::NAME)
+                }
+            }
+        }
+    });
     Ok(quote! {
+        #write_impl
         impl crate::rdm::RdmRecordLayout for #name {
             const NAME: &'static str = stringify!(#name);
             const SIZE: usize = 0 #(+ <#types as crate::rdm::RdmFieldLayout>::WIDTH)*;
@@ -207,7 +246,7 @@ mod tests {
                         value: u32,
                     }
                 ),
-                "expected `strides(...)`",
+                "expected `strides(...)` or `write`",
             ),
             (
                 parse_quote!(

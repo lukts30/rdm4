@@ -1,8 +1,8 @@
-use std::io::{Cursor, Read, Seek};
+use std::io::{Cursor, Read, Seek, Write};
 
 use rdm4lib::rdm::{
     self, RdmEndian, RdmError, RdmFieldLayout, RdmFrame, RdmHeader, RdmReadField, RdmReader,
-    RdmRecordLayout,
+    RdmRecordLayout, RdmWriteField, RdmWriteRecord, RdmWriter,
 };
 use rdm_derive::RdmRecord;
 
@@ -28,6 +28,26 @@ impl RdmReadField for Scaled {
             .checked_mul(*scale)
             .map(Self)
             .ok_or_else(|| RdmError::new(at, context, "scaled value fitting u32", value))
+    }
+}
+
+impl RdmWriteField for Scaled {
+    type Args<'a> = &'a u32;
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        scale: Self::Args<'_>,
+    ) -> Result<(), RdmError> {
+        let value = self
+            .0
+            .checked_div(*scale)
+            .filter(|value| value * scale == self.0)
+            .ok_or_else(|| RdmError::new(at, context, "value divisible by scale", self.0))?;
+        value.write_field(writer, raw, at, context, ())
     }
 }
 
@@ -61,8 +81,31 @@ impl RdmReadField for Bounded {
     }
 }
 
+impl RdmWriteField for Bounded {
+    type Args<'a> = (&'a u32, &'a Scaled);
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        (min, max): Self::Args<'_>,
+    ) -> Result<(), RdmError> {
+        if !(*min..=max.0).contains(&self.0) {
+            return Err(RdmError::new(
+                at,
+                context,
+                format!("{min}..={}", max.0),
+                self.0,
+            ));
+        }
+        self.0.write_field(writer, raw, at, context, ())
+    }
+}
+
 #[derive(Debug, PartialEq, RdmRecord)]
-#[rdm(strides(12, 16))]
+#[rdm(strides(12, 16), write)]
 struct Contextual {
     // Exercise ordinary field names that could collide with generated locals.
     reader: u32,
@@ -115,6 +158,16 @@ fn derive_passes_borrowed_sibling_args_and_handles_multiple_strides() {
                 ]
             );
             assert_eq!(block.tails, vec![0xa5; 2 * (stride as usize - 12)]);
+            let expected = contextual(endian, stride, 9);
+            let mut output = expected.clone();
+            for at in (28..output.len()).step_by(stride as usize) {
+                output[at..at + Contextual::SIZE].fill(0);
+            }
+            let mut writer = RdmWriter::new(Cursor::new(output), endian);
+            for (i, record) in block.records.iter().enumerate() {
+                record.write(&mut writer, 28 + i * stride as usize).unwrap();
+            }
+            assert_eq!(writer.into_inner().into_inner(), expected);
         }
     }
 }
@@ -127,6 +180,18 @@ fn field_errors_identify_the_record_field_and_absolute_position() {
     assert_eq!(error.context(), "Contextual.at");
     assert_eq!(error.expected(), "3..=12");
     assert_eq!(error.actual(), "13");
+    let record = Contextual {
+        reader: 3,
+        bytes: Scaled(12),
+        at: Bounded(13),
+    };
+    let mut writer = RdmWriter::new(Cursor::new(vec![0xa5; 64]), RdmEndian::Little);
+    let error = record.write(&mut writer, 44).unwrap_err();
+    assert_eq!(error.offset(), 52);
+    assert_eq!(error.context(), "Contextual.at");
+    assert_eq!(error.expected(), "3..=12");
+    assert_eq!(error.actual(), "13");
+    assert_eq!(writer.into_inner().into_inner(), [0xa5; 64]);
 }
 
 #[test]
@@ -139,7 +204,7 @@ fn derives_animation_array_fields_in_both_orders() {
         for value in [0.0f32, 0.0, 0.0, 1.0, 1.5, -2.0, 3.0, 0.25] {
             word(&mut bytes, value.to_bits(), endian);
         }
-        let mut reader = RdmReader::new(Cursor::new(bytes)).unwrap();
+        let mut reader = RdmReader::new(Cursor::new(&bytes)).unwrap();
         let block = reader.read_block::<RdmFrame>(28).unwrap();
         assert_eq!(
             block.records,
@@ -150,5 +215,10 @@ fn derives_animation_array_fields_in_both_orders() {
             }]
         );
         assert!(block.tails.is_empty());
+        let mut output = bytes.clone();
+        output[28..].fill(0);
+        let mut writer = RdmWriter::new(Cursor::new(output), endian);
+        block.records[0].write(&mut writer, 28).unwrap();
+        assert_eq!(writer.into_inner().into_inner(), bytes);
     }
 }
