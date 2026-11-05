@@ -65,44 +65,21 @@ impl RdModell {
     pub fn add_skin(&mut self) {
         let rdm = self.rdmf.as_ref().unwrap();
 
-        let raw_joints = &***rdm.header1.skin.joint;
-        let mut joints_vec = vec![];
-
-        for raw_joint in raw_joints {
-            let tx = raw_joint.t[0];
-            let ty = raw_joint.t[1];
-            let tz = raw_joint.t[2];
-
-            let rx = raw_joint.r[0];
-            let ry = raw_joint.r[1];
-            let rz = raw_joint.r[2];
-            let rw = raw_joint.r[3];
-
-            let quaternion = Quaternion::new(rw, rx, ry, rz);
-            let unit_quaternion = UnitQuaternion::from_quaternion(quaternion);
-
-            let quaternion_mat4 = unit_quaternion.quaternion().coords;
-
-            // apply rotation and negate vector
-            // aka -1 * (UnitQuaternion*Vector)
-            let v: Vector3<f32> = Vector3::new(tx, ty, tz);
-            let v_transformed = unit_quaternion.transform_vector(&v).scale(-1.0);
-
-            let joint = RdJoint {
-                name: String::from(raw_joint.name.as_ascii()),
-                transition: [v_transformed.x, v_transformed.y, v_transformed.z],
-                quaternion: [
-                    quaternion_mat4.x,
-                    quaternion_mat4.y,
-                    quaternion_mat4.z,
-                    quaternion_mat4.w,
-                ],
-                parent: raw_joint.parent_id,
-            };
-            joints_vec.push(joint);
-        }
-
-        self.joints = Some(joints_vec);
+        self.joints = Some(
+            rdm.header1
+                .skin
+                .joint
+                .iter()
+                .map(|joint| {
+                    RdJoint::from(rdm::RdmJoint {
+                        name: joint.name.as_ascii().into(),
+                        translation: joint.t,
+                        rotation: joint.r,
+                        parent: joint.parent_id,
+                    })
+                })
+                .collect(),
+        );
     }
 
     fn new(buf: Vec<u8>) -> Self {
