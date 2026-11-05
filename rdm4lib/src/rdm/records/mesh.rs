@@ -6,7 +6,7 @@ use super::RdmAnimation;
 
 /// Owned file contents, independent of source layout and byte order.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(48, 52))]
+#[rdm(strides(48, 52), write)]
 pub struct RdmDocument {
     /// Source scene and resource names.
     pub export_info: Option<RdmExportInfo>,
@@ -22,7 +22,7 @@ pub struct RdmDocument {
 
 /// Model metadata and decoded buffers. Unknown record tails live in the source layout.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(68, 92))]
+#[rdm(strides(68, 92), write)]
 pub struct RdmModel {
     /// Optional name stored through a wrapper record.
     pub name: RdmModelName,
@@ -48,7 +48,7 @@ pub struct RdmModel {
 
 /// Name wrapper referenced by a model.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(28))]
+#[rdm(strides(28), write)]
 pub struct RdmModelName {
     /// Optional model name.
     pub name: Option<String>,
@@ -85,7 +85,7 @@ pub struct RdmIndices {
 
 /// Source scene and resource names stored in an RDM export-info block.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(72))]
+#[rdm(strides(72), write)]
 pub struct RdmExportInfo {
     /// Source scene or baking path, when present.
     pub source_path: Option<String>,
@@ -95,10 +95,12 @@ pub struct RdmExportInfo {
 
 /// Vertex attribute table used to interpret a model's vertex buffer.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(24))]
+#[rdm(strides(24), write)]
 pub struct RdmVertexFormat {
     /// Attributes in their order within each vertex.
     pub attributes: Vec<VertexIdentifier>,
+    /// Stored vertex/skin selector, preserved without interpreting its values.
+    pub selector: u8,
 }
 
 impl std::fmt::Display for RdmVertexFormat {
@@ -115,7 +117,7 @@ impl std::fmt::Display for RdmVertexFormat {
 
 /// Scalar representation of the model's index buffer.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(20))]
+#[rdm(strides(20), write)]
 pub struct RdmIndexFormat {
     /// Buffer decoding additionally requires an unsigned integer type.
     pub storage_type: StorageType,
@@ -135,7 +137,7 @@ pub struct RdmMeshGroup {
 
 /// One entry in the file's material table.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(28))]
+#[rdm(strides(28), write)]
 pub struct RdmMaterialEntry {
     /// Material associated with this table index.
     pub material: RdmMaterial,
@@ -143,7 +145,7 @@ pub struct RdmMaterialEntry {
 
 /// Material name and texture path stored in the RDM file.
 #[derive(Debug, Clone, PartialEq, Eq, RdmRecord)]
-#[rdm(strides(48))]
+#[rdm(strides(48), write)]
 pub struct RdmMaterial {
     /// Optional material name.
     pub name: Option<String>,
@@ -153,7 +155,7 @@ pub struct RdmMaterial {
 
 /// Skeleton joint table referenced by a file root.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(32))]
+#[rdm(strides(32), write)]
 pub struct RdmSkin {
     /// Joints in the order used by vertex joint indices.
     pub joints: Vec<RdmJoint>,
@@ -161,7 +163,7 @@ pub struct RdmSkin {
 
 /// Named skeleton joint and its stored transform.
 #[derive(Debug, Clone, PartialEq, RdmRecord)]
-#[rdm(strides(84))]
+#[rdm(strides(84), write)]
 pub struct RdmJoint {
     /// Name used to match animation tracks.
     pub name: String,

@@ -11,7 +11,7 @@ use binrw::binrw;
 #[binrw]
 #[bw(import_raw(end: &mut u64))]
 #[derive(RdmStructSize, RdmRecord)]
-#[rdm(strides(16))]
+#[rdm(strides(16), write)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
     #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),

@@ -180,6 +180,7 @@ fn reads_corpus_material_ranges_from_buffered_files() {
 #[test]
 fn buffer_writes_reject_invalid_columns_and_indices_before_appending() {
     let format = |components| RdmVertexFormat {
+        selector: 0,
         attributes: vec![VertexIdentifier {
             semantic: VertexSemantic::Position,
             storage_type: StorageType::F32,

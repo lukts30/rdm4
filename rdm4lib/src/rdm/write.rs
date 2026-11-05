@@ -5,6 +5,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use super::{
     wire::Scalar, RdmBlock, RdmEndian, RdmError, RdmFieldLayout, RdmHeader, RdmRecordLayout,
 };
+use crate::vertex::{StorageType, VertexInterpretation, VertexSemantic};
 
 /// Writes known prefixes and appends referenced blocks to a seekable target.
 /// New blocks use the first declared stride with zero-filled tails, not source tails.
@@ -257,5 +258,50 @@ impl<T: Scalar> RdmWriteField for T {
         }
         writer.endian().encode(*self, raw);
         Ok(())
+    }
+}
+
+impl RdmWriteField for StorageType {
+    type Args<'a> = ();
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<(), RdmError> {
+        (*self as u32).write_field(writer, raw, at, context, ())
+    }
+}
+
+impl RdmWriteField for VertexSemantic {
+    type Args<'a> = ();
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<(), RdmError> {
+        (self.clone() as u32).write_field(writer, raw, at, context, ())
+    }
+}
+
+impl RdmWriteField for VertexInterpretation {
+    type Args<'a> = ();
+
+    fn write_field<W: Write + Seek>(
+        &self,
+        writer: &mut RdmWriter<W>,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<(), RdmError> {
+        self.0.write_field(writer, raw, at, context, ())
     }
 }
