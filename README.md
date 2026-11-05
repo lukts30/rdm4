@@ -19,6 +19,19 @@ Create the folder C:\\tools. Copy rdm4-bin.exe to C:\\tools. Choose one of the r
 
 - [Youtube playlist with a few videos showing how to use the rdm4 converter to make it a bit easier to get started with the converter.](https://www.youtube.com/playlist?list=PLBsFrFg1v0yxRMV36SkJRnSh_O-hMTsr2)
 
+## rdm4ng
+
+The subcommand CLI uses the existing converter:
+
+```sh
+rdm4ng gltf model.rdm -o model.glb
+rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
+rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
+```
+
+`rdm2gltf` and `gltf2rdm` are aliases. Use `rdm4ng <command> --help`
+for options. `rdm4-bin` remains available with its existing arguments.
+
 ## command-line interface rdm4-bin
 
 ```

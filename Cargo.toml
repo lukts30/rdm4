@@ -6,6 +6,7 @@ authors = ["lukts30 <llukas21307@gmail.com>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/lukts30/rdm4"
+default-run = "rdm4-bin"
 
 [workspace]
 members = [

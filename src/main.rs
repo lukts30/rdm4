@@ -1,6 +1,7 @@
 use clap::{ArgAction, Parser};
 use log::info;
 use rdm4_bin::{
+    cli::existing_file as cli_in_is_file,
     commands::{self, Files, GltfOptions, RdmOptions},
     init_logging,
 };
@@ -8,15 +9,6 @@ use rdm4lib::{
     gltf_export::GltfExportFormat, gltf_reader::ResolveNodeName, vertex::TargetVertexFormat,
 };
 use std::path::PathBuf;
-
-fn cli_in_is_file(v: &str) -> Result<PathBuf, String> {
-    let p = PathBuf::from(v);
-    if p.is_file() {
-        Ok(p)
-    } else {
-        Err(format!("No such file {}", v))
-    }
-}
 
 static HEADER_GLTF2RDM: &str = "GLTF TO RDM OPTIONS";
 static HEADER_RDM2GLTF: &str = "RDM TO GLTF OPTIONS";

@@ -17,7 +17,7 @@ Legacy limitations:
 
 Four ignored tests require complete multi-model geometry. They currently
 fail; enable them and remove the truncation assertions during migration.
-The planned new CLI is `rdm4ng`; the legacy entry point remains `rdm4-bin`.
+Both `rdm4ng` and the legacy `rdm4-bin` currently use this reader.
 
 ```sh
 # From this directory:

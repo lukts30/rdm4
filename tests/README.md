@@ -8,8 +8,8 @@ The binary unit test parses all six add-on vertex-format choices.
 
 No Blender installation or external checkout is needed. The export test
 uses a converter-generated GLB. Blender import behavior, Windows shell
-quoting and DDS conversion need separate tests. Keep these tests targeting
-`rdm4-bin` when the new `rdm4ng` CLI is added.
+quoting and DDS conversion need separate tests. `rdm4ng_cli.rs` checks the
+new CLI and aliases against the legacy executable's conversion output.
 
 ```sh
 nix develop --command cargo test --release --locked -p rdm4-bin --test blender_contract

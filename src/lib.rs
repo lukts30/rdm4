@@ -1,5 +1,6 @@
 //! Application commands shared by the CLI entry points.
 
+pub mod cli;
 pub mod commands;
 
 /// Initialize CLI logging, respecting `RUST_LOG`.
