@@ -11,6 +11,9 @@ use binrw::{binread, BinRead};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
+
+/// Compatibility path for the plain conversion draw range.
+pub use crate::MeshInfo;
 use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
 use rdm_derive::RdmStructSize;
 
@@ -33,20 +36,15 @@ pub struct VertId {
     _padding: [u8; 19],
 }
 
+/// Independent wire record used only by the legacy reader.
 #[derive(Debug, Clone)]
 #[binread]
 #[derive(RdmStructSize)]
-pub struct MeshInfo {
+pub struct RdmLegacyMeshInfo {
     pub start_index_location: u32,
     pub index_count: u32,
     pub material: u32,
     pub _padding: [u8; 16],
-}
-
-impl MeshInfo {
-    pub fn get_max_material(instances: &[MeshInfo]) -> u32 {
-        instances.iter().map(|e| e.material).max().unwrap()
-    }
 }
 
 #[binread]
@@ -73,7 +71,7 @@ pub struct Meta {
         "Index type and index-buffer stride disagree"))]
     pub triangle_list: AnnoPtr<RdmUntypedContainer>,
 
-    pub mesh_info: AnnoPtr<RdmTypedContainer<MeshInfo>>,
+    pub mesh_info: AnnoPtr<RdmTypedContainer<RdmLegacyMeshInfo>>,
 
     _skeleton_index: i32, // -1 means no skeleton.
     bounds_min: [f32; 3],
@@ -336,7 +334,7 @@ mod tests {
         assert_eq!(Meta::get_struct_byte_size(), 92);
         assert_eq!(ModelName::get_struct_byte_size(), 28);
         assert_eq!(VertId::get_struct_byte_size(), 24);
-        assert_eq!(MeshInfo::get_struct_byte_size(), 28);
+        assert_eq!(RdmLegacyMeshInfo::get_struct_byte_size(), 28);
 
         assert_eq!(RdmJoint::get_struct_byte_size(), 84);
 

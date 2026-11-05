@@ -4,10 +4,10 @@ use std::{
     path::Path,
 };
 
-use crate::{
-    rdm::{RdmDocument, RdmReader},
-    rdm_data_anim::Frame,
-};
+use crate::rdm::{RdmDocument, RdmReader};
+
+/// Shared animation keyframe, retaining the conversion API name.
+pub use crate::rdm::RdmFrame as Frame;
 
 #[derive(Debug, Clone)]
 pub struct FrameCollection {

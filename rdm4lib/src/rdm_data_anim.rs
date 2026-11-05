@@ -9,6 +9,9 @@ use std::{
 };
 
 use crate::RDMStructSizeTr;
+
+/// Compatibility path for the shared animation keyframe.
+pub use crate::rdm_anim::Frame;
 use crate::{rdm_anim::RdAnim, rdm_container::*};
 
 #[binread]
@@ -27,14 +30,15 @@ pub struct AnimMeta {
 #[derive(RdmStructSize)]
 pub struct AnimInner {
     pub j_name: AnnoPtr<RdmString>,
-    pub j_data: AnnoPtr<RdmTypedContainer<Frame>>,
+    pub j_data: AnnoPtr<RdmTypedContainer<RdmLegacyFrame>>,
     _padding: [u8; 16],
 }
 
+/// Independent wire record used only by the legacy reader.
 #[derive(Debug, Copy, Clone)]
 #[binread]
 #[derive(RdmStructSize)]
-pub struct Frame {
+pub struct RdmLegacyFrame {
     pub rotation: [f32; 4],
     pub translation: [f32; 3],
     pub time: f32,

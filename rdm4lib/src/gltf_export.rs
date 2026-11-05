@@ -1,4 +1,4 @@
-use crate::{rdm_data_main::MeshInfo, rdm_material::RdMaterial, vertex::*, RdJoint, RdModell};
+use crate::{rdm_material::RdMaterial, vertex::*, MeshInfo, RdJoint, RdModell};
 use gltf::json::validation::USize64;
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{

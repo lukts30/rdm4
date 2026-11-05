@@ -6,16 +6,14 @@ use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use super::{
     buffers::{vertex_bytes, vertices_from_bytes},
-    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmFrame, RdmIndexFormat, RdmIndices,
-    RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName, RdmSkin,
-    RdmTrack, RdmVertexFormat,
+    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmIndexFormat, RdmIndices, RdmJoint,
+    RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName, RdmSkin, RdmTrack,
+    RdmVertexFormat,
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
-    rdm_data_anim::Frame,
-    rdm_data_main::MeshInfo,
     vertex::{StorageType, VertexFormat2},
-    RdJoint, RdModell, Triangle,
+    MeshInfo, RdJoint, RdModell, Triangle,
 };
 
 impl TryFrom<RdModell> for RdmDocument {
@@ -111,11 +109,7 @@ impl From<RdAnim> for RdmDocument {
                 sampling_rate: animation.sampling_rate,
                 tracks: animation.anim_vec.into_iter().map(|track| RdmTrack {
                     joint_name: track.name,
-                    frames: track.frames.into_iter().map(|frame| RdmFrame {
-                        rotation: frame.rotation,
-                        translation: frame.translation,
-                        time: frame.time,
-                    }).collect(),
+                    frames: track.frames,
                 }).collect(),
             }]),
         }
@@ -166,15 +160,7 @@ impl RdmDocument {
                 .into_iter()
                 .map(|track| FrameCollection {
                     name: track.joint_name,
-                    frames: track
-                        .frames
-                        .into_iter()
-                        .map(|frame| Frame {
-                            rotation: frame.rotation,
-                            translation: frame.translation,
-                            time: frame.time,
-                        })
-                        .collect(),
+                    frames: track.frames,
                 })
                 .collect(),
         })

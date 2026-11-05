@@ -1,5 +1,4 @@
-use rdm_data_main::MeshInfo;
-use rdm_data_main::*;
+use rdm_data_main::RDMStructSizeTr;
 use std::{fs::File, io::BufReader, path::Path};
 
 use half::f16;
@@ -26,6 +25,22 @@ use vertex::VertexFormat2;
 pub mod rdm_container;
 pub mod rdm_data_anim;
 pub mod rdm_data_main;
+
+/// Draw range and material slot used by the shared glTF conversion code.
+#[derive(Debug, Clone)]
+pub struct MeshInfo {
+    pub start_index_location: u32,
+    pub index_count: u32,
+    pub material: u32,
+    pub _padding: [u8; 16],
+}
+
+impl MeshInfo {
+    /// Highest material slot referenced by the draw ranges.
+    pub fn get_max_material(instances: &[MeshInfo]) -> u32 {
+        instances.iter().map(|e| e.material).max().unwrap()
+    }
+}
 
 pub struct RdModell {
     pending_joints: Option<Vec<RdJoint>>,
