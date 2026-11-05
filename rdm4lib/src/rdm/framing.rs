@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::{RdmEndian, RdmError};
 
 const PREAMBLE_WORDS: [(usize, u32); 4] = [(4, 0x14), (8, 0), (12, 4), (16, 0x1c)];
@@ -15,6 +17,15 @@ impl RdmHeader {
 
     /// Validate the magic, byte order marker and observed preamble words.
     pub fn decode(bytes: &[u8]) -> Result<Self, RdmError> {
+        let header = Self::detect(bytes)?;
+        let words = header.endian.decode(&bytes[4..Self::SIZE]);
+        if let Some(issue) = preamble_issues(words).into_iter().next() {
+            return Err(issue);
+        }
+        Ok(header)
+    }
+
+    pub(super) fn detect(bytes: &[u8]) -> Result<Self, RdmError> {
         let raw = checked_slice(bytes, 0, Self::SIZE, "preamble")?;
         if &raw[..3] != b"RDM" {
             return Err(RdmError::new(
@@ -29,12 +40,6 @@ impl RdmHeader {
             0 => RdmEndian::Big,
             byte => return Err(RdmError::new(3, "byte order", "0 or 1", byte)),
         };
-        for (at, expected) in PREAMBLE_WORDS {
-            let actual = endian.decode::<u32>(&raw[at..at + 4]);
-            if actual != expected {
-                return Err(RdmError::new(at, "preamble word", expected, actual));
-            }
-        }
         Ok(Self { endian })
     }
 
@@ -47,6 +52,66 @@ impl RdmHeader {
             self.endian.encode(value, &mut bytes[at..at + 4]);
         }
         bytes
+    }
+}
+
+pub(super) fn preamble_issues(words: [u32; 4]) -> Vec<RdmError> {
+    words
+        .into_iter()
+        .zip(PREAMBLE_WORDS)
+        .filter(|(actual, (_, expected))| actual != expected)
+        .map(|(actual, (at, expected))| RdmError::new(at, "preamble word", expected, actual))
+        .collect()
+}
+
+/// Physical block boundaries, independent of record types and source ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RdmBlockInfo {
+    /// Absolute byte offset of the count word.
+    pub offset: usize,
+    /// Number of records in the payload.
+    pub count: u32,
+    /// On-disk byte width of one record.
+    pub stride: u32,
+    /// Absolute payload range, excluding the eight-byte block header.
+    pub payload: Range<usize>,
+}
+
+impl RdmBlockInfo {
+    pub(super) fn from_header(
+        raw: &[u8; RdmBlock::HEADER_SIZE],
+        offset: usize,
+        source_len: usize,
+        endian: RdmEndian,
+    ) -> Result<Self, RdmError> {
+        let start = checked_end(source_len, offset, RdmBlock::HEADER_SIZE, "block header")?;
+        let count = endian.decode::<u32>(&raw[..4]);
+        let stride = endian.decode::<u32>(&raw[4..]);
+        for (at, context, value) in [
+            (offset, "block count", count),
+            (offset + 4, "block stride", stride),
+        ] {
+            if value == 0 {
+                return Err(RdmError::new(at, context, "nonzero", value));
+            }
+        }
+        let size = (count as usize)
+            .checked_mul(stride as usize)
+            .ok_or_else(|| {
+                RdmError::new(
+                    offset,
+                    "block size",
+                    "payload fitting address space",
+                    format!("{count} * {stride}"),
+                )
+            })?;
+        let end = checked_end(source_len, start, size, "block payload")?;
+        Ok(Self {
+            offset,
+            count,
+            stride,
+            payload: start..end,
+        })
     }
 }
 
@@ -71,32 +136,12 @@ impl<'a> RdmBlock<'a> {
     /// This does not establish that a reference legitimately targets this block.
     pub fn decode(bytes: &'a [u8], offset: usize, endian: RdmEndian) -> Result<Self, RdmError> {
         let raw = checked_slice(bytes, offset, Self::HEADER_SIZE, "block header")?;
-        let count = endian.decode::<u32>(&raw[..4]);
-        let stride = endian.decode::<u32>(&raw[4..]);
-        for (at, context, value) in [
-            (offset, "block count", count),
-            (offset + 4, "block stride", stride),
-        ] {
-            if value == 0 {
-                return Err(RdmError::new(at, context, "nonzero", value));
-            }
-        }
-        let size = (count as usize)
-            .checked_mul(stride as usize)
-            .ok_or_else(|| {
-                RdmError::new(
-                    offset,
-                    "block size",
-                    "payload fitting address space",
-                    format!("{count} * {stride}"),
-                )
-            })?;
-        let payload = checked_slice(bytes, offset + Self::HEADER_SIZE, size, "block payload")?;
+        let info = RdmBlockInfo::from_header(raw.try_into().unwrap(), offset, bytes.len(), endian)?;
         Ok(Self {
             offset,
-            count,
-            stride,
-            payload,
+            count: info.count,
+            stride: info.stride,
+            payload: &bytes[info.payload],
         })
     }
 
@@ -112,6 +157,16 @@ fn checked_slice<'a>(
     size: usize,
     context: &'static str,
 ) -> Result<&'a [u8], RdmError> {
+    let end = checked_end(bytes.len(), offset, size, context)?;
+    Ok(&bytes[offset..end])
+}
+
+pub(super) fn checked_end(
+    source_len: usize,
+    offset: usize,
+    size: usize,
+    context: &'static str,
+) -> Result<usize, RdmError> {
     let end = offset.checked_add(size).ok_or_else(|| {
         RdmError::new(
             offset,
@@ -120,12 +175,13 @@ fn checked_slice<'a>(
             format!("{offset} + {size}"),
         )
     })?;
-    bytes.get(offset..end).ok_or_else(|| {
-        RdmError::new(
+    if end > source_len {
+        return Err(RdmError::new(
             offset,
             context,
             format!("at least {end} bytes"),
-            bytes.len(),
-        )
-    })
+            source_len,
+        ));
+    }
+    Ok(end)
 }

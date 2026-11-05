@@ -1,6 +1,10 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    io::{BufReader, Cursor},
+    path::PathBuf,
+};
 
-use rdm4lib::rdm::{RdmBlock, RdmEndian, RdmHeader};
+use rdm4lib::rdm::{RdmBlock, RdmEndian, RdmHeader, RdmScanner};
 
 const LITTLE: [u8; 20] = [
     b'R', b'D', b'M', 1, 20, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 28, 0, 0, 0,
@@ -72,7 +76,7 @@ fn invalid_block_sizes_return_contextual_errors() {
 }
 
 #[test]
-fn every_fixture_is_fully_framed_without_interpreting_records() {
+fn scans_every_fixture_identically_from_memory_and_buffered_files() {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rdm");
     let paths: Vec<_> = [base.clone(), base.join("benchmark")]
         .into_iter()
@@ -84,15 +88,27 @@ fn every_fixture_is_fully_framed_without_interpreting_records() {
     let mut blocks = 0;
     for path in paths {
         let bytes = fs::read(&path).unwrap();
+        let report = RdmScanner::new(Cursor::new(&bytes)).scan().unwrap();
+        let file_report = RdmScanner::new(BufReader::new(fs::File::open(&path).unwrap()))
+            .scan()
+            .unwrap();
+        assert_eq!(report, file_report, "{path:?}");
+        assert!(report.issues.is_empty(), "{path:?}: {:?}", report.issues);
+        assert_eq!(report.unscanned, None, "{path:?}");
+        assert_eq!(report.source_len, bytes.len());
         let header = RdmHeader::decode(&bytes).unwrap();
+        assert_eq!(report.endian, Some(header.endian));
         assert_eq!(header.encode(), bytes[..RdmHeader::SIZE], "{path:?}");
         let root = RdmBlock::decode(&bytes, RdmHeader::SIZE, header.endian).unwrap();
         assert_eq!(root.count, 1, "{path:?}");
         assert!([48, 52].contains(&root.stride), "{path:?}");
         let mut at = RdmHeader::SIZE;
-        while at < bytes.len() {
+        for info in &report.blocks {
+            assert_eq!(info.offset, at, "{path:?}");
             let block = RdmBlock::decode(&bytes, at, header.endian)
                 .unwrap_or_else(|error| panic!("{path:?}: {error}"));
+            assert_eq!((info.count, info.stride), (block.count, block.stride));
+            assert_eq!(&bytes[info.payload.clone()], block.payload);
             at = block.next_offset();
             blocks += 1;
         }
