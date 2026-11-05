@@ -2,14 +2,14 @@ use std::fmt;
 
 /// A rejected input or inconsistent output, with its byte offset and field.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Error {
+pub struct RdmError {
     offset: usize,
     context: &'static str,
     expected: String,
     actual: String,
 }
 
-impl Error {
+impl RdmError {
     pub(super) fn new(
         offset: usize,
         context: &'static str,
@@ -45,7 +45,7 @@ impl Error {
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for RdmError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -55,4 +55,4 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for RdmError {}

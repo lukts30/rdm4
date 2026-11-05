@@ -5,14 +5,14 @@ use half::f16;
 
 /// Byte order of numeric fields, selected by the fourth magic byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Endian {
+pub enum RdmEndian {
     /// `RDM\x01`.
     Little,
     /// `RDM\x00`, observed in Anno 2070 files.
     Big,
 }
 
-impl Endian {
+impl RdmEndian {
     pub(super) fn decode<T: Scalar>(self, raw: &[u8]) -> T {
         match self {
             Self::Little => T::decode::<LittleEndian>(raw),
@@ -126,7 +126,7 @@ mod tests {
     use super::*;
 
     fn check<T: Scalar + PartialEq + std::fmt::Debug>(value: T, little: &[u8], big: &[u8]) {
-        for (endian, expected) in [(Endian::Little, little), (Endian::Big, big)] {
+        for (endian, expected) in [(RdmEndian::Little, little), (RdmEndian::Big, big)] {
             // Start at an odd offset: decoding must not require alignment.
             let mut buffer = vec![0xa5; T::WIDTH + 2];
             endian.encode(value, &mut buffer[1..1 + T::WIDTH]);
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn floats_preserve_nan_payloads_and_signed_zero() {
-        for endian in [Endian::Little, Endian::Big] {
+        for endian in [RdmEndian::Little, RdmEndian::Big] {
             for bits in [0u32, 0x80000000, 0x7f800000, 0x7fc12345, 0xff812345] {
                 let mut raw = [0; 4];
                 endian.encode(f32::from_bits(bits), &mut raw);

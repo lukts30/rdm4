@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use rdm4lib::rdm::{Block, Endian, Header};
+use rdm4lib::rdm::{RdmBlock, RdmEndian, RdmHeader};
 
 const LITTLE: [u8; 20] = [
     b'R', b'D', b'M', 1, 20, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 28, 0, 0, 0,
@@ -11,17 +11,17 @@ const BIG: [u8; 20] = [
 
 #[test]
 fn preambles_match_known_bytes_in_both_orders() {
-    for (endian, bytes) in [(Endian::Little, LITTLE), (Endian::Big, BIG)] {
-        let header = Header::decode(&bytes).unwrap();
+    for (endian, bytes) in [(RdmEndian::Little, LITTLE), (RdmEndian::Big, BIG)] {
+        let header = RdmHeader::decode(&bytes).unwrap();
         assert_eq!(header.endian, endian);
         assert_eq!(header.encode(), bytes);
-        for end in 0..Header::SIZE {
-            assert!(Header::decode(&bytes[..end]).is_err());
+        for end in 0..RdmHeader::SIZE {
+            assert!(RdmHeader::decode(&bytes[..end]).is_err());
         }
         for at in [0, 3, 4, 8, 12, 16] {
             let mut invalid = bytes;
             invalid[at] = 0xff;
-            let error = Header::decode(&invalid).unwrap_err();
+            let error = RdmHeader::decode(&invalid).unwrap_err();
             assert_eq!(error.offset(), at);
             assert!(!error.expected().is_empty());
             assert!(!error.actual().is_empty());
@@ -32,20 +32,20 @@ fn preambles_match_known_bytes_in_both_orders() {
 #[test]
 fn block_headers_can_be_unaligned_and_leave_payload_opaque() {
     for (endian, header) in [
-        (Endian::Little, [2, 0, 0, 0, 3, 0, 0, 0]),
-        (Endian::Big, [0, 0, 0, 2, 0, 0, 0, 3]),
+        (RdmEndian::Little, [2, 0, 0, 0, 3, 0, 0, 0]),
+        (RdmEndian::Big, [0, 0, 0, 2, 0, 0, 0, 3]),
     ] {
         let mut bytes = vec![0xff];
         bytes.extend_from_slice(&header);
         bytes.extend_from_slice(&[1, 2, 3, 4, 5, 6]);
-        let block = Block::decode(&bytes, 1, endian).unwrap();
+        let block = RdmBlock::decode(&bytes, 1, endian).unwrap();
         assert_eq!((block.offset, block.count, block.stride), (1, 2, 3));
         assert_eq!(block.payload, &[1, 2, 3, 4, 5, 6]);
         assert_eq!(block.next_offset(), bytes.len());
         for end in 0..bytes.len() {
-            assert!(Block::decode(&bytes[..end], 1, endian).is_err());
+            assert!(RdmBlock::decode(&bytes[..end], 1, endian).is_err());
         }
-        assert!(Block::decode(&bytes, usize::MAX, endian).is_err());
+        assert!(RdmBlock::decode(&bytes, usize::MAX, endian).is_err());
     }
 }
 
@@ -64,7 +64,7 @@ fn invalid_block_sizes_return_contextual_errors() {
             if usize::BITS == 32 { 0 } else { 8 },
         ),
     ] {
-        let error = Block::decode(&bytes, 0, Endian::Little).unwrap_err();
+        let error = RdmBlock::decode(&bytes, 0, RdmEndian::Little).unwrap_err();
         assert_eq!(error.context(), context);
         assert_eq!(error.offset(), offset);
         assert!(error.to_string().contains(context));
@@ -84,14 +84,14 @@ fn every_fixture_is_fully_framed_without_interpreting_records() {
     let mut blocks = 0;
     for path in paths {
         let bytes = fs::read(&path).unwrap();
-        let header = Header::decode(&bytes).unwrap();
-        assert_eq!(header.encode(), bytes[..Header::SIZE], "{path:?}");
-        let root = Block::decode(&bytes, Header::SIZE, header.endian).unwrap();
+        let header = RdmHeader::decode(&bytes).unwrap();
+        assert_eq!(header.encode(), bytes[..RdmHeader::SIZE], "{path:?}");
+        let root = RdmBlock::decode(&bytes, RdmHeader::SIZE, header.endian).unwrap();
         assert_eq!(root.count, 1, "{path:?}");
         assert!([48, 52].contains(&root.stride), "{path:?}");
-        let mut at = Header::SIZE;
+        let mut at = RdmHeader::SIZE;
         while at < bytes.len() {
-            let block = Block::decode(&bytes, at, header.endian)
+            let block = RdmBlock::decode(&bytes, at, header.endian)
                 .unwrap_or_else(|error| panic!("{path:?}: {error}"));
             at = block.next_offset();
             blocks += 1;
