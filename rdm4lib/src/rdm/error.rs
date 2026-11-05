@@ -10,7 +10,8 @@ pub struct RdmError {
 }
 
 impl RdmError {
-    pub(super) fn new(
+    /// Describe a failed constraint at an absolute byte offset.
+    pub fn new(
         offset: usize,
         context: &'static str,
         expected: impl fmt::Display,

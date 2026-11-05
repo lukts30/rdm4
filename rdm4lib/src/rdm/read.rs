@@ -1,6 +1,8 @@
 use std::io::{Read, Seek, SeekFrom};
 
-use super::{RdmBlockInfo, RdmEndian, RdmError, RdmReadRecord, RdmScanner};
+use super::wire::Scalar;
+
+use super::{RdmBlockInfo, RdmEndian, RdmError, RdmFieldLayout, RdmRecordLayout, RdmScanner};
 
 /// Typed records and the codec metadata needed to retain their original tails.
 #[derive(Debug, Clone, PartialEq)]
@@ -110,5 +112,43 @@ impl<R: Read + Seek> RdmReader<R> {
             .seek(SeekFrom::Start(at as u64))
             .and_then(|_| self.source.read_exact(out))
             .map_err(|error| RdmError::new(at, context, "readable record bytes", error))
+    }
+}
+
+/// Construct a record at a location inside a validated block.
+pub trait RdmReadRecord: RdmRecordLayout + Sized {
+    /// Decode fields; reference fields may read other indexed blocks.
+    fn read<R: Read + Seek>(reader: &mut RdmReader<R>, at: usize) -> Result<Self, RdmError>;
+}
+
+/// Decode a field with borrowed sibling context, independently of source storage.
+pub trait RdmReadField: RdmFieldLayout + Sized {
+    /// Context needed by this field, such as a borrowed vertex format.
+    type Args<'a>;
+
+    /// Decode a bounded field slice at its absolute source offset.
+    fn read_field<R: Read + Seek>(
+        reader: &mut RdmReader<R>,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        args: Self::Args<'_>,
+    ) -> Result<Self, RdmError>;
+}
+
+impl<T: Scalar> RdmReadField for T {
+    type Args<'a> = ();
+
+    fn read_field<R: Read + Seek>(
+        reader: &mut RdmReader<R>,
+        raw: &[u8],
+        at: usize,
+        context: &'static str,
+        _args: (),
+    ) -> Result<Self, RdmError> {
+        if raw.len() != T::WIDTH {
+            return Err(RdmError::new(at, context, T::WIDTH, raw.len()));
+        }
+        Ok(reader.endian().decode(raw))
     }
 }

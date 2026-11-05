@@ -121,6 +121,26 @@ impl<T: Scalar, const N: usize> Scalar for [T; N] {
     }
 }
 
+/// Bytes occupied by a field inside its containing record.
+pub trait RdmFieldLayout {
+    /// Inline scalar width, or four bytes for a block reference.
+    const WIDTH: usize;
+}
+
+impl<T: Scalar> RdmFieldLayout for T {
+    const WIDTH: usize = T::WIDTH;
+}
+
+/// Known fields and supported on-disk widths of a record.
+pub trait RdmRecordLayout {
+    /// Record name for diagnostics.
+    const NAME: &'static str;
+    /// Bytes covered by the declared fields, excluding preserved tails.
+    const SIZE: usize;
+    /// Accepted record strides.
+    const STRIDES: &'static [u32];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
