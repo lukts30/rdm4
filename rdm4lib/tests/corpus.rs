@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, fs, io::Cursor, path::PathBuf};
 use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
-    rdm::{RdmAnimation, RdmReader},
+    rdm::{RdmAnimation, RdmMaterialEntry, RdmReader, RdmSkin},
     rdm_anim::RdAnim,
     rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
     RdModell,
@@ -285,6 +285,67 @@ fn migrated_animation_records_match_legacy_values_across_the_corpus() {
         animations += 1;
     }
     assert_eq!(animations, 6);
+}
+
+#[test]
+fn migrated_materials_and_skins_match_corpus_values() {
+    let mut material_files = 0;
+    let mut skin_files = 0;
+    for fixture in fixtures() {
+        let path = fixture.path();
+        let bytes = fs::read(&path).unwrap();
+        let mut reader =
+            RdmReader::new(std::io::BufReader::new(fs::File::open(&path).unwrap())).unwrap();
+        let materials = word(&bytes, 0x24);
+        if materials != 0 {
+            let decoded = reader
+                .read_block::<RdmMaterialEntry>(materials as u32)
+                .unwrap();
+            assert_eq!(
+                decoded.records.len(),
+                word(&bytes, materials - 8),
+                "{path:?}"
+            );
+            let text = |target: usize| {
+                (target != 0).then(|| {
+                    std::str::from_utf8(&bytes[target..target + word(&bytes, target - 8)]).unwrap()
+                })
+            };
+            for (index, entry) in decoded.records.iter().enumerate() {
+                let at = word(&bytes, materials + index * 28);
+                assert_eq!(
+                    entry.material.name.as_deref(),
+                    text(word(&bytes, at)),
+                    "{path:?}"
+                );
+                assert_eq!(
+                    entry.material.texture.as_deref(),
+                    text(word(&bytes, at + 4)),
+                    "{path:?}"
+                );
+            }
+            material_files += 1;
+        }
+        let skin = word(&bytes, 0x28);
+        if skin != 0 {
+            let decoded = reader.read_block::<RdmSkin>(skin as u32).unwrap();
+            assert_eq!(decoded.records.len(), 1);
+            let legacy: RdmFile<RdmKindMesh> = Cursor::new(&bytes).read_le().unwrap();
+            let joints = &***legacy.header1.skin.joint;
+            assert_eq!(decoded.records[0].joints.len(), joints.len(), "{path:?}");
+            for (joint, legacy) in decoded.records[0].joints.iter().zip(joints) {
+                assert_eq!(joint.name, legacy.name.as_ascii(), "{path:?}");
+                assert_eq!(
+                    joint.translation.map(f32::to_bits),
+                    legacy.t.map(f32::to_bits)
+                );
+                assert_eq!(joint.rotation.map(f32::to_bits), legacy.r.map(f32::to_bits));
+                assert_eq!(joint.parent, legacy.parent_id, "{path:?}");
+            }
+            skin_files += 1;
+        }
+    }
+    assert_eq!((material_files, skin_files), (18, 4));
 }
 
 #[test]

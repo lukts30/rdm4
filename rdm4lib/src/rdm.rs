@@ -12,6 +12,9 @@ pub use error::RdmError;
 pub use framing::{RdmBlock, RdmBlockInfo, RdmHeader};
 pub use layout::{RdmBlockLayout, RdmReadResult, RdmSourceLayout};
 pub use read::{RdmDecodedBlock, RdmReadField, RdmReadRecord, RdmReader};
-pub use records::{RdmAnimation, RdmExportInfo, RdmFrame, RdmMeshGroup, RdmTrack};
+pub use records::{
+    RdmAnimation, RdmExportInfo, RdmFrame, RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup,
+    RdmSkin, RdmTrack,
+};
 pub use scanner::{RdmScanReport, RdmScanner};
 pub use wire::{RdmEndian, RdmFieldLayout, RdmRecordLayout};
