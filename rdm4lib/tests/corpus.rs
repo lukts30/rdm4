@@ -6,8 +6,9 @@ use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     rdm::{
-        RdmAnimation, RdmAttributeValues, RdmDocument, RdmEndian, RdmMaterialEntry, RdmReader,
-        RdmSkin, RdmWriter,
+        RdmAnimation, RdmAttributeValues, RdmBlock, RdmDocument, RdmEndian, RdmHeader, RdmIndices,
+        RdmMaterialEntry, RdmModel, RdmReadField, RdmReader, RdmSkin, RdmVertices, RdmWriteField,
+        RdmWriter,
     },
     rdm_anim::RdAnim,
     rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
@@ -61,6 +62,61 @@ fn fixtures() -> Vec<Fixture> {
 // independently of the legacy reader, which discards all but the first model.
 fn word(bytes: &[u8], at: usize) -> usize {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize
+}
+
+fn write_buffers(model: &RdmModel, endian: RdmEndian) -> Vec<u8> {
+    // A small root block with two reference slots; formats are borrowed GAT args.
+    let mut prefix = RdmHeader { endian }.encode().to_vec();
+    for value in [1u32, 8, 0, 0] {
+        prefix.extend_from_slice(&match endian {
+            RdmEndian::Little => value.to_le_bytes(),
+            RdmEndian::Big => value.to_be_bytes(),
+        });
+    }
+    let mut writer = RdmWriter::new(Cursor::new(prefix), endian);
+    let mut references = [0; 8];
+    model
+        .vertices
+        .write_field(
+            &mut writer,
+            &mut references[..4],
+            28,
+            "vertices",
+            &model.vertex_format,
+        )
+        .unwrap();
+    model
+        .indices
+        .write_field(
+            &mut writer,
+            &mut references[4..],
+            32,
+            "indices",
+            (&model.index_format, &model.vertices),
+        )
+        .unwrap();
+    writer.record_bytes(28, &references, "buffers").unwrap();
+    let output = writer.into_inner().into_inner();
+    let mut reader = RdmReader::new(Cursor::new(&output)).unwrap();
+    let vertices = RdmVertices::read_field(
+        &mut reader,
+        &references[..4],
+        28,
+        "vertices",
+        &model.vertex_format,
+    )
+    .unwrap();
+    let indices = RdmIndices::read_field(
+        &mut reader,
+        &references[4..],
+        32,
+        "indices",
+        (&model.index_format, &vertices),
+    )
+    .unwrap();
+    assert_eq!(vertices, model.vertices);
+    assert_eq!(indices, model.indices);
+    output
 }
 
 #[test]
@@ -194,6 +250,24 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
                     },
                     "{path:?} model {index}"
                 );
+            }
+            if index == 0 {
+                for endian in [RdmEndian::Little, RdmEndian::Big] {
+                    let output = write_buffers(decoded, endian);
+                    let vertex = RdmBlock::decode(&output, 36, endian).unwrap();
+                    let indices = RdmBlock::decode(&output, vertex.next_offset(), endian).unwrap();
+                    if endian == RdmEndian::Little {
+                        assert_eq!(
+                            vertex.payload,
+                            &bytes[vertex_at..vertex_at + decoded.vertices.count * vertex_stride]
+                        );
+                        assert_eq!(
+                            indices.payload,
+                            &bytes
+                                [index_at..index_at + decoded.indices.values.len() * index_stride]
+                        );
+                    }
+                }
             }
         }
         assert_eq!(

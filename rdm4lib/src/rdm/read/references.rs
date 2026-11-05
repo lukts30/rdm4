@@ -4,7 +4,7 @@ use super::{RdmReadField, RdmReadRecord, RdmReader};
 use crate::rdm::{RdmBlockInfo, RdmBlockLayout, RdmError, RdmFieldLayout, RdmRecordLayout};
 
 impl<R: Read + Seek> RdmReader<R> {
-    pub(super) fn read_payload(
+    pub(in crate::rdm) fn read_payload(
         &mut self,
         raw: &[u8],
         at: usize,

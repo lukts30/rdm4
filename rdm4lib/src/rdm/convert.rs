@@ -4,12 +4,12 @@ use std::error::Error;
 
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
-use super::{wire::Scalar, RdmAttributeValues, RdmDocument, RdmEndian, RdmJoint, RdmModel};
+use super::{buffers::vertex_bytes, RdmDocument, RdmEndian, RdmJoint, RdmModel};
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
     rdm_data_anim::Frame,
     rdm_data_main::MeshInfo,
-    vertex::{StorageType, VertexFormat2},
+    vertex::VertexFormat2,
     RdJoint, RdModell, Triangle,
 };
 
@@ -95,47 +95,15 @@ impl TryFrom<RdmModel> for RdModell {
             .iter()
             .map(|&indices| Triangle { indices })
             .collect();
+        let (stride, bytes) = vertex_bytes(
+            &model.vertices,
+            &model.vertex_format,
+            RdmEndian::Little,
+            0,
+            "RdmModel.vertices",
+        )?;
         let identifiers = model.vertex_format.attributes;
         let count = model.vertices.count;
-        if identifiers.len() != model.vertices.attributes.len() {
-            return Err("vertex descriptors and attribute columns disagree".into());
-        }
-        let stride = identifiers.iter().try_fold(0usize, |stride, id| {
-            (id.storage_type.byte_size() as usize)
-                .checked_mul(id.storage_count as usize)
-                .and_then(|size| stride.checked_add(size))
-                .ok_or("vertex stride overflow")
-        })?;
-        let mut bytes = vec![
-            0;
-            stride
-                .checked_mul(count)
-                .ok_or("vertex buffer size overflow")?
-        ];
-        let mut offset = 0;
-        for (id, values) in identifiers.iter().zip(&model.vertices.attributes) {
-            let components = id.storage_count as usize;
-            match (id.storage_type, values) {
-                (StorageType::U16, RdmAttributeValues::U16(v)) => {
-                    interleave(&mut bytes, v, stride, offset, components, count)?
-                }
-                (StorageType::U32, RdmAttributeValues::U32(v)) => {
-                    interleave(&mut bytes, v, stride, offset, components, count)?
-                }
-                (StorageType::F16, RdmAttributeValues::F16(v)) => {
-                    interleave(&mut bytes, v, stride, offset, components, count)?
-                }
-                (StorageType::F32, RdmAttributeValues::F32(v)) => {
-                    interleave(&mut bytes, v, stride, offset, components, count)?
-                }
-                _ => {
-                    return Err(
-                        "vertex attribute storage type disagrees with its descriptor".into(),
-                    )
-                }
-            }
-            offset += id.storage_type.byte_size() as usize * components;
-        }
         Ok(Self {
             pending_joints: None,
             joints: None,
@@ -155,38 +123,11 @@ impl TryFrom<RdmModel> for RdModell {
             vertex: VertexFormat2::new(
                 identifiers.into_boxed_slice(),
                 u32::try_from(count)?,
-                u32::try_from(stride)?,
+                stride,
                 bytes.into(),
             ),
         })
     }
-}
-
-fn interleave<T: Scalar>(
-    bytes: &mut [u8],
-    values: &[T],
-    stride: usize,
-    offset: usize,
-    components: usize,
-    count: usize,
-) -> Result<(), Box<dyn Error>> {
-    if values.len()
-        != count
-            .checked_mul(components)
-            .ok_or("vertex column size overflow")?
-    {
-        return Err("vertex attribute count disagrees with its descriptor".into());
-    }
-    for i in 0..count {
-        for component in 0..components {
-            let at = i * stride + offset + component * T::WIDTH;
-            RdmEndian::Little.encode(
-                values[i * components + component],
-                &mut bytes[at..at + T::WIDTH],
-            );
-        }
-    }
-    Ok(())
 }
 
 impl From<RdmJoint> for RdJoint {

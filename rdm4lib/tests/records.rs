@@ -4,8 +4,11 @@ use std::{
     path::PathBuf,
 };
 
-use rdm4lib::rdm::{RdmEndian, RdmHeader, RdmMeshGroup, RdmReader, RdmWriteRecord, RdmWriter};
-use rdm4lib::vertex::VertexIdentifier;
+use rdm4lib::rdm::{
+    RdmAttributeValues, RdmEndian, RdmHeader, RdmIndexFormat, RdmIndices, RdmMeshGroup, RdmReader,
+    RdmVertexFormat, RdmVertices, RdmWriteField, RdmWriteRecord, RdmWriter,
+};
+use rdm4lib::vertex::{StorageType, VertexIdentifier, VertexInterpretation, VertexSemantic};
 use serde_json::Value;
 
 fn sample(endian: RdmEndian, stride: u32) -> Vec<u8> {
@@ -172,4 +175,66 @@ fn reads_corpus_material_ranges_from_buffered_files() {
         meshes += 1;
     }
     assert_eq!(meshes, 18);
+}
+
+#[test]
+fn buffer_writes_reject_invalid_columns_and_indices_before_appending() {
+    let format = |components| RdmVertexFormat {
+        attributes: vec![VertexIdentifier {
+            semantic: VertexSemantic::Position,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0),
+            storage_count: components,
+        }],
+    };
+    let mut writer = RdmWriter::new(Cursor::new(vec![0xa5; 36]), RdmEndian::Little);
+    for attributes in [
+        vec![],
+        vec![RdmAttributeValues::U16(vec![1, 2])],
+        vec![RdmAttributeValues::F32(vec![1.0])],
+    ] {
+        let vertices = RdmVertices {
+            count: 2,
+            attributes,
+        };
+        let error = vertices
+            .write_field(&mut writer, &mut [0; 4], 28, "vertices", &format(1))
+            .unwrap_err();
+        assert_eq!((error.context(), error.offset()), ("vertices", 28));
+    }
+    let vertices = RdmVertices {
+        count: 2,
+        attributes: vec![RdmAttributeValues::F32(vec![1.0, 2.0])],
+    };
+    for format in [format(0), format(u32::MAX)] {
+        let error = vertices
+            .write_field(&mut writer, &mut [0; 4], 28, "vertices", &format)
+            .unwrap_err();
+        assert_eq!(error.expected(), "nonzero vertex stride fitting u32");
+    }
+    for (storage_type, count, value, expected) in [
+        (StorageType::F32, 2, 0, "index storage U16 or U32"),
+        (StorageType::U32, 2, 2, "index below vertex count 2"),
+        (StorageType::U16, 65_537, 65_536, "index fitting U16"),
+    ] {
+        let format = RdmIndexFormat { storage_type };
+        let vertices = RdmVertices {
+            count,
+            attributes: Vec::new(),
+        };
+        let error = RdmIndices {
+            values: vec![value],
+        }
+        .write_field(
+            &mut writer,
+            &mut [0; 4],
+            32,
+            "indices",
+            (&format, &vertices),
+        )
+        .unwrap_err();
+        assert_eq!((error.context(), error.offset()), ("indices", 32));
+        assert_eq!(error.expected(), expected);
+    }
+    assert_eq!(writer.into_inner().into_inner(), [0xa5; 36]);
 }

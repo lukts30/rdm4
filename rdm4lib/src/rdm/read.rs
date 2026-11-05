@@ -9,7 +9,6 @@ use super::{
     RdmRecordLayout, RdmScanner, RdmSourceLayout,
 };
 
-mod buffers;
 mod references;
 
 /// Typed records and the codec metadata needed to retain their original tails.

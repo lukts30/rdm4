@@ -1,5 +1,6 @@
 //! Incremental RDM codec. Framing does not validate record layouts or references.
 
+mod buffers;
 mod convert;
 mod error;
 mod framing;

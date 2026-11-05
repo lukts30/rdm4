@@ -143,6 +143,19 @@ impl<W: Write + Seek> RdmWriter<W> {
         Ok(start as usize)
     }
 
+    pub(super) fn write_payload(
+        &mut self,
+        raw: &mut [u8],
+        at: usize,
+        context: &'static str,
+        count: usize,
+        stride: u32,
+        bytes: &[u8],
+    ) -> Result<(), RdmError> {
+        let start = self.write_reference(raw, at, context, count, stride)?;
+        self.record_bytes(start, bytes, context)
+    }
+
     /// Write a fixed record prefix. Intended for `RdmWriteRecord` implementations.
     pub fn record_bytes(
         &mut self,
