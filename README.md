@@ -28,6 +28,7 @@ rdm4ng gltf model.rdm -o model.glb
 rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
 rdm4ng inspect model.rdm
+rdm4ng inspect model.rdm --format json
 ```
 
 `rdm2gltf` and `gltf2rdm` are aliases. Use `rdm4ng <command> --help`
@@ -38,6 +39,10 @@ Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 `inspect` uses the new scanner to list physical blocks and preamble metadata.
 Unknown record layouts are accepted; record fields and references are not yet decoded.
 Framing issues retain partial results and return exit status 1.
+JSON reports include structured issues, numeric byte offsets and half-open ranges
+(`start` inclusive, `end` exclusive). Missing metadata is `null`; `schema_version`
+is currently 1. `framing_complete` only describes physical framing, not record validity.
+I/O errors go to stderr and return status 1.
 
 ## command-line interface rdm4-bin
 

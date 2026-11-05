@@ -10,7 +10,7 @@ use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
-    rdm::{RdmEndian, RdmScanner},
+    rdm::{RdmEndian, RdmScanReport, RdmScanner},
     rdm_anim::RdAnim,
     rdm_data_anim::RdAnimWriter2,
     rdm_data_main::RdWriter2,
@@ -19,11 +19,67 @@ use rdm4lib::{
     RdModell,
 };
 
+/// Output representation for inspection reports.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum InspectFormat {
+    /// Human-readable summary and block table.
+    Text,
+    /// Structured report with numeric byte offsets.
+    Json,
+}
+
+impl InspectFormat {
+    /// Render an existing scan report without reading the source again.
+    pub fn write(
+        self,
+        input: &Path,
+        report: &RdmScanReport,
+        mut output: impl Write,
+    ) -> io::Result<()> {
+        match self {
+            Self::Text => inspect_text(input, report, output),
+            Self::Json => {
+                use serde_json::json;
+
+                let range = |r: &std::ops::Range<usize>| json!({ "start": r.start, "end": r.end });
+                let value = json!({
+                    "schema_version": 1,
+                    "file": input.to_string_lossy(),
+                    "source_len": report.source_len,
+                    "endian": match report.endian {
+                        Some(RdmEndian::Little) => Some("little"),
+                        Some(RdmEndian::Big) => Some("big"),
+                        None => None,
+                    },
+                    "preamble": report.preamble,
+                    "framing_complete": report.unscanned.is_none(),
+                    "blocks": report.blocks.iter().map(|block| json!({
+                        "offset": block.offset, "count": block.count, "stride": block.stride,
+                        "payload": range(&block.payload),
+                    })).collect::<Vec<_>>(),
+                    "unscanned": report.unscanned.as_ref().map(range),
+                    "issues": report.issues.iter().map(|issue| json!({
+                        "offset": issue.offset(), "context": issue.context(),
+                        "expected": issue.expected(), "actual": issue.actual(),
+                    })).collect::<Vec<_>>(),
+                });
+                serde_json::to_writer_pretty(&mut output, &value)?;
+                writeln!(output)
+            }
+        }
+    }
+}
+
 /// Print physical framing, retaining partial results on format errors.
 /// Returns true when framing is complete and no preamble issues were found;
 /// record layouts and references are not validated.
-pub fn inspect(input: &Path, mut output: impl Write) -> io::Result<bool> {
+pub fn inspect(input: &Path, format: InspectFormat, output: impl Write) -> io::Result<bool> {
     let report = RdmScanner::new(BufReader::new(File::open(input)?)).scan()?;
+    format.write(input, &report, output)?;
+    Ok(report.issues.is_empty() && report.unscanned.is_none())
+}
+
+fn inspect_text(input: &Path, report: &RdmScanReport, mut output: impl Write) -> io::Result<()> {
     let order = match report.endian {
         Some(RdmEndian::Little) => "little",
         Some(RdmEndian::Big) => "big",
@@ -58,7 +114,7 @@ pub fn inspect(input: &Path, mut output: impl Write) -> io::Result<bool> {
     for issue in &report.issues {
         writeln!(output, "  {issue}")?;
     }
-    Ok(report.issues.is_empty() && report.unscanned.is_none())
+    Ok(())
 }
 
 /// Input and output settings common to both conversion directions.

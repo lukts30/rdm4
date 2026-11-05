@@ -725,6 +725,7 @@ dependencies = [
  "gltf",
  "log",
  "rdm4lib",
+ "serde_json",
  "tempfile",
 ]
 

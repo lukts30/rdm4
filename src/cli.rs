@@ -8,7 +8,7 @@ use rdm4lib::{
 };
 
 use crate::{
-    commands::{self, Files, GltfOptions, RdmOptions},
+    commands::{self, Files, GltfOptions, InspectFormat, RdmOptions},
     init_logging,
 };
 
@@ -49,6 +49,9 @@ struct InspectArgs {
     /// Input RDM file. Framing issues are reported with partial results and exit status 1.
     #[arg(value_parser = existing_file)]
     input: PathBuf,
+    /// Report format.
+    #[arg(long, value_enum, default_value = "text")]
+    format: InspectFormat,
 }
 
 #[derive(Args)]
@@ -150,7 +153,7 @@ pub fn run() -> ExitCode {
             joint_names: args.joint_names,
         }),
         Command::Inspect(args) => {
-            return match commands::inspect(&args.input, io::stdout().lock()) {
+            return match commands::inspect(&args.input, args.format, io::stdout().lock()) {
                 Ok(true) => ExitCode::SUCCESS,
                 Ok(false) => ExitCode::FAILURE,
                 Err(error) => {

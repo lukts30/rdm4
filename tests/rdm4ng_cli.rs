@@ -47,6 +47,7 @@ fn help_version_and_argument_errors() {
         vec![],
         vec!["rdm"],
         vec!["inspect"],
+        vec!["inspect", input.to_str().unwrap(), "--format", "invalid"],
         vec!["rdm", input.to_str().unwrap()],
         vec!["rdm", input.to_str().unwrap(), "--format", "invalid"],
         vec![
@@ -114,6 +115,62 @@ fn inspect_reports_unknown_blocks_and_retains_partial_results() {
                 assert!(text.contains(&format!("Byte order: {order}")), "{text}");
                 assert!(text.contains("Blocks: 1"), "{text}");
                 assert!(text.contains("0x0000001c..0x0000001f"), "{text}");
+            }
+            let output = ng()
+                .arg("inspect")
+                .arg(&input)
+                .args(["--format", "json"])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(i32::from(case != "valid")));
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(json["schema_version"], 1);
+            assert_eq!(json["file"], input.to_str().unwrap());
+            assert_eq!(
+                json["source_len"],
+                if case == "truncated" { 32 } else { 31 }
+            );
+            assert_eq!(
+                json["framing_complete"],
+                matches!(case, "valid" | "preamble")
+            );
+            assert_eq!(
+                json["issues"].as_array().unwrap().is_empty(),
+                case == "valid"
+            );
+            if case == "magic" {
+                assert!(json["endian"].is_null());
+                assert!(json["preamble"].is_null());
+                assert!(json["blocks"].as_array().unwrap().is_empty());
+            } else {
+                assert_eq!(
+                    json["endian"],
+                    if endian == RdmEndian::Little {
+                        "little"
+                    } else {
+                        "big"
+                    }
+                );
+                assert_eq!(
+                    json["blocks"][0],
+                    serde_json::json!({
+                        "offset": 20, "count": 1, "stride": 3,
+                        "payload": { "start": 28, "end": 31 }
+                    })
+                );
+            }
+            if case == "truncated" {
+                assert_eq!(
+                    json["unscanned"],
+                    serde_json::json!({ "start": 31, "end": 32 })
+                );
+                assert_eq!(json["issues"][0]["offset"], 31);
+                assert_eq!(json["issues"][0]["context"], "block header");
+                assert!(json["issues"][0]["expected"].is_string());
+                assert!(json["issues"][0]["actual"].is_string());
+            } else if case != "magic" {
+                assert!(json["unscanned"].is_null());
             }
         }
     }
