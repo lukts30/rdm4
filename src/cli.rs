@@ -160,7 +160,7 @@ pub fn run() -> ExitCode {
     init_logging(cli.verbose);
     match cli.command {
         Command::Gltf(args) => {
-            let result = commands::gltf_ng(
+            let result = commands::gltf(
                 GltfOptions {
                     files: args.files.into(),
                     skeleton: args.skeleton || args.animation.is_some(),

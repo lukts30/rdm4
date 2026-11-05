@@ -12,12 +12,10 @@ use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
     rdm::{RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner, RdmSplitter},
-    rdm_anim::RdAnim,
     rdm_data_anim::RdAnimWriter2,
     rdm_data_main::RdWriter2,
     rdm_material::RdMaterial,
     vertex::TargetVertexFormat,
-    RdModell,
 };
 
 /// Split model records into indexed RDM files and print their paths.
@@ -284,30 +282,9 @@ pub struct RdmOptions {
     pub joint_names: ResolveNodeName,
 }
 
-/// Convert an RDM mesh, optionally with skin and animation, to glTF/GLB.
-pub fn gltf(opts: GltfOptions) {
-    let mut rdm = RdModell::from(opts.files.input.as_path());
-    if opts.skeleton && opts.animation.is_none() {
-        rdm.add_skin();
-        info!("  Skin: {} joints", rdm.joints.as_ref().unwrap().len());
-    } else if opts.skeleton && opts.animation.is_some() {
-        rdm.add_skin();
-        let anim = RdAnim::from(opts.animation.as_ref().unwrap().as_path());
-        rdm.add_anim(anim);
-        info!(
-            "  Skin: {} joints; animation added",
-            rdm.joints.as_ref().unwrap().len()
-        );
-    } else {
-        info!("  Skin and animation: not exported");
-    }
-
-    export_gltf(opts, rdm);
-}
-
 /// Convert RDM using the new reader and the existing glTF exporter.
 /// Multi-model inputs require an explicit selection.
-pub fn gltf_ng(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
+pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
     let document = read_document(&opts.files.input)?;
     let count = document.models.as_ref().map_or(0, Vec::len);
     let index = match (mesh_index, count) {
@@ -336,7 +313,12 @@ pub fn gltf_ng(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<d
         rdm.vertex.len(),
         rdm.vertex
     );
-    export_gltf(opts, rdm);
+    let output = opts.files.destination("gltf");
+    if let Some(textures) = opts.textures {
+        rdm.mat = Some(RdMaterial::new(textures));
+    }
+    info!("Building glTF");
+    gltf_export::build(rdm, output, !opts.files.force, opts.format);
     Ok(())
 }
 
@@ -344,15 +326,6 @@ fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
     Ok(RdmReader::new(BufReader::new(File::open(path)?))?
         .read_root::<RdmDocument>()?
         .value)
-}
-
-fn export_gltf(opts: GltfOptions, mut rdm: RdModell) {
-    let output = opts.files.destination("gltf");
-    if let Some(textures) = opts.textures {
-        rdm.mat = Some(RdMaterial::new(textures));
-    }
-    info!("Building glTF");
-    gltf_export::build(rdm, output, !opts.files.force, opts.format);
 }
 
 /// Convert a selected glTF mesh, optionally with skin and animation, to RDM.

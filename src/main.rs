@@ -179,13 +179,17 @@ fn entry_do_work(opts: Opts) {
             joint_names: opts.gltf_node_joint_name_src,
         });
     } else {
-        commands::gltf(GltfOptions {
-            files,
-            skeleton: opts.skeleton,
-            animation: opts.rdanimation,
-            format: opts.gltf_export_format,
-            textures: opts.diffusetexture,
-        });
+        commands::gltf(
+            GltfOptions {
+                files,
+                skeleton: opts.skeleton,
+                animation: opts.rdanimation,
+                format: opts.gltf_export_format,
+                textures: opts.diffusetexture,
+            },
+            Some(0),
+        )
+        .unwrap();
     }
 }
 

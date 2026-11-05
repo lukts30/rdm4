@@ -40,7 +40,8 @@ Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
 `rdm4ng gltf` uses the new reader with the existing glTF exporter. Multi-model
-inputs require `--mesh-index` (zero-based). `rdm4-bin` retains the legacy reader.
+inputs require `--mesh-index` (zero-based). Both entry points use the new reader;
+`rdm4-bin` retains its arguments and first-model default.
 
 `split` writes `<stem>.model-000.rdm`, etc., one per model. It preserves source
 byte order, strides and opaque tails, retaining shared materials, skeleton and
