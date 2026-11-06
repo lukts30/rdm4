@@ -12,6 +12,7 @@ mod split;
 mod wire;
 mod write;
 
+pub use convert::{RdAnimWriter2, RdWriter2};
 pub use error::RdmError;
 pub use framing::{RdmBlock, RdmBlockInfo, RdmHeader};
 pub use layout::{RdmBlockLayout, RdmReadResult, RdmSourceLayout};

@@ -1,6 +1,11 @@
 //! Adapters to the existing glTF conversion types.
 
-use std::error::Error;
+use std::{
+    error::Error,
+    fs::{self, OpenOptions},
+    io::{BufWriter, Write},
+    path::{Path, PathBuf},
+};
 
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
@@ -8,13 +13,92 @@ use super::{
     buffers::{vertex_bytes, vertices_from_bytes},
     RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmIndexFormat, RdmIndices, RdmJoint,
     RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName, RdmSkin, RdmTrack,
-    RdmVertexFormat,
+    RdmVertexFormat, RdmWriter,
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
     vertex::{StorageType, VertexFormat2},
     MeshInfo, RdJoint, RdModell, Triangle,
 };
+
+/// Compatibility entrypoint backed by the current document writer.
+pub struct RdWriter2 {
+    inner: RdmDocument,
+}
+
+impl RdWriter2 {
+    /// Write a mesh, retaining the existing output path and overwrite behavior.
+    pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) -> PathBuf {
+        let mut file = output_path(dir);
+        if file.is_dir() {
+            file.push("out.rdm");
+        }
+        write_document(&self.inner, &file, create_new);
+        file
+    }
+
+    /// Adapt the model for the current record writer.
+    pub fn new(rdm_in: RdModell) -> Self {
+        Self {
+            inner: RdmDocument::try_from(rdm_in).expect("invalid export model"),
+        }
+    }
+}
+
+/// Compatibility entrypoint backed by the current document writer.
+pub struct RdAnimWriter2 {
+    name: String,
+    export: RdmDocument,
+}
+
+impl RdAnimWriter2 {
+    /// Write an animation, retaining filename-based naming and overwrite behavior.
+    pub fn write_anim_rdm(self, dir: Option<PathBuf>, create_new: bool) {
+        let mut file = output_path(dir);
+        if file.is_dir() {
+            file.push(self.name);
+        } else {
+            let n = file.file_stem().unwrap();
+            let anim_name = format!("{}_{}", n.to_string_lossy(), self.name);
+            file.set_file_name(anim_name);
+        }
+        file.set_extension("rdm");
+        write_document(&self.export, &file, create_new);
+    }
+
+    /// Adapt the animation for the current record writer.
+    pub fn new(anim_input: RdAnim) -> Self {
+        Self {
+            name: anim_input.name.clone(),
+            export: anim_input.into(),
+        }
+    }
+}
+
+fn output_path(dir: Option<PathBuf>) -> PathBuf {
+    dir.unwrap_or_else(|| {
+        let path = PathBuf::from("rdm_out");
+        let _ = fs::create_dir(&path);
+        path
+    })
+}
+
+fn write_document(document: &RdmDocument, file: &Path, create_new: bool) {
+    info!("Writing RDM {:?}", file);
+    let writer = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .create_new(create_new)
+        .open(file)
+        .expect("I/O error");
+    RdmWriter::new(BufWriter::new(writer), RdmEndian::Little)
+        .write_root(document)
+        .expect("cannot write RDM records")
+        .flush()
+        .expect("cannot flush RDM output");
+    info!("Wrote RDM {:?}", file);
+}
 
 impl TryFrom<RdModell> for RdmDocument {
     type Error = Box<dyn Error>;

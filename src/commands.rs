@@ -11,9 +11,10 @@ use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{ImportedGltf, ResolveNodeName},
-    rdm::{RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner, RdmSplitter},
-    rdm_data_anim::RdAnimWriter2,
-    rdm_data_main::RdWriter2,
+    rdm::{
+        RdAnimWriter2, RdWriter2, RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner,
+        RdmSplitter,
+    },
     rdm_material::RdMaterial,
     vertex::TargetVertexFormat,
 };

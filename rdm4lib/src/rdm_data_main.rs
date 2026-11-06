@@ -1,20 +1,15 @@
-//! Legacy mesh schema and compatibility export entrypoint.
+//! Legacy mesh reader schema and compatibility exports.
 
-use std::{
-    any::TypeId,
-    fs::{self, OpenOptions},
-    io::{BufWriter, SeekFrom, Write},
-    path::PathBuf,
-};
+use std::{any::TypeId, io::SeekFrom};
 
 use binrw::{binread, BinRead};
 use std::marker::PhantomData;
 
 use crate::vertex::StorageType;
 
-/// Compatibility path for the plain conversion draw range.
-pub use crate::MeshInfo;
-use crate::{rdm_container::*, rdm_data_anim::AnimMeta, RdModell};
+/// Compatibility paths for the current draw range and mesh output helper.
+pub use crate::{rdm::RdWriter2, MeshInfo};
+use crate::{rdm_container::*, rdm_data_anim::AnimMeta};
 use rdm_derive::RdmStructSize;
 
 pub trait RDMStructSizeTr {
@@ -185,6 +180,7 @@ pub struct RdmFile<T: RdmFileType + 'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RdModell;
     use binrw::BinReaderExt;
     use std::fs;
 
@@ -245,10 +241,10 @@ mod tests {
             assert!((actual - expected).abs() < 0.000001);
         }
         let bounds = model.vertex.calculate_bounds();
-        let writer = RdWriter2::new(model);
+        let document = crate::rdm::RdmDocument::try_from(model).unwrap();
         let output = std::io::Cursor::new(Vec::new());
         let mut output = crate::rdm::RdmWriter::new(output, crate::rdm::RdmEndian::Little)
-            .write_root(&writer.inner)
+            .write_root(&document)
             .unwrap();
         output.set_position(0);
         let result: RdmFile<RdmKindMesh> = output.read_le().unwrap();
@@ -275,7 +271,7 @@ mod tests {
         assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
         assert_eq!(
             {
-                let document = RdWriter2::new(model).inner;
+                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
                 let model = &document.models.as_ref().unwrap()[0];
                 (model.bounds_min, model.bounds_max)
             },
@@ -306,7 +302,7 @@ mod tests {
         );
         assert_eq!(
             {
-                let document = RdWriter2::new(model).inner;
+                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
                 let model = &document.models.as_ref().unwrap()[0];
                 (model.bounds_min, model.bounds_max)
             },
@@ -341,48 +337,5 @@ mod tests {
         assert_eq!(ExportInfo::get_struct_byte_size(), 72);
 
         assert_eq!(AnnoU8::get_struct_byte_size(), 1);
-    }
-}
-
-/// Compatibility entrypoint backed by the current document writer.
-pub struct RdWriter2 {
-    inner: crate::rdm::RdmDocument,
-}
-
-impl RdWriter2 {
-    pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) -> PathBuf {
-        let mut file = dir.unwrap_or_else(|| {
-            let f = PathBuf::from("rdm_out");
-            let _ = fs::create_dir(&f);
-            f
-        });
-        if file.is_dir() {
-            file.push("out.rdm");
-        }
-
-        info!("Writing RDM {:?}", file);
-        let writer = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .create_new(create_new)
-            .open(&file)
-            .expect("I/O error");
-
-        crate::rdm::RdmWriter::new(BufWriter::new(writer), crate::rdm::RdmEndian::Little)
-            .write_root(&self.inner)
-            .expect("cannot write RDM records")
-            .flush()
-            .expect("cannot flush RDM output");
-        info!("Wrote RDM {:?}", file);
-
-        file.as_path().into()
-    }
-
-    /// Adapt the model for the current record writer.
-    pub fn new(rdm_in: RdModell) -> RdWriter2 {
-        Self {
-            inner: crate::rdm::RdmDocument::try_from(rdm_in).expect("invalid export model"),
-        }
     }
 }
