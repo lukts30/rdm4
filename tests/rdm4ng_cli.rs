@@ -494,6 +494,31 @@ fn rdm_command_and_alias_match_legacy_output() {
             fs::read(directory.join("mesh.rdm")).unwrap(),
             fs::read(&expected).unwrap()
         );
+        let destination = directory.join("mesh.rdm");
+        let mut retry = ng();
+        retry
+            .arg(command)
+            .arg(&input)
+            .args(["--format", "P4h_N4b_G4b_B4b_T2h"])
+            .arg("-o")
+            .arg(&destination);
+        let collision = retry.output().unwrap();
+        assert_eq!(collision.status.code(), Some(1));
+        let error = String::from_utf8(collision.stderr).unwrap();
+        assert!(
+            error.contains(&format!("rdm: {}:", destination.display())),
+            "{error}"
+        );
+        assert!(!error.contains("panicked"), "{error}");
+        assert_eq!(
+            fs::read(&destination).unwrap(),
+            fs::read(&expected).unwrap()
+        );
+        succeeds(retry.arg("--force"));
+        assert_eq!(
+            fs::read(&destination).unwrap(),
+            fs::read(&expected).unwrap()
+        );
     }
 }
 

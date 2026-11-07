@@ -177,7 +177,8 @@ fn entry_do_work(opts: Opts) {
             mirror_x: opts.negative_x_and_v0v2v1,
             material_indices: opts.overide_mesh_idx,
             joint_names: opts.gltf_node_joint_name_src,
-        });
+        })
+        .expect("RDM conversion failed");
     } else {
         commands::gltf(
             GltfOptions {

@@ -175,17 +175,22 @@ pub fn run() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         }
-        Command::Rdm(args) => commands::rdm(RdmOptions {
-            files: args.files.into(),
-            format: args.format,
-            mesh_index: args.mesh_index,
-            skeleton: args.skeleton,
-            animation: args.animation,
-            no_transform: args.no_transform,
-            mirror_x: args.mirror_x,
-            material_indices: args.material_indices,
-            joint_names: args.joint_names,
-        }),
+        Command::Rdm(args) => {
+            if let Err(error) = commands::rdm(RdmOptions {
+                files: args.files.into(),
+                format: args.format,
+                mesh_index: args.mesh_index,
+                skeleton: args.skeleton,
+                animation: args.animation,
+                no_transform: args.no_transform,
+                mirror_x: args.mirror_x,
+                material_indices: args.material_indices,
+                joint_names: args.joint_names,
+            }) {
+                eprintln!("rdm: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
         Command::Inspect(args) => {
             return match commands::inspect(
                 &args.input,

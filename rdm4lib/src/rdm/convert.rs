@@ -29,12 +29,22 @@ pub struct RdWriter2 {
 impl RdWriter2 {
     /// Write a mesh, retaining the existing output path and overwrite behavior.
     pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) -> PathBuf {
-        let mut file = output_path(dir);
+        self.try_write_rdm(dir, create_new)
+            .expect("cannot write RDM output")
+    }
+
+    /// Write a mesh, returning its output path or a file/record error.
+    pub fn try_write_rdm(
+        self,
+        dir: Option<PathBuf>,
+        create_new: bool,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let mut file = output_path(dir)?;
         if file.is_dir() {
             file.push("out.rdm");
         }
-        write_document(&self.inner, &file, create_new);
-        file
+        write_document(&self.inner, &file, create_new)?;
+        Ok(file)
     }
 
     /// Adapt the model for the current record writer.
@@ -54,7 +64,17 @@ pub struct RdAnimWriter2 {
 impl RdAnimWriter2 {
     /// Write an animation, retaining filename-based naming and overwrite behavior.
     pub fn write_anim_rdm(self, dir: Option<PathBuf>, create_new: bool) {
-        let mut file = output_path(dir);
+        self.try_write_anim_rdm(dir, create_new)
+            .expect("cannot write animation output");
+    }
+
+    /// Write an animation, returning its output path or a file/record error.
+    pub fn try_write_anim_rdm(
+        self,
+        dir: Option<PathBuf>,
+        create_new: bool,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let mut file = output_path(dir)?;
         if file.is_dir() {
             file.push(self.name);
         } else {
@@ -63,7 +83,8 @@ impl RdAnimWriter2 {
             file.set_file_name(anim_name);
         }
         file.set_extension("rdm");
-        write_document(&self.export, &file, create_new);
+        write_document(&self.export, &file, create_new)?;
+        Ok(file)
     }
 
     /// Adapt the animation for the current record writer.
@@ -75,15 +96,20 @@ impl RdAnimWriter2 {
     }
 }
 
-fn output_path(dir: Option<PathBuf>) -> PathBuf {
-    dir.unwrap_or_else(|| {
-        let path = PathBuf::from("rdm_out");
-        let _ = fs::create_dir(&path);
-        path
-    })
+fn output_path(dir: Option<PathBuf>) -> std::io::Result<PathBuf> {
+    if let Some(path) = dir {
+        return Ok(path);
+    }
+    let path = PathBuf::from("rdm_out");
+    fs::create_dir_all(&path)?;
+    Ok(path)
 }
 
-fn write_document(document: &RdmDocument, file: &Path, create_new: bool) {
+fn write_document(
+    document: &RdmDocument,
+    file: &Path,
+    create_new: bool,
+) -> Result<(), Box<dyn Error>> {
     info!("Writing RDM {:?}", file);
     let writer = OpenOptions::new()
         .write(true)
@@ -91,13 +117,12 @@ fn write_document(document: &RdmDocument, file: &Path, create_new: bool) {
         .truncate(true)
         .create_new(create_new)
         .open(file)
-        .expect("I/O error");
+        .map_err(|error| format!("{}: {error}", file.display()))?;
     RdmWriter::new(BufWriter::new(writer), RdmEndian::Little)
-        .write_root(document)
-        .expect("cannot write RDM records")
-        .flush()
-        .expect("cannot flush RDM output");
+        .write_root(document)?
+        .flush()?;
     info!("Wrote RDM {:?}", file);
+    Ok(())
 }
 
 impl TryFrom<RdModell> for RdmDocument {

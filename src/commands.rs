@@ -330,14 +330,13 @@ fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
 }
 
 /// Convert a selected glTF mesh, optionally with skin and animation, to RDM.
-pub fn rdm(opts: RdmOptions) {
+pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     let output = opts.files.destination("rdm");
     let gltf = ImportedGltf::try_import(
         opts.files.input.as_path(),
         opts.mesh_index,
         opts.joint_names,
-    )
-    .unwrap();
+    )?;
     let rdm = ImportedGltf::gltf_to_rdm(
         &gltf,
         opts.format,
@@ -352,15 +351,17 @@ pub fn rdm(opts: RdmOptions) {
         match ImportedGltf::read_animation(&gltf, joints, 6, 0.33333) {
             Some(mut animations) => {
                 for animation in animations.drain(..) {
-                    RdAnimWriter2::new(animation).write_anim_rdm(output.clone(), !opts.files.force);
+                    RdAnimWriter2::new(animation)
+                        .try_write_anim_rdm(output.clone(), !opts.files.force)?;
                 }
             }
             None => error!("Could not read animation. Does the glTF contain any animations ?"),
         }
     }
 
-    RdWriter2::new(rdm).write_rdm(output, !opts.files.force);
+    RdWriter2::new(rdm).try_write_rdm(output, !opts.files.force)?;
     if opts.skeleton && !opts.no_transform {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
     }
+    Ok(())
 }
