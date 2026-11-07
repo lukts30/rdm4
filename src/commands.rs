@@ -284,17 +284,25 @@ pub struct RdmOptions {
 }
 
 /// Convert RDM using the new reader and the existing glTF exporter.
-/// Multi-model inputs require an explicit selection.
+/// Unselected static inputs export all geometry through the scene layer.
 pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
     let document = read_document(&opts.files.input)?;
     let count = document.models.as_ref().map_or(0, Vec::len);
     let index = match (mesh_index, count) {
         (Some(index), _) => index,
-        (None, 1) => 0,
         (None, 0) => return Err("input contains no models".into()),
+        (None, _) if !opts.skeleton && opts.animation.is_none() && opts.textures.is_none() => {
+            return gltf_export::build_scene(
+                document.into_static_scene()?,
+                opts.files.destination("gltf"),
+                !opts.files.force,
+                opts.format,
+            );
+        }
+        (None, 1) => 0,
         (None, _) => {
             return Err(format!(
-                "input contains {count} models; select one with --mesh-index (0..{})",
+                "skeleton, animation and texture export requires selecting one of {count} models with --mesh-index (0..{})",
                 count - 1
             )
             .into())

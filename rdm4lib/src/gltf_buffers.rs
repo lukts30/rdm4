@@ -1,5 +1,7 @@
 //! Binary payloads, views and accessors shared by glTF export paths.
 
+#![forbid(unsafe_code)]
+
 use std::io::{self, Write};
 
 use bytes::Bytes;

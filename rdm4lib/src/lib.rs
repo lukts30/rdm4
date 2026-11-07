@@ -16,12 +16,15 @@ pub mod gltf_reader_vertex;
 pub mod rdm;
 pub mod rdm_anim;
 pub mod rdm_material;
+pub mod scene;
 pub mod vertex;
 pub mod vertex_transform;
 use crate::rdm_anim::RdAnim;
-use rdm_material::RdMaterial;
 
 use vertex::VertexFormat2;
+
+/// Compatibility name for the shared scene mesh.
+pub use scene::Mesh as RdModell;
 
 pub mod rdm_container;
 pub mod rdm_data_anim;
@@ -41,17 +44,6 @@ impl MeshInfo {
     pub fn get_max_material(instances: &[MeshInfo]) -> u32 {
         instances.iter().map(|e| e.material).max().unwrap()
     }
-}
-
-pub struct RdModell {
-    pending_joints: Option<Vec<RdJoint>>,
-    pub mesh_info: Vec<MeshInfo>,
-    pub joints: Option<Vec<RdJoint>>,
-    pub triangle_indices: Vec<Triangle>,
-
-    pub vertex: VertexFormat2,
-    anim: Option<RdAnim>,
-    pub mat: Option<RdMaterial>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,9 @@
+#![forbid(unsafe_code)]
+
 use crate::{
     gltf_buffers::{BufferContainer, GltfBuffers},
     rdm_material::RdMaterial,
+    scene::{Mesh, Scene},
     vertex::*,
     MeshInfo, RdJoint, RdModell,
 };
@@ -10,6 +13,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
     env,
+    error::Error,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
@@ -32,7 +36,7 @@ struct RdGltfBuilder {
     attr_map: BTreeMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
-    rdm: RdModell,
+    rdm: Mesh,
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
     material_idx: Option<Vec<u32>>,
@@ -43,7 +47,7 @@ struct RdGltfBuilder {
 }
 
 impl RdGltfBuilder {
-    fn new(rdm: RdModell) -> Self {
+    fn new(rdm: Mesh) -> Self {
         RdGltfBuilder {
             binary: GltfBuffers::default(),
             nodes: Vec::new(),
@@ -641,9 +645,7 @@ impl RdGltfBuilder {
         }
     }
 
-    fn put_material(&mut self) {
-        let material_len = MeshInfo::get_max_material(&self.rdm.mesh_info) as usize + 1;
-        // get_max_material returns the max value used to index the material vec
+    fn put_material(&mut self, material_len: usize) {
         let mut texture_info_descriptors = vec![None; material_len];
         if let Some(mats) = self.rdm.mat.as_ref() {
             for (i, (image_path, dst)) in mats
@@ -772,11 +774,25 @@ impl RdGltfBuilder {
         accessor.value() as u32
     }
 
-    fn put_normal(&mut self) {
+    fn needs_normalizing(&self, semantic: VertexSemantic) -> bool {
+        self.rdm
+            .vertex
+            .identifiers
+            .iter()
+            .find(|attribute| attribute.semantic == semantic)
+            .is_some_and(|attribute| attribute.storage_type != StorageType::F32)
+    }
+
+    fn put_normal(&mut self, normalize_floats: bool) {
+        let normalize = normalize_floats || self.needs_normalizing(VertexSemantic::Normal);
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
         if let Some(iter) = self.rdm.vertex.iter::<N4b, N3f>(0) {
             for n4b in iter {
-                let n = n4b.normalise().data;
+                let n = if normalize {
+                    n4b.normalise().data
+                } else {
+                    n4b.data
+                };
                 buff.put_f32_le(n[0]);
                 buff.put_f32_le(n[1]);
                 buff.put_f32_le(n[2]);
@@ -797,12 +813,17 @@ impl RdGltfBuilder {
         }
     }
 
-    fn put_tangent(&mut self) {
+    fn put_tangent(&mut self, normalize_floats: bool) {
+        let normalize = normalize_floats || self.needs_normalizing(VertexSemantic::Tangent);
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
 
         if let Some(iter) = self.rdm.vertex.iter::<G4b, G3f>(0) {
             for g3f in iter {
-                let t = g3f.normalise().data;
+                let t = if normalize {
+                    g3f.normalise().data
+                } else {
+                    g3f.data
+                };
                 buff.put_f32_le(t[0]);
                 buff.put_f32_le(t[1]);
                 buff.put_f32_le(t[2]);
@@ -862,12 +883,10 @@ impl RdGltfBuilder {
         self.idx = Some(accessor_idx_meshes);
     }
 
-    fn build(mut self, single_buffer: bool) -> RdGltf {
-        let animation = self.anim_node.map_or(Default::default(), |n| vec![n]);
-
+    fn mesh(&self, name: Option<String>) -> json::Mesh {
         // put_material must already have been run otherwise this panics!
-        let mats = self.material_idx.unwrap();
-        let indices_vec = self.idx.unwrap();
+        let mats = self.material_idx.as_ref().unwrap();
+        let indices_vec = self.idx.as_ref().unwrap();
         assert_eq!(indices_vec.len(), self.rdm.mesh_info.len());
 
         let mut triangle_vec = Vec::with_capacity(indices_vec.len());
@@ -884,45 +903,63 @@ impl RdGltfBuilder {
             triangle_vec.push(primitive);
         }
 
-        let mesh = json::Mesh {
+        json::Mesh {
             extensions: Default::default(),
             extras: Default::default(),
-            name: None,
+            name,
             primitives: triangle_vec,
             weights: None,
-        };
+        }
+    }
+
+    fn build(mut self, single_buffer: bool) -> RdGltf {
+        let mesh = self.mesh(None);
 
         // if nodes vec is non empty than put_joint_nodes already added a scene root node to the end
         if self.nodes.is_empty() {
-            let scene_root_node = json::Node {
-                camera: None,
-                children: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                matrix: None,
-                mesh: Some(json::Index::new(0)),
-                name: None,
-                rotation: None,
-                scale: None,
-                translation: None,
-                skin: None,
-                weights: None,
-            };
+            let scene_root_node = Self::mesh_node(json::Index::new(0), None);
             self.nodes.push(scene_root_node);
         }
 
         // get index of last node (scene root node)
         let root_node_idx = json::Index::new((self.nodes.len() - 1) as u32);
 
+        self.finish(vec![mesh], vec![root_node_idx], single_buffer)
+    }
+
+    fn mesh_node(mesh: json::Index<json::Mesh>, name: Option<String>) -> json::Node {
+        json::Node {
+            camera: None,
+            children: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            matrix: None,
+            mesh: Some(mesh),
+            name,
+            rotation: None,
+            scale: None,
+            translation: None,
+            skin: None,
+            weights: None,
+        }
+    }
+
+    fn finish(
+        self,
+        meshes: Vec<json::Mesh>,
+        scene_nodes: Vec<json::Index<json::Node>>,
+        single_buffer: bool,
+    ) -> RdGltf {
+        let animation = self.anim_node.map_or(Default::default(), |n| vec![n]);
         let mut root = json::Root {
-            meshes: vec![mesh],
+            meshes,
             nodes: self.nodes,
             scene: Some(json::Index::new(0)),
             scenes: vec![json::Scene {
                 extensions: Default::default(),
                 extras: Default::default(),
                 name: None,
-                nodes: vec![root_node_idx],
+                nodes: scene_nodes,
             }],
             skins: if self.skin.is_some() {
                 vec![self.skin.clone().unwrap()]
@@ -942,8 +979,8 @@ impl RdGltfBuilder {
     }
 }
 
-impl From<RdModell> for RdGltfBuilder {
-    fn from(rdm: RdModell) -> Self {
+impl From<Mesh> for RdGltfBuilder {
+    fn from(rdm: Mesh) -> Self {
         let has_skin = rdm.has_skin();
         let has_anim = rdm.anim.is_some();
 
@@ -953,10 +990,10 @@ impl From<RdModell> for RdGltfBuilder {
         b.put_idx();
 
         b.put_tex();
-        b.put_material();
+        b.put_material(MeshInfo::get_max_material(&b.rdm.mesh_info) as usize + 1);
 
-        b.put_normal();
-        b.put_tangent();
+        b.put_normal(true);
+        b.put_tangent(true);
 
         if has_skin {
             b.put_joint_nodes(JointOption::ResolveParentNode);
@@ -975,12 +1012,61 @@ pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
     let mat_opt = rdm.mat.clone();
     let mut b = RdGltfBuilder::from(rdm);
     b.run_dds(config == GltfExportFormat::Glb);
-    let mut p = b.build(config != GltfExportFormat::GltfSeparate);
-    if config == GltfExportFormat::Glb {
-        p.root.buffers[0].uri = None;
-    }
+    let p = b.build(config != GltfExportFormat::GltfSeparate);
     info!("Built glTF");
     p.write_gltf(dir, mat_opt, create_new, config);
+}
+
+/// Export every static scene mesh, retaining names, draw groups and material slots.
+/// Skeletons, animation and external textures still use the selected-mesh exporter.
+pub fn build_scene(
+    scene: Scene,
+    dir: Option<PathBuf>,
+    create_new: bool,
+    config: GltfExportFormat,
+) -> Result<(), Box<dyn Error>> {
+    if scene
+        .meshes
+        .iter()
+        .any(|mesh| mesh.has_skin() || mesh.anim.is_some() || mesh.mat.is_some())
+    {
+        return Err(
+            "scene export currently supports static meshes without external textures".into(),
+        );
+    }
+    let material_count = scene
+        .meshes
+        .iter()
+        .flat_map(|mesh| &mesh.mesh_info)
+        .map(|group| group.material)
+        .max()
+        .ok_or("scene contains no material groups")? as usize
+        + 1;
+    let mut remaining = scene.meshes.into_iter();
+    let first = remaining.next().ok_or("scene contains no meshes")?;
+    let mut builder = RdGltfBuilder::new(first);
+    builder.put_material(material_count);
+    let mut meshes = Vec::new();
+    let mut nodes = Vec::new();
+    loop {
+        builder.attr_map.clear();
+        builder.put_vertex();
+        builder.put_idx();
+        builder.put_tex();
+        builder.put_normal(false);
+        builder.put_tangent(false);
+        let name = builder.rdm.name.clone();
+        let mesh = json::Index::new(meshes.len() as u32);
+        meshes.push(builder.mesh(name.clone()));
+        nodes.push(json::Index::new(builder.nodes.len() as u32));
+        builder.nodes.push(RdGltfBuilder::mesh_node(mesh, name));
+        let Some(next) = remaining.next() else { break };
+        builder.rdm = next;
+    }
+    builder
+        .finish(meshes, nodes, config != GltfExportFormat::GltfSeparate)
+        .write_gltf(dir, None, create_new, config);
+    Ok(())
 }
 
 struct RdGltf {
@@ -1013,12 +1099,15 @@ impl FromStr for GltfExportFormat {
 
 impl RdGltf {
     fn write_gltf(
-        self,
+        mut self,
         dir: Option<PathBuf>,
         optmat: Option<RdMaterial>,
         create_new: bool,
         config: GltfExportFormat,
     ) {
+        if config == GltfExportFormat::Glb {
+            self.root.buffers[0].uri = None;
+        }
         let mut file = dir.unwrap_or_else(|| {
             let f = PathBuf::from("gltf_out");
             let _ = fs::create_dir(&f);

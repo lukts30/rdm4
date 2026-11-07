@@ -28,6 +28,33 @@ fn succeeds(command: &mut Command) {
     );
 }
 
+fn same_gltf_data(actual: &Path, expected: &Path) {
+    let read = |path: &Path| {
+        let bytes = fs::read(path).unwrap();
+        let json = if bytes.starts_with(b"glTF") {
+            gltf::Glb::from_slice(&bytes).unwrap().json.into_owned()
+        } else {
+            bytes
+        };
+        let mut root: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        // The scene exporter additionally retains source model/node names.
+        for section in ["meshes", "nodes"] {
+            for item in root[section].as_array_mut().unwrap() {
+                item.as_object_mut().unwrap().remove("name");
+            }
+        }
+        let (_, buffers, _) = gltf::import(path).unwrap();
+        (
+            root,
+            buffers
+                .into_iter()
+                .map(|buffer| buffer.0)
+                .collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(read(actual), read(expected));
+}
+
 #[test]
 fn help_version_and_argument_errors() {
     let help = ng().arg("--help").output().unwrap();
@@ -350,10 +377,7 @@ fn gltf_command_and_alias_match_legacy_output() {
                 .arg("-o")
                 .arg(&directory),
         );
-        assert_eq!(
-            fs::read(directory.join("mesh with spaces.glb")).unwrap(),
-            fs::read(&expected).unwrap()
-        );
+        same_gltf_data(&directory.join("mesh with spaces.glb"), &expected);
     }
     let legacy_directory = output.path().join("legacy separate");
     let ng_directory = output.path().join("ng separate");
@@ -376,7 +400,7 @@ fn gltf_command_and_alias_match_legacy_output() {
             .arg(&actual)
             .args(["--format", "gltf"]),
     );
-    assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+    same_gltf_data(&actual, &expected);
     for name in [
         "excavator_tycoons_lod1.rdm",
         "destruction_stone_building_04_decal_detail01_lod0.rdm",
@@ -398,26 +422,15 @@ fn gltf_command_and_alias_match_legacy_output() {
                 .arg(&actual)
                 .arg("--force"),
         );
-        assert_eq!(
-            fs::read(actual).unwrap(),
-            fs::read(expected).unwrap(),
-            "{name}"
-        );
+        same_gltf_data(&actual, &expected);
     }
     let input = fixture("benchmark/06-heavy_04_conveyor_lod2.rdm");
     let actual = ng_directory.join("selected.glb");
-    let missing_selection = ng()
-        .arg("gltf")
-        .arg(&input)
-        .arg("-o")
-        .arg(&actual)
-        .output()
-        .unwrap();
-    assert_eq!(missing_selection.status.code(), Some(1));
-    assert!(String::from_utf8(missing_selection.stderr)
-        .unwrap()
-        .contains("--mesh-index"));
-    assert!(!actual.exists());
+    let all = ng_directory.join("all.glb");
+    succeeds(ng().arg("gltf").arg(&input).arg("-o").arg(&all));
+    let exported = gltf::Gltf::open(all).unwrap();
+    assert_eq!(exported.meshes().count(), 2);
+    assert_eq!(exported.scenes().next().unwrap().nodes().count(), 2);
     succeeds(
         ng().arg("gltf")
             .arg(&input)

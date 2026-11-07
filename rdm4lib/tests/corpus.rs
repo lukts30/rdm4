@@ -319,8 +319,7 @@ fn characterizes_legacy_multi_model_truncation() {
         .collect();
     assert_eq!(meshes.len(), 4);
     for fixture in meshes {
-        // Characterization, not the desired behavior: the pending export tests
-        // below require the complete geometry rather than this first model.
+        // The compatibility model API intentionally selects only the first model.
         assert_first_model(&fixture);
         let first = number(&fixture.expected["first_model"]["vertices"]);
         assert!(first < number(&fixture.expected["total_vertices"]));
@@ -509,13 +508,45 @@ fn characterizes_kind_api_rejection_of_metadata_only_documents() {
 fn assert_exports_all_models(id: usize) {
     let fixture = fixtures().swap_remove(id);
     let output = tempfile::tempdir().unwrap();
-    gltf_export::build(
-        RdModell::from(fixture.path()),
+    let document = RdmReader::new(std::io::BufReader::new(
+        fs::File::open(fixture.path()).unwrap(),
+    ))
+    .unwrap()
+    .read_root::<RdmDocument>()
+    .unwrap();
+    let scene = document.value.into_static_scene().unwrap();
+    let names: Vec<_> = scene.meshes.iter().map(|mesh| mesh.name.clone()).collect();
+    let groups: Vec<Vec<_>> = scene
+        .meshes
+        .iter()
+        .map(|mesh| {
+            mesh.mesh_info
+                .iter()
+                .map(|group| (group.material, group.index_count as usize))
+                .collect()
+        })
+        .collect();
+    gltf_export::build_scene(
+        scene,
         Some(output.path().into()),
         true,
         GltfExportFormat::Glb,
-    );
+    )
+    .unwrap();
     let gltf = gltf::Gltf::open(output.path().join("out.glb")).unwrap();
+    assert_eq!(gltf.meshes().count(), fixture.model_count());
+    for ((mesh, name), groups) in gltf.meshes().zip(names).zip(groups) {
+        assert_eq!(mesh.name(), name.as_deref());
+        assert_eq!(mesh.primitives().len(), groups.len());
+        for (primitive, (material, count)) in mesh.primitives().zip(groups) {
+            assert_eq!(primitive.material().index(), Some(material as usize));
+            assert_eq!(primitive.indices().unwrap().count(), count);
+        }
+    }
+    assert_eq!(
+        gltf.scenes().next().unwrap().nodes().count(),
+        fixture.model_count()
+    );
     let mut position_accessors = BTreeSet::new();
     let mut vertices = 0;
     let mut indices = 0;
@@ -537,25 +568,21 @@ fn assert_exports_all_models(id: usize) {
 }
 
 #[test]
-#[ignore = "legacy reader drops the second model; enable during rdm4ng codec integration"]
 fn exports_both_conveyor_models() {
     assert_exports_all_models(6);
 }
 
 #[test]
-#[ignore = "legacy reader drops the second model; enable during rdm4ng codec integration"]
 fn exports_both_factory_depot_models() {
     assert_exports_all_models(11);
 }
 
 #[test]
-#[ignore = "legacy reader drops 257 models; enable during rdm4ng codec integration"]
 fn exports_all_258_mining_models() {
     assert_exports_all_models(15);
 }
 
 #[test]
-#[ignore = "legacy reader drops 19 models; enable during rdm4ng codec integration"]
 fn exports_all_20_monument_models() {
     assert_exports_all_models(20);
 }

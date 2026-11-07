@@ -17,6 +17,7 @@ use super::{
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
+    scene::Scene,
     vertex::{StorageType, VertexFormat2},
     MeshInfo, RdJoint, RdModell, Triangle,
 };
@@ -226,6 +227,21 @@ impl From<RdAnim> for RdmDocument {
 }
 
 impl RdmDocument {
+    /// Adapt all model geometry, without activating skeletons or animations.
+    /// Source layout and opaque data remain outside the scene representation.
+    pub fn into_static_scene(self) -> Result<Scene, Box<dyn Error>> {
+        let meshes = self
+            .models
+            .unwrap_or_default()
+            .into_iter()
+            .map(RdModell::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        if meshes.is_empty() {
+            return Err("input contains no models".into());
+        }
+        Ok(Scene { meshes })
+    }
+
     /// Adapt one selected model for the existing exporter, optionally with its skeleton.
     pub fn into_model(self, index: usize, with_skin: bool) -> Result<RdModell, Box<dyn Error>> {
         let models = self.models.unwrap_or_default();
@@ -309,6 +325,7 @@ impl TryFrom<RdmModel> for RdModell {
         let identifiers = model.vertex_format.attributes;
         let count = model.vertices.count;
         Ok(Self {
+            name: model.name.name,
             pending_joints: None,
             joints: None,
             anim: None,

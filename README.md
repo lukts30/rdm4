@@ -27,6 +27,7 @@ The subcommand CLI provides conversion and inspection:
 rdm4ng gltf model.rdm -o model.glb
 rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
+rdm4ng gltf multi_model.rdm -o all_models.glb
 rdm4ng gltf multi_model.rdm --mesh-index 1 -o selected.glb
 rdm4ng split multi_model.rdm -o split_models
 rdm4ng inspect model.rdm
@@ -39,8 +40,9 @@ for options. `rdm4-bin` remains available with its existing arguments.
 Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
-`rdm4ng gltf` uses the new reader with the existing glTF exporter. Multi-model
-inputs require `--mesh-index` (zero-based). Both entry points use the new reader
+`rdm4ng gltf` exports all static models by default; `--mesh-index` selects one
+(zero-based). Multi-model skeleton, animation and DDS texture export still requires
+an explicit selection. Both entry points use the new reader
 and writer with the existing glTF code. `rdm4-bin` retains its arguments and
 first-model default.
 
