@@ -22,6 +22,28 @@ mod tests {
     use std::convert::TryFrom;
     use std::fs;
 
+    fn load_scene(path: &str, skin: bool) -> rdm4lib::scene::Scene {
+        use rdm4lib::rdm::{RdmDocument, RdmReader};
+        RdmReader::new(std::io::BufReader::new(File::open(path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value
+            .into_scene(skin)
+            .unwrap()
+    }
+
+    fn add_animation(scene: &mut rdm4lib::scene::Scene, anim: RdAnim) {
+        let names = scene.skeletons[0]
+            .joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        scene
+            .animations
+            .push(anim.into_scene_animation(0, &names).unwrap());
+    }
+
     pub fn check_hash(path: &Path, expected: &str) {
         let hash = Sha256::new()
             .chain_update(fs::read(path).unwrap())
@@ -44,24 +66,21 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exports_animated_mesh_without_gltf_validation_errors() {
-        let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
-        assert_eq!(rdm.vertex.len(), 2615);
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
-        assert_eq!(rdm.vertex.get_size(), 28);
-        assert_eq!(rdm.mesh_info.len(), 1);
-
-        rdm.add_skin();
-
-        let anim = RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
-        rdm.add_anim(anim);
+        let mut scene = load_scene("rdm/basalt_crusher_others_lod2.rdm", true);
+        assert_eq!(scene.meshes[0].vertex_count, 2615);
+        add_animation(
+            &mut scene,
+            RdAnim::from("rdm/basalt_crusher_others_work01.rdm"),
+        );
 
         let output_dir = tempfile::tempdir().unwrap();
-        gltf_export::build(
-            rdm,
+        gltf_export::build_scene(
+            scene,
             Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
-        );
+        )
+        .unwrap();
 
         let gltf_path = output_dir.path().join("out.gltf");
         if cfg!(target_os = "windows") {
@@ -158,14 +177,16 @@ mod tests {
         let mut rdm = RdModell::from(mesh_path);
         rdm.add_skin();
         let joints = rdm.joints.clone().unwrap();
-        rdm.add_anim(anim);
+        let mut scene = source.value.into_scene(true).unwrap();
+        add_animation(&mut scene, anim);
         let output_dir = tempfile::tempdir().unwrap();
-        gltf_export::build(
-            rdm,
+        gltf_export::build_scene(
+            scene,
             Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
-        );
+        )
+        .unwrap();
 
         let (document, buffers, _) = gltf::import(output_dir.path().join("out.gltf")).unwrap();
         let animation = document.animations().next().unwrap();
@@ -272,47 +293,53 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
     fn exports_animated_mesh_with_dds_texture() {
-        let mut rdm = RdModell::from("rdm/excavator_tycoons_lod1.rdm");
-        rdm.mat = Some(RdMaterial::from(r"rdm/excavator_tycoons_diff_0.dds"));
-        assert_eq!(rdm.vertex.len(), 5225);
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
-        assert_eq!(rdm.mesh_info.len(), 1);
-
-        rdm.add_skin();
-
-        let anim = RdAnim::from("rdm/excavator_tycoons_work02.rdm");
-        rdm.add_anim(anim);
-
-        let output_dir = tempfile::tempdir().unwrap();
-        gltf_export::build(
-            rdm,
-            Some(output_dir.path().into()),
-            false,
-            GltfExportFormat::GltfSeparate,
-        );
+        // Exercise both linked PNGs and embedded image buffer views.
+        for format in [GltfExportFormat::GltfSeparate, GltfExportFormat::Glb] {
+            let mut scene = load_scene("rdm/excavator_tycoons_lod1.rdm", true);
+            add_animation(&mut scene, RdAnim::from("rdm/excavator_tycoons_work02.rdm"));
+            let output_dir = tempfile::tempdir().unwrap();
+            gltf_export::GltfWriter::new(scene)
+                .textures(RdMaterial::from(r"rdm/excavator_tycoons_diff_0.dds"))
+                .write(Some(output_dir.path().into()), false, format)
+                .unwrap();
+            let extension = if format == GltfExportFormat::Glb {
+                "glb"
+            } else {
+                "gltf"
+            };
+            let (document, _, images) =
+                gltf::import(output_dir.path().join(format!("out.{extension}"))).unwrap();
+            assert_eq!(images.len(), 1);
+            assert!(document
+                .materials()
+                .next()
+                .unwrap()
+                .pbr_metallic_roughness()
+                .base_color_texture()
+                .is_some());
+        }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     #[cfg(target_os = "windows")]
     fn exports_mesh_with_multiple_dds_materials() {
-        let mut rdm = RdModell::from("rdm/residence_tier_02_estate_02_lod2.rdm");
-        rdm.mat = Some(RdMaterial::new(vec![
-            "rdm/residence_tier02_04_diff_0.dds",
-            "rdm/residence_02_05_diff_0.dds",
-            "rdm/brick_wall_white_estate_01_diff_0.dds",
-        ]));
-        assert_eq!(rdm.vertex.len(), 1965);
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
-        assert_eq!(rdm.mesh_info.len(), 3);
-
+        let scene = load_scene("rdm/residence_tier_02_estate_02_lod2.rdm", false);
+        assert_eq!(scene.meshes[0].vertex_count, 1965);
+        assert_eq!(scene.meshes[0].primitives.len(), 3);
         let output_dir = tempfile::tempdir().unwrap();
-        gltf_export::build(
-            rdm,
-            Some(output_dir.path().into()),
-            false,
-            GltfExportFormat::GltfSeparate,
-        );
+        gltf_export::GltfWriter::new(scene)
+            .textures(RdMaterial::new(vec![
+                "rdm/residence_tier02_04_diff_0.dds",
+                "rdm/residence_02_05_diff_0.dds",
+                "rdm/brick_wall_white_estate_01_diff_0.dds",
+            ]))
+            .write(
+                Some(output_dir.path().into()),
+                false,
+                GltfExportFormat::GltfSeparate,
+            )
+            .unwrap();
     }
 
     #[test]
@@ -358,32 +385,18 @@ mod tests {
     fn exports_imported_gltf_with_skin_and_animation() {
         let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
         let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
-        let mut rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &i_gltf,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
-            true,
-            false,
-            true,
-            None,
-        );
-        assert_eq!(rdm.vertex.len(), 5184);
-
-        let jj = rdm.joints.clone().unwrap();
-        let mut anims =
-            gltf_reader::ImportedGltf::read_animation(&i_gltf, &jj, 6, 0.33333).unwrap();
-
-        assert_eq!(anims.len(), 1);
-        let anim = anims.pop().unwrap();
-
-        rdm.add_anim(anim);
+        let scene = i_gltf.read_scene(true, Some(Default::default())).unwrap();
+        assert_eq!(scene.meshes[0].vertex_count, 5184);
+        assert_eq!(scene.animations.len(), 1);
 
         let output_dir = tempfile::tempdir().unwrap();
-        gltf_export::build(
-            rdm,
+        gltf_export::build_scene(
+            scene,
             Some(output_dir.path().into()),
             false,
             GltfExportFormat::GltfSeparate,
-        );
+        )
+        .unwrap();
     }
 
     #[test]

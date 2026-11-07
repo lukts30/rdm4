@@ -7,7 +7,6 @@ use std::{
     ops::Range,
 };
 
-use bytes::Bytes;
 use gltf::json::{self, validation::USize64};
 
 /// Accessor metadata, separate from the binary payload and its placement.
@@ -179,14 +178,11 @@ impl GltfBuffers {
         }
         self.buffers[0].byte_length = USize64(combined.len() as u64);
         self.buffers.truncate(1);
-        self.payloads = vec![BufferContainer::U8(combined)];
+        self.payloads = vec![BufferContainer(combined)];
     }
 }
 
-pub(crate) enum BufferContainer {
-    U8(Vec<u8>),
-    Bytes(Bytes),
-}
+pub(crate) struct BufferContainer(pub Vec<u8>);
 
 impl BufferContainer {
     fn padding(&self) -> usize {
@@ -200,10 +196,7 @@ impl BufferContainer {
     }
 
     pub fn get_bytes(&self) -> &[u8] {
-        match self {
-            Self::U8(bytes) => bytes,
-            Self::Bytes(bytes) => bytes,
-        }
+        &self.0
     }
 
     pub fn to_writer(&self, mut writer: impl Write) -> io::Result<()> {

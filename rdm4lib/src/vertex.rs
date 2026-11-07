@@ -161,7 +161,6 @@ pub(crate) type G4b = AnnoData<u8, { VertexSemantic::Tangent as u32 }, 4>;
 #[allow(dead_code)]
 pub(crate) type B3f = AnnoData<f32, { VertexSemantic::Bitangent as u32 }, 3>;
 
-pub(crate) type T2f = AnnoData<f32, { VertexSemantic::Texcoord as u32 }, 2>;
 pub(crate) type T2h = AnnoData<f16, { VertexSemantic::Texcoord as u32 }, 2>;
 
 pub(crate) type I4b = AnnoData<u8, { VertexSemantic::JointIndex as u32 }, 4>;
@@ -213,18 +212,6 @@ impl<const I: u32, const N: usize> GetVertex for AnnoData<f32, I, N> {
     }
 }
 
-pub trait Normalise {
-    /// calculate unit vector from self
-    fn normalise(&self) -> Self;
-}
-
-impl<const I: u32, const N: usize> Normalise for AnnoData<f32, I, N> {
-    fn normalise(&self) -> Self {
-        let vlen = self.data.iter().map(|v| v * v).sum::<f32>().sqrt();
-        Self::from_fn_generic(|i| self.data[i] / vlen)
-    }
-}
-
 #[derive(Debug)]
 pub struct VertexFormat2 {
     pub identifiers: Box<[VertexIdentifier]>,
@@ -233,7 +220,6 @@ pub struct VertexFormat2 {
     pub vertex_count: u32,
     size: u32,
     vertex_buffer: Bytes,
-    pub weight_sum: Option<Vec<u32>>,
 }
 
 impl fmt::Display for VertexFormat2 {
@@ -271,23 +257,6 @@ impl VertexFormat2 {
         self.get_size() > 0
     }
 
-    // TODO: remove for_each?
-    pub fn set_weight_sum(&mut self) {
-        let n = self.find_component_offsets(VertexSemantic::Weight).count();
-        if n == 0 {
-            self.weight_sum = Some(vec![255; self.len() as usize]);
-        } else {
-            let mut vec: Vec<u32> = vec![0; self.len() as usize];
-            for i in 0..n {
-                if let Some(iter) = self.iter::<W4b, W4b>(i) {
-                    iter.zip(vec.iter_mut())
-                        .for_each(|(e, dst)| *dst += e.data.iter().map(|&w| w as u32).sum::<u32>());
-                }
-            }
-            self.weight_sum = Some(vec);
-        }
-    }
-
     pub fn new(
         identifiers: Box<[VertexIdentifier]>,
         vertex_count: u32,
@@ -317,7 +286,6 @@ impl VertexFormat2 {
             vertex_count,
             size: off as u32,
             vertex_buffer,
-            weight_sum: None,
         }
     }
 
@@ -396,14 +364,6 @@ impl VertexFormat2 {
             ret
         });
         Some(it)
-    }
-
-    pub fn w4b_default_iter(&self) -> impl Iterator<Item = W4b> + '_ {
-        std::iter::from_fn(|| {
-            Some(W4b {
-                data: [255, 0, 0, 0],
-            })
-        })
     }
 }
 

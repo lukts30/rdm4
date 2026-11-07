@@ -109,7 +109,7 @@ pub(super) fn build(
         inverses.push(inverse);
     }
     let accessor = binary.push_attribute(
-        BufferContainer::U8(bytes),
+        BufferContainer(bytes),
         AccessorBuilder::new(
             joints.len(),
             json::accessor::Type::Mat4,
@@ -233,7 +233,7 @@ pub(super) fn influences(
             }
         }
         let accessor = binary.push_attribute(
-            BufferContainer::U8(ws),
+            BufferContainer(ws),
             AccessorBuilder::new(
                 mesh.vertex_count,
                 json::accessor::Type::Vec4,
@@ -246,7 +246,7 @@ pub(super) fn influences(
     }
     for (set, bytes) in joint_payloads.into_iter().enumerate() {
         let accessor = binary.push_attribute(
-            BufferContainer::U8(bytes),
+            BufferContainer(bytes),
             AccessorBuilder::new(
                 mesh.vertex_count,
                 json::accessor::Type::Vec4,
@@ -313,7 +313,7 @@ fn typed_influences(
             ),
         ] {
             let accessor = binary.push_attribute(
-                BufferContainer::U8(bytes),
+                BufferContainer(bytes),
                 AccessorBuilder::new(mesh.vertex_count, Type::Vec4, component),
                 None,
             );

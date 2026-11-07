@@ -170,46 +170,61 @@ impl GltfWriter {
             ..Default::default()
         };
         if let Some(textures) = &textures {
-            textures.run_dds_converter(&env::temp_dir());
-            for (i, (path, material)) in textures.into_iter().zip(&mut root.materials).enumerate() {
-                let name = format!("{}.PNG", path.file_stem().unwrap().to_str().unwrap());
-                let mut image = json::Image {
-                    uri: Some(name.clone()),
-                    buffer_view: None,
-                    mime_type: None,
-                    name: None,
-                    extensions: None,
-                    extras: None,
-                };
-                if config == GltfExportFormat::Glb {
-                    image.uri = None;
-                    image.mime_type = Some(json::image::MimeType("image/png".into()));
-                    image.buffer_view = Some(binary.push_buffer_view(
-                        BufferContainer::U8(fs::read(env::temp_dir().join(name))?),
-                        None,
-                    ));
-                }
-                root.images.push(image);
-                root.samplers.push(Default::default());
-                root.textures.push(json::Texture {
-                    source: json::Index::new(i as u32),
-                    sampler: Some(json::Index::new(i as u32)),
-                    name: None,
-                    extensions: None,
-                    extras: None,
-                });
-                material.pbr_metallic_roughness.base_color_texture = Some(json::texture::Info {
-                    index: json::Index::new(i as u32),
-                    tex_coord: 0,
-                    extensions: None,
-                    extras: None,
-                });
-            }
+            put_textures(
+                textures,
+                &mut root,
+                &mut binary,
+                config == GltfExportFormat::Glb,
+            )?;
         }
         let buffers = binary.finish(&mut root, config != GltfExportFormat::GltfSeparate);
         RdGltf { root, buffers }.write_gltf(dir, textures, create_new, config);
         Ok(())
     }
+}
+
+fn put_textures(
+    textures: &RdMaterial,
+    root: &mut json::Root,
+    binary: &mut GltfBuffers,
+    embed: bool,
+) -> Result<(), Box<dyn Error>> {
+    textures.run_dds_converter(&env::temp_dir());
+    for (i, (path, material)) in textures.into_iter().zip(&mut root.materials).enumerate() {
+        let name = format!("{}.PNG", path.file_stem().unwrap().to_str().unwrap());
+        let mut image = json::Image {
+            uri: Some(name.clone()),
+            buffer_view: None,
+            mime_type: None,
+            name: None,
+            extensions: None,
+            extras: None,
+        };
+        if embed {
+            image.uri = None;
+            image.mime_type = Some(json::image::MimeType("image/png".into()));
+            image.buffer_view = Some(
+                binary
+                    .push_buffer_view(BufferContainer(fs::read(env::temp_dir().join(name))?), None),
+            );
+        }
+        root.images.push(image);
+        root.samplers.push(Default::default());
+        root.textures.push(json::Texture {
+            source: json::Index::new(i as u32),
+            sampler: Some(json::Index::new(i as u32)),
+            name: None,
+            extensions: None,
+            extras: None,
+        });
+        material.pbr_metallic_roughness.base_color_texture = Some(json::texture::Info {
+            index: json::Index::new(i as u32),
+            tex_coord: 0,
+            extensions: None,
+            extras: None,
+        });
+    }
+    Ok(())
 }
 
 fn export_mesh(
@@ -253,7 +268,7 @@ fn export_mesh(
             .flat_map(|index| index.to_le_bytes())
             .collect();
         indices.push(binary.push_attribute(
-            BufferContainer::U8(bytes),
+            BufferContainer(bytes),
             AccessorBuilder::new(values.len(), Type::Scalar, ComponentType::U32),
             None,
         ));
@@ -298,7 +313,7 @@ fn export_mesh(
             }
         }
         let payload = if tangent && width == 3 {
-            BufferContainer::U8(
+            BufferContainer(
                 values
                     .as_chunks::<3>()
                     .0
@@ -365,7 +380,7 @@ fn color(
             if components == 1 && matches!(attribute.descriptor.interpretation.0, 2 | 4 | 6) =>
         {
             (
-                BufferContainer::U8(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
+                BufferContainer(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
                 AccessorBuilder::new(count, Type::Vec4, ComponentType::U8).normalized(),
             )
         }
@@ -382,7 +397,7 @@ fn color(
             ),
         ),
         AttributeValues::U16(values) if components == 4 => (
-            BufferContainer::U8(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
+            BufferContainer(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
             AccessorBuilder::new(count, Type::Vec4, ComponentType::U16).normalized(),
         ),
         _ => return Err(format!("unsupported color encoding: {:?}", attribute.descriptor).into()),
@@ -391,7 +406,7 @@ fn color(
 }
 
 fn floats(values: &[f32]) -> BufferContainer {
-    BufferContainer::U8(
+    BufferContainer(
         values
             .iter()
             .flat_map(|value| value.to_le_bytes())

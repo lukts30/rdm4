@@ -14,8 +14,6 @@ pub mod rdm_material;
 pub mod scene;
 pub mod vertex;
 pub mod vertex_transform;
-use crate::rdm_anim::RdAnim;
-use rdm_material::RdMaterial;
 
 use vertex::VertexFormat2;
 
@@ -32,9 +30,6 @@ pub struct RdModell {
     pub triangle_indices: Vec<Triangle>,
     /// Vertex attributes and their current packed storage.
     pub vertex: VertexFormat2,
-    pub(crate) anim: Option<RdAnim>,
-    /// Optional external texture inputs.
-    pub mat: Option<RdMaterial>,
 }
 
 pub mod rdm_data_anim;
@@ -49,13 +44,6 @@ pub struct MeshInfo {
     pub _padding: [u8; 16],
 }
 
-impl MeshInfo {
-    /// Highest material slot referenced by the draw ranges.
-    pub fn get_max_material(instances: &[MeshInfo]) -> u32 {
-        instances.iter().map(|e| e.material).max().unwrap()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct RdJoint {
     name: String,
@@ -67,10 +55,6 @@ pub struct RdJoint {
 impl RdModell {
     pub fn has_skin(&self) -> bool {
         self.joints.is_some()
-    }
-
-    pub fn add_anim(&mut self, anim: RdAnim) {
-        self.anim = Some(anim);
     }
 
     /// Activate the skeleton loaded with the model.

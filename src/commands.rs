@@ -288,60 +288,52 @@ pub struct RdmOptions {
     pub joint_names: ResolveNodeName,
 }
 
-/// Convert RDM, using the scene layer for unselected inputs without DDS textures.
+/// Convert all RDM models or one explicitly selected model through the shared scene.
 pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
-    let document = read_document(&opts.files.input)?;
-    let count = document.models.as_ref().map_or(0, Vec::len);
-    let index = match (mesh_index, count) {
-        (Some(index), _) => index,
-        (None, 0) => return Err("input contains no models".into()),
-        (None, _) if opts.textures.is_none() => {
-            let mut scene = document.into_scene(opts.skeleton)?;
-            if let Some(path) = &opts.animation {
-                let joints = scene
-                    .skeletons
-                    .first()
-                    .ok_or("animation requires a skeleton")?
-                    .joints
-                    .iter()
-                    .map(|joint| joint.name.as_str())
-                    .collect::<Vec<_>>();
-                scene
-                    .animations
-                    .push(read_animation(path)?.into_scene_animation(0, &joints)?);
-            }
-            return gltf_export::build_scene(
-                scene,
-                opts.files.destination("gltf"),
-                !opts.files.force,
-                opts.format,
-            );
-        }
-        (None, 1) => 0,
-        (None, _) => {
-            return Err(format!(
-                "texture export requires selecting one of {count} models with --mesh-index (0..{})",
-                count - 1
-            )
-            .into())
-        }
-    };
-    let mut rdm = document.into_model(index, opts.skeleton)?;
+    let mut document = read_document(&opts.files.input)?;
+    if let Some(index) = mesh_index {
+        let models = document.models.take().unwrap_or_default();
+        let count = models.len();
+        let model = models
+            .into_iter()
+            .nth(index)
+            .ok_or_else(|| format!("model index {index} out of range for {count} models"))?;
+        info!(
+            "  Model #{index}: {} vertices; {}",
+            model.vertices.count, model.vertex_format
+        );
+        document.models = Some(vec![model]);
+    }
+    let mut scene = document.into_scene(opts.skeleton)?;
+    // The old CLI activates the selected model's skeleton explicitly.
+    if mesh_index.is_some() && opts.skeleton {
+        scene.meshes[0].skeleton = Some(0);
+    }
     if let Some(path) = &opts.animation {
-        rdm.add_anim(read_animation(path)?);
+        let joints = scene
+            .skeletons
+            .first()
+            .ok_or("animation requires a skeleton")?
+            .joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        scene
+            .animations
+            .push(read_animation(path)?.into_scene_animation(0, &joints)?);
     }
-    info!(
-        "  Model #{index}: {} vertices; {}",
-        rdm.vertex.len(),
-        rdm.vertex
-    );
-    let output = opts.files.destination("gltf");
+    let mut writer = gltf_export::GltfWriter::new(scene);
+    if mesh_index.is_some() {
+        writer = writer.legacy();
+    }
     if let Some(textures) = opts.textures {
-        rdm.mat = Some(RdMaterial::new(textures));
+        writer = writer.textures(RdMaterial::new(textures));
     }
-    info!("Building glTF");
-    gltf_export::build(rdm, output, !opts.files.force, opts.format);
-    Ok(())
+    writer.write(
+        opts.files.destination("gltf"),
+        !opts.files.force,
+        opts.format,
+    )
 }
 
 fn read_animation(path: &Path) -> Result<RdAnim, Box<dyn Error>> {

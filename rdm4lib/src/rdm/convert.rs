@@ -606,8 +606,6 @@ impl TryFrom<RdmModel> for RdModell {
             name: model.name.name,
             pending_joints: None,
             joints: None,
-            anim: None,
-            mat: None,
             triangle_indices,
             mesh_info: model
                 .groups

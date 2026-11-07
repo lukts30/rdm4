@@ -67,7 +67,7 @@ pub(super) fn build(
     for frame in animation.tracks.iter().flat_map(|track| &track.frames) {
         payload.extend(frame.time.to_le_bytes());
     }
-    let buffer = binary.push_buffer(BufferContainer::U8(payload));
+    let buffer = binary.push_buffer(BufferContainer(payload));
     let mut samplers = Vec::new();
     let mut channels = Vec::new();
     let mut start = 0;
