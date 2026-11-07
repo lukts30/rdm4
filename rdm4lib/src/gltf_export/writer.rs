@@ -60,6 +60,14 @@ pub fn build_scene(
         let index = json::Index::new(meshes.len() as u32);
         meshes.push(export_mesh(&mesh, &mut binary, joint_count)?);
         let mut node = mesh_node(index, mesh.name);
+        node.matrix = mesh.transform.map(|matrix| {
+            matrix
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("4x4 matrix")
+        });
         node.skin = mesh.skeleton.map(|i| json::Index::new(i as u32));
         roots.push(json::Index::new(nodes.len() as u32));
         nodes.push(node);
@@ -264,6 +272,10 @@ fn color(
                 },
                 ComponentType::F32,
             ),
+        ),
+        AttributeValues::U16(values) if components == 4 => (
+            BufferContainer::U8(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
+            AccessorBuilder::new(count, Type::Vec4, ComponentType::U16).normalized(),
         ),
         _ => return Err(format!("unsupported color encoding: {:?}", attribute.descriptor).into()),
     };

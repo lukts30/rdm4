@@ -11,9 +11,9 @@ use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use super::{
     buffers::{vertex_bytes, vertices_from_bytes},
-    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmIndexFormat, RdmIndices, RdmJoint,
-    RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel, RdmModelName, RdmSkin, RdmTrack,
-    RdmVertexFormat, RdmWriter,
+    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmExportOptions, RdmFrame,
+    RdmIndexFormat, RdmIndices, RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel,
+    RdmModelName, RdmSkin, RdmTrack, RdmVertexFormat, RdmWriter,
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
@@ -155,12 +155,6 @@ impl TryFrom<RdModell> for RdmDocument {
             StorageType::U16
         };
         let (bounds_min, bounds_max) = model.vertex.calculate_bounds();
-        let max_material = model
-            .mesh_info
-            .iter()
-            .map(|group| group.material)
-            .max()
-            .ok_or("mesh has no material groups")?;
         let mesh = RdmModel {
             name: RdmModelName {
                 name: Some("basalt_crusher_others_lod0".into()),
@@ -182,51 +176,172 @@ impl TryFrom<RdModell> for RdmDocument {
             bounds_min,
             bounds_max,
         };
-        Ok(Self {
+        mesh_document(
+            vec![mesh],
+            model.joints.map(|joints| RdmSkin {
+                joints: joints.into_iter().map(RdmJoint::from).collect(),
+            }),
+        )
+    }
+}
+
+fn mesh_document(
+    models: Vec<RdmModel>,
+    skin: Option<RdmSkin>,
+) -> Result<RdmDocument, Box<dyn Error>> {
+    let max_material = models
+        .iter()
+        .flat_map(|model| &model.groups)
+        .map(|group| group.material)
+        .max()
+        .ok_or("scene has no material groups")?;
+    Ok(RdmDocument {
             export_info: Some(RdmExportInfo {
                 source_path: Some(r"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max".into()),
                 rmp_name: Some("Anno5_Building_Skin_1Blend.rmp".into()),
             }),
-            models: Some(vec![mesh]),
+            models: Some(models),
             materials: Some((0..=max_material).map(|_| RdmMaterialEntry {
                 material: RdmMaterial {
                     name: Some("Default Standard12432142134".into()),
                     texture: Some("d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png".into()),
                 },
             }).collect()),
-            skin: model.joints.map(|joints| RdmSkin {
-                joints: joints.into_iter().map(RdmJoint::from).collect(),
-            }),
+            skin,
             animations: None,
         })
-    }
 }
 
 impl From<RdAnim> for RdmDocument {
     /// Build a standalone animation document, retaining the legacy export defaults.
     fn from(animation: RdAnim) -> Self {
-        Self {
-            export_info: Some(RdmExportInfo {
-                source_path: Some(r"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max".into()),
-                rmp_name: Some("Anno5_Building_Anim_UnCompressed.rmp".into()),
-            }),
-            models: None,
-            materials: None,
-            skin: None,
-            animations: Some(vec![RdmAnimation {
-                name: "basalt_crusher_others_lod0".into(),
-                time_max: animation.time_max,
-                sampling_rate: animation.sampling_rate,
-                tracks: animation.anim_vec.into_iter().map(|track| RdmTrack {
+        animation_document(RdmAnimation {
+            name: "basalt_crusher_others_lod0".into(),
+            time_max: animation.time_max,
+            sampling_rate: animation.sampling_rate,
+            tracks: animation
+                .anim_vec
+                .into_iter()
+                .map(|track| RdmTrack {
                     joint_name: track.name,
                     frames: track.frames,
-                }).collect(),
-            }]),
-        }
+                })
+                .collect(),
+        })
     }
 }
 
+fn animation_document(animation: RdmAnimation) -> RdmDocument {
+    RdmDocument {
+        export_info: Some(RdmExportInfo {
+            source_path: Some(r"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max".into()),
+            rmp_name: Some("Anno5_Building_Anim_UnCompressed.rmp".into()),
+        }),
+        models: None, materials: None, skin: None, animations: Some(vec![animation]),
+    }
+}
+
+/// Pack and write a scene, retaining legacy CLI paths and separate animation files.
+pub fn write_scene(
+    scene: Scene,
+    options: RdmExportOptions,
+    dir: Option<PathBuf>,
+    create_new: bool,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let names = scene
+        .animations
+        .iter()
+        .map(|clip| clip.name.clone())
+        .collect::<Vec<_>>();
+    let mut document = RdmDocument::from_scene(scene, options)?;
+    for (name, animation) in names
+        .into_iter()
+        .zip(document.animations.take().unwrap_or_default())
+    {
+        RdAnimWriter2 {
+            name,
+            export: animation_document(animation),
+        }
+        .try_write_anim_rdm(dir.clone(), create_new)?;
+    }
+    RdWriter2 { inner: document }.try_write_rdm(dir, create_new)
+}
+
 impl RdmDocument {
+    /// Pack typed scene values for RDM, applying only the explicit export decisions.
+    pub fn from_scene(scene: Scene, options: RdmExportOptions) -> Result<Self, Box<dyn Error>> {
+        if scene.skeletons.len() > 1 {
+            return Err("RDM export currently supports one skeleton".into());
+        }
+        if scene.meshes.iter().any(|mesh| {
+            mesh.skeleton
+                .is_some_and(|index| index >= scene.skeletons.len())
+        }) {
+            return Err("mesh skeleton index is out of range".into());
+        }
+        let mut animations = Vec::new();
+        for clip in scene.animations {
+            let skeleton = scene
+                .skeletons
+                .get(clip.skeleton)
+                .ok_or("animation skeleton index is out of range")?;
+            let tracks = clip
+                .tracks
+                .into_iter()
+                .map(|track| {
+                    let joint = skeleton
+                        .joints
+                        .get(track.joint)
+                        .ok_or("animation joint index is out of range")?;
+                    Ok(RdmTrack {
+                        joint_name: joint.name.clone(),
+                        frames: track
+                            .frames
+                            .into_iter()
+                            .map(|frame| {
+                                let [x, y, z, w] = frame.rotation;
+                                RdmFrame {
+                                    rotation: [x, y, z, -w],
+                                    translation: frame.translation,
+                                    time: frame.time,
+                                }
+                            })
+                            .collect(),
+                    })
+                })
+                .collect::<Result<_, Box<dyn Error>>>()?;
+            animations.push(RdmAnimation {
+                name: "basalt_crusher_others_lod0".into(),
+                time_max: clip.duration_millis,
+                sampling_rate: clip.sampling_rate,
+                tracks,
+            });
+        }
+        let models = scene
+            .meshes
+            .into_iter()
+            .map(|mesh| super::packing::pack_mesh(mesh, &options))
+            .collect::<Result<_, _>>()?;
+        let skin = scene.skeletons.into_iter().next().map(|skeleton| RdmSkin {
+            joints: skeleton
+                .joints
+                .into_iter()
+                .map(|joint| {
+                    let [x, y, z, w] = joint.inverse_bind_rotation;
+                    RdmJoint {
+                        name: joint.name,
+                        parent: joint.parent.map_or(u32::MAX, |i| i as u32),
+                        translation: joint.inverse_bind_translation,
+                        rotation: [-x, -y, -z, w],
+                    }
+                })
+                .collect(),
+        });
+        let mut document = mesh_document(models, skin)?;
+        document.animations = (!animations.is_empty()).then_some(animations);
+        Ok(document)
+    }
+
     /// Adapt all model geometry, without activating skeletons or animations.
     /// Source layout and opaque data remain outside the scene representation.
     pub fn into_static_scene(self) -> Result<Scene, Box<dyn Error>> {
@@ -381,6 +496,7 @@ impl TryFrom<RdmModel> for Mesh {
         let mesh = Self {
             name: model.name.name,
             skeleton: usize::try_from(model.skeleton_index).ok(),
+            transform: None,
             vertex_count: model.vertices.count,
             attributes: model
                 .vertex_format

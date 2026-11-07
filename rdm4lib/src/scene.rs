@@ -40,6 +40,7 @@ pub struct Track {
 }
 
 /// One local pose; stored values are not implicitly normalized.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Keyframe {
     /// Rotation in XYZW order.
     pub rotation: [f32; 4],
@@ -61,6 +62,8 @@ pub struct Mesh {
     pub indices: Vec<u32>,
     /// Draw ranges and their material slots.
     pub primitives: Vec<Primitive>,
+    /// Optional world transform, in column-major order; geometry stays unbaked.
+    pub transform: Option<[[f32; 4]; 4]>,
     /// Optional index into the scene's skeletons.
     pub skeleton: Option<usize>,
 }
@@ -248,6 +251,31 @@ mod tests {
         let source_translation = joint.translation;
         let models = document.models.as_mut().unwrap();
         models.push(models[0].clone());
+        let native = RdmDocument::from_scene(
+            document.clone().into_scene(true).unwrap(),
+            crate::rdm::RdmExportOptions {
+                format: crate::vertex::TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
+                mirror_x: false,
+                no_transform: true,
+                material_indices: None,
+            },
+        )
+        .unwrap();
+        for (actual, expected) in native
+            .models
+            .as_ref()
+            .unwrap()
+            .iter()
+            .zip(document.models.as_ref().unwrap())
+        {
+            assert_eq!(actual.vertices, expected.vertices);
+            assert_eq!(actual.indices, expected.indices);
+            assert_eq!(actual.groups, expected.groups);
+        }
+        assert_eq!(
+            native.skin.unwrap().joints[0].rotation.map(f32::to_bits),
+            source_rotation.map(f32::to_bits)
+        );
         let mut scene = document.into_scene(true).unwrap();
         assert_eq!(scene.skeletons.len(), 1);
         assert!(scene.meshes.iter().all(|mesh| mesh.skeleton == Some(0)));
@@ -276,6 +304,7 @@ mod tests {
             -first.rotation[3],
         ];
         let translation = first.translation;
+        let animated_joint = animation.anim_vec[0].name.clone();
         let times = animation.anim_vec[0]
             .frames
             .iter()
@@ -357,6 +386,45 @@ mod tests {
                 .flatten()
                 .all(|i| usize::from(i) < joint_count));
         }
+        let imported =
+            crate::gltf_reader::ImportedGltf::try_from(output.path().join("out.glb").as_path())
+                .unwrap()
+                .read_scene(true, Some(Default::default()))
+                .unwrap();
+        let target = imported.skeletons[0]
+            .joints
+            .iter()
+            .position(|joint| joint.name == animated_joint)
+            .unwrap();
+        let track = imported.animations[0]
+            .tracks
+            .iter()
+            .find(|track| track.joint == target)
+            .unwrap();
+        assert_eq!(
+            track.frames[0].rotation.map(f32::to_bits),
+            rotation.map(f32::to_bits)
+        );
+        assert_eq!(
+            track.frames[0].translation.map(f32::to_bits),
+            translation.map(f32::to_bits)
+        );
+        assert_eq!(
+            track
+                .frames
+                .iter()
+                .map(|frame| frame.time.to_bits())
+                .collect::<Vec<_>>(),
+            times
+        );
+        build_scene(
+            imported,
+            Some(output.path().join("imported.glb")),
+            true,
+            GltfExportFormat::Glb,
+        )
+        .unwrap();
+        gltf::import(output.path().join("imported.glb")).unwrap();
     }
 
     #[test]
@@ -418,6 +486,7 @@ mod tests {
                 material: 0,
             }],
             skeleton: None,
+            transform: None,
         };
         let output = tempfile::tempdir().unwrap();
         build_scene(
@@ -478,6 +547,33 @@ mod tests {
         );
         for value in reader.read_colors(1).unwrap().into_rgb_f32() {
             assert_eq!(value.map(f32::to_bits), float_color.map(f32::to_bits));
+        }
+        let imported =
+            crate::gltf_reader::ImportedGltf::try_from(output.path().join("out.glb").as_path())
+                .unwrap()
+                .read_scene(false, None)
+                .unwrap();
+        let mesh = &imported.meshes[0];
+        for (semantic, width, expected) in [
+            (
+                VertexSemantic::Position,
+                3,
+                positions.into_iter().flatten().collect::<Vec<_>>(),
+            ),
+            (VertexSemantic::Normal, 3, normal.repeat(3)),
+            (VertexSemantic::Tangent, 4, tangent.repeat(3)),
+        ] {
+            let values = mesh
+                .attributes
+                .iter()
+                .find(|attribute| attribute.descriptor.semantic == semantic)
+                .unwrap()
+                .floats(width)
+                .unwrap();
+            assert_eq!(
+                values.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                expected.into_iter().map(f32::to_bits).collect::<Vec<_>>()
+            );
         }
     }
 }

@@ -1,4 +1,4 @@
-//! glTF channel sampling and RDM animation authoring.
+//! glTF channel sampling into shared scene animation clips.
 //! Baking follows https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#animations-interpolations.
 
 #![forbid(unsafe_code)]
@@ -11,6 +11,7 @@ use nalgebra::{Quaternion, UnitQuaternion};
 use super::{node_get_local_transform, ImportedGltf};
 use crate::{
     rdm_anim::{Frame, FrameCollection, RdAnim},
+    scene::{Animation, Keyframe, Skeleton, Track as SceneTrack},
     RdJoint,
 };
 
@@ -211,6 +212,66 @@ impl ImportedGltf {
         joints: &[RdJoint],
         options: AnimationImportOptions,
     ) -> Result<Vec<RdAnim>, Box<dyn Error>> {
+        let names = joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        Ok(self
+            .read_clips(&names, 0, options)?
+            .into_iter()
+            .map(|clip| RdAnim {
+                name: clip.name,
+                time_max: clip.duration_millis,
+                sampling_rate: clip.sampling_rate,
+                anim_vec: clip
+                    .tracks
+                    .into_iter()
+                    .map(|track| FrameCollection {
+                        name: names[track.joint].into(),
+                        frames: track
+                            .frames
+                            .into_iter()
+                            .map(|frame| {
+                                let [x, y, z, w] = frame.rotation;
+                                Frame {
+                                    rotation: [x, y, z, -w],
+                                    translation: frame.translation,
+                                    time: frame.time,
+                                }
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect())
+    }
+
+    /// Read local pose clips bound to one scene skeleton. Baking remains opt-in.
+    pub fn read_scene_animations(
+        &self,
+        skeleton: &Skeleton,
+        skeleton_index: usize,
+        options: AnimationImportOptions,
+    ) -> Result<Vec<Animation>, Box<dyn Error>> {
+        let names = skeleton
+            .joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        self.read_clips(&names, skeleton_index, options)
+    }
+
+    fn read_clips(
+        &self,
+        joints: &[&str],
+        skeleton_index: usize,
+        options: AnimationImportOptions,
+    ) -> Result<Vec<Animation>, Box<dyn Error>> {
+        let joint_nodes = self
+            .read_bind_poses()?
+            .into_iter()
+            .map(|(node, _, _)| node)
+            .collect::<Vec<_>>();
         let mut result = Vec::new();
         for (index, animation) in self.gltf.animations().enumerate() {
             let rate = options
@@ -235,8 +296,15 @@ impl ImportedGltf {
                         .unwrap(),
                 );
                 let node = channel.target().node();
+                if !joint_nodes.contains(&node.index()) {
+                    warn!(
+                        "animation target node #{} is outside the selected skeleton",
+                        node.index()
+                    );
+                    continue;
+                }
                 let name = self.node_get_name(&node);
-                if !joints.iter().any(|joint| joint.name == name) {
+                if !joints.contains(&name.as_str()) {
                     warn!("animation target {name:?} is not in the selected skeleton");
                     continue;
                 }
@@ -273,12 +341,13 @@ impl ImportedGltf {
                 }
             }
             let mut collections = Vec::new();
-            for joint in joints {
+            for (joint_index, &name) in joints.iter().enumerate() {
                 let node = self
                     .gltf
                     .nodes()
-                    .find(|node| self.node_get_name(node) == joint.name)
-                    .ok_or_else(|| format!("joint {:?} has no glTF node", joint.name))?;
+                    .filter(|node| joint_nodes.contains(&node.index()))
+                    .find(|node| self.node_get_name(node) == name)
+                    .ok_or_else(|| format!("joint {:?} has no glTF node", name))?;
                 let origin = node_get_local_transform(&node);
                 let translation = [
                     origin.translation.x,
@@ -286,37 +355,32 @@ impl ImportedGltf {
                     origin.translation.z,
                 ];
                 let q = origin.rotation.coords;
-                let rotation = [q.x, q.y, q.z, q.w];
-                let frames = if let Some(track) = tracks.remove(&joint.name) {
+                let rotation = [q.x, q.y, q.z, -q.w];
+                let frames = if let Some(track) = tracks.remove(name) {
                     let times = track
                         .times(duration as f32, rate, options.interpolate)
                         .map_err(|error| {
-                            format!("animation #{index}, joint {:?}: {error}", joint.name)
+                            format!("animation #{index}, joint {:?}: {error}", name)
                         })?;
                     times
                         .into_iter()
                         .map(|time| {
                             let rotation = match &track.rotation {
-                                Some(curve) => {
-                                    let [x, y, z, w] = curve.sample(time, true)?;
-                                    [x, y, z, -w]
-                                }
+                                Some(curve) => curve.sample(time, true)?,
                                 None => rotation,
                             };
                             let translation = match &track.translation {
                                 Some(curve) => curve.sample(time, false)?,
                                 None => translation,
                             };
-                            Ok(Frame {
+                            Ok(Keyframe {
                                 time,
                                 rotation,
                                 translation,
                             })
                         })
                         .collect::<Result<_, Box<dyn Error>>>()
-                        .map_err(|error| {
-                            format!("animation #{index}, joint {:?}: {error}", joint.name)
-                        })?
+                        .map_err(|error| format!("animation #{index}, joint {:?}: {error}", name))?
                 } else {
                     let intervals = if duration > 0.0 {
                         options.idle_intervals.max(1)
@@ -325,24 +389,25 @@ impl ImportedGltf {
                     };
                     let interval = duration as f32 / intervals.max(1) as f32;
                     (0..=intervals)
-                        .map(|i| Frame {
+                        .map(|i| Keyframe {
                             time: i as f32 * interval,
                             rotation,
                             translation,
                         })
                         .collect()
                 };
-                collections.push(FrameCollection {
-                    name: joint.name.clone(),
+                collections.push(SceneTrack {
+                    joint: joint_index,
                     frames,
                 });
             }
-            collections.sort_by(|a, b| a.name.cmp(&b.name));
-            result.push(RdAnim {
+            collections.sort_by(|a, b| joints[a.joint].cmp(joints[b.joint]));
+            result.push(Animation {
                 name: format!("anim_{index}"),
                 sampling_rate: rate,
-                time_max: (duration * 1000.0) as u32,
-                anim_vec: collections,
+                duration_millis: (duration * 1000.0) as u32,
+                skeleton: skeleton_index,
+                tracks: collections,
             });
         }
         Ok(result)

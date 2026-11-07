@@ -173,6 +173,12 @@ pub(super) fn influences(
     joint_count: usize,
     binary: &mut GltfBuffers,
 ) -> Result<Vec<AttributeAccessor>, Box<dyn Error>> {
+    if mesh.attributes.iter().any(|a| {
+        a.descriptor.semantic == VertexSemantic::JointIndex
+            && matches!(a.values, AttributeValues::U16(_))
+    }) {
+        return typed_influences(mesh, joint_count, binary);
+    }
     let packed = |semantic, interpretation| {
         mesh.attributes
             .iter()
@@ -249,6 +255,73 @@ pub(super) fn influences(
             None,
         );
         result.push((json::mesh::Semantic::Joints(set as u32), accessor));
+    }
+    Ok(result)
+}
+
+fn typed_influences(
+    mesh: &Mesh,
+    joint_count: usize,
+    binary: &mut GltfBuffers,
+) -> Result<Vec<AttributeAccessor>, Box<dyn Error>> {
+    use json::{
+        accessor::{ComponentType, Type},
+        mesh::Semantic,
+    };
+    let joints: Vec<_> = mesh
+        .attributes
+        .iter()
+        .filter(|a| a.descriptor.semantic == VertexSemantic::JointIndex)
+        .collect();
+    let weights: Vec<_> = mesh
+        .attributes
+        .iter()
+        .filter(|a| a.descriptor.semantic == VertexSemantic::Weight)
+        .collect();
+    if joints.len() != weights.len() {
+        return Err("joint and weight set counts disagree".into());
+    }
+    let mut sums = vec![0.0; mesh.vertex_count];
+    let mut result = Vec::new();
+    for (set, (joint, weight)) in joints.into_iter().zip(weights).enumerate() {
+        let (AttributeValues::U16(js), AttributeValues::F32(ws)) = (&joint.values, &weight.values)
+        else {
+            return Err("expected U16 joints and F32 weights from glTF".into());
+        };
+        if joint.descriptor.storage_count != 4
+            || weight.descriptor.storage_count != 4
+            || js.iter().any(|&j| j as usize >= joint_count)
+            || ws
+                .iter()
+                .any(|&w| !w.is_finite() || !(0.0..=1.0).contains(&w))
+        {
+            return Err("invalid typed joint indices or weights".into());
+        }
+        for (sum, weights) in sums.iter_mut().zip(ws.as_chunks::<4>().0) {
+            *sum += weights.iter().sum::<f32>();
+        }
+        for (semantic, bytes, component) in [
+            (
+                Semantic::Joints(set as u32),
+                js.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                ComponentType::U16,
+            ),
+            (
+                Semantic::Weights(set as u32),
+                ws.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                ComponentType::F32,
+            ),
+        ] {
+            let accessor = binary.push_attribute(
+                BufferContainer::U8(bytes),
+                AccessorBuilder::new(mesh.vertex_count, Type::Vec4, component),
+                None,
+            );
+            result.push((semantic, accessor));
+        }
+    }
+    if sums.contains(&0.0) {
+        return Err("vertex has zero total joint weight".into());
     }
     Ok(result)
 }

@@ -12,8 +12,8 @@ use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{AnimationImportOptions, ImportedGltf, ResolveNodeName},
     rdm::{
-        RdAnimWriter2, RdWriter2, RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner,
-        RdmSplitter,
+        write_scene, RdmDocument, RdmEndian, RdmExportOptions, RdmReader, RdmScanReport,
+        RdmScanner, RdmSplitter,
     },
     rdm_anim::RdAnim,
     rdm_material::RdMaterial,
@@ -365,30 +365,27 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
         opts.mesh_index,
         opts.joint_names,
     )?;
-    let rdm = ImportedGltf::gltf_to_rdm(
-        &gltf,
-        opts.format,
-        opts.skeleton,
-        opts.mirror_x,
-        opts.no_transform,
-        opts.material_indices,
+    let animations = (opts.skeleton && opts.animation).then_some(AnimationImportOptions {
+        interpolate: opts.interpolate_animations,
+        sampling_rate: opts.sampling_rate,
+        ..Default::default()
+    });
+    let scene = gltf.read_scene(opts.skeleton, animations)?;
+    let material_indices = Some(
+        opts.material_indices
+            .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
     );
-
-    if opts.skeleton && opts.animation {
-        let joints = rdm.joints.as_ref().unwrap();
-        for animation in gltf.read_animations(
-            joints,
-            AnimationImportOptions {
-                interpolate: opts.interpolate_animations,
-                sampling_rate: opts.sampling_rate,
-                ..Default::default()
-            },
-        )? {
-            RdAnimWriter2::new(animation).try_write_anim_rdm(output.clone(), !opts.files.force)?;
-        }
-    }
-
-    RdWriter2::new(rdm).try_write_rdm(output, !opts.files.force)?;
+    write_scene(
+        scene,
+        RdmExportOptions {
+            format: opts.format,
+            mirror_x: opts.mirror_x,
+            no_transform: opts.no_transform,
+            material_indices,
+        },
+        output,
+        !opts.files.force,
+    )?;
     if opts.skeleton && !opts.no_transform {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
     }

@@ -20,9 +20,9 @@ use std::{
 use bytes::{BufMut, BytesMut};
 
 mod animation;
-mod scene;
 mod skin;
-pub use scene::build_scene;
+mod writer;
+pub use writer::build_scene;
 
 struct RdGltfBuilder {
     binary: GltfBuffers,
