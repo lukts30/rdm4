@@ -174,6 +174,7 @@ fn entry_do_work(opts: Opts) {
             skeleton: opts.skeleton,
             animation: opts.animation,
             sampling_rate: None,
+            interpolate_animations: false,
             no_transform: opts.no_transform,
             mirror_x: opts.negative_x_and_v0v2v1,
             material_indices: opts.overide_mesh_idx,

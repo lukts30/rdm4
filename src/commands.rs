@@ -10,7 +10,7 @@ use std::{
 use log::{error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
-    gltf_reader::{ImportedGltf, ResolveNodeName},
+    gltf_reader::{AnimationImportOptions, ImportedGltf, ResolveNodeName},
     rdm::{
         RdAnimWriter2, RdWriter2, RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner,
         RdmSplitter,
@@ -278,6 +278,7 @@ pub struct RdmOptions {
     pub skeleton: bool,
     pub animation: bool,
     pub sampling_rate: Option<u32>,
+    pub interpolate_animations: bool,
     pub no_transform: bool,
     pub mirror_x: bool,
     pub material_indices: Option<Vec<u32>>,
@@ -357,17 +358,15 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
 
     if opts.skeleton && opts.animation {
         let joints = rdm.joints.as_ref().unwrap();
-        match ImportedGltf::read_animation(&gltf, joints, 6, 0.33333) {
-            Some(mut animations) => {
-                for mut animation in animations.drain(..) {
-                    if let Some(rate) = opts.sampling_rate {
-                        animation.sampling_rate = rate;
-                    }
-                    RdAnimWriter2::new(animation)
-                        .try_write_anim_rdm(output.clone(), !opts.files.force)?;
-                }
-            }
-            None => error!("Could not read animation. Does the glTF contain any animations ?"),
+        for animation in gltf.read_animations(
+            joints,
+            AnimationImportOptions {
+                interpolate: opts.interpolate_animations,
+                sampling_rate: opts.sampling_rate,
+                ..Default::default()
+            },
+        )? {
+            RdAnimWriter2::new(animation).try_write_anim_rdm(output.clone(), !opts.files.force)?;
         }
     }
 
