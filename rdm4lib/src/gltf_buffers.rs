@@ -1,0 +1,122 @@
+//! Binary payloads, views and accessors shared by glTF export paths.
+
+use std::io::{self, Write};
+
+use bytes::Bytes;
+use gltf::json::{self, validation::USize64};
+
+#[derive(Default)]
+pub(crate) struct GltfBuffers {
+    pub buffers: Vec<json::Buffer>,
+    pub views: Vec<json::buffer::View>,
+    pub accessors: Vec<json::Accessor>,
+    payloads: Vec<BufferContainer>,
+}
+
+impl GltfBuffers {
+    pub fn push_buffer(&mut self, payload: BufferContainer) -> json::Index<json::Buffer> {
+        let index = self.buffers.len();
+        self.buffers.push(json::Buffer {
+            byte_length: USize64(payload.get_bytes_len_padded() as u64),
+            uri: Some(format!("buffer{index}.bin")),
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+        });
+        self.payloads.push(payload);
+        json::Index::new(index as u32)
+    }
+
+    pub fn push_buffer_view(
+        &mut self,
+        payload: BufferContainer,
+        target: Option<json::validation::Checked<json::buffer::Target>>,
+    ) -> json::Index<json::buffer::View> {
+        let buffer = self.push_buffer(payload);
+        let index = self.views.len();
+        self.views.push(json::buffer::View {
+            buffer,
+            byte_length: self.buffers[buffer.value()].byte_length,
+            target,
+            byte_offset: None,
+            byte_stride: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+        });
+        json::Index::new(index as u32)
+    }
+
+    pub fn push_accessor(&mut self, accessor: json::Accessor) -> json::Index<json::Accessor> {
+        let index = self.accessors.len();
+        self.accessors.push(accessor);
+        json::Index::new(index as u32)
+    }
+
+    /// Finalize placement without decoding or changing any payload values.
+    pub fn finish(mut self, root: &mut json::Root, single_buffer: bool) -> Vec<BufferContainer> {
+        if single_buffer {
+            self.merge();
+        }
+        root.buffers = self.buffers;
+        root.buffer_views = self.views;
+        root.accessors = self.accessors;
+        self.payloads
+    }
+
+    fn merge(&mut self) {
+        let size = self.payloads.iter().map(|p| p.get_bytes_len_padded()).sum();
+        let mut combined = Vec::with_capacity(size);
+        let mut offsets = Vec::with_capacity(self.payloads.len());
+        for payload in &self.payloads {
+            offsets.push(combined.len() as u64);
+            payload.to_writer(&mut combined).unwrap();
+        }
+        for view in &mut self.views {
+            view.byte_offset = Some(USize64(
+                view.byte_offset.map_or(0, |offset| offset.0) + offsets[view.buffer.value()],
+            ));
+            view.buffer = json::Index::new(0);
+        }
+        self.buffers[0].byte_length = USize64(combined.len() as u64);
+        self.buffers.truncate(1);
+        self.payloads = vec![BufferContainer::U8(combined)];
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub(crate) struct Vertex {
+    pub position: [f32; 3],
+}
+
+pub(crate) enum BufferContainer {
+    U8(Vec<u8>),
+    Bytes(Bytes),
+    Vertex(Vec<Vertex>),
+}
+
+impl BufferContainer {
+    fn padding(&self) -> usize {
+        let length = self.get_bytes().len();
+        assert_ne!(length, 0);
+        (4 - length % 4) % 4
+    }
+
+    pub fn get_bytes_len_padded(&self) -> usize {
+        self.get_bytes().len() + self.padding()
+    }
+
+    pub fn get_bytes(&self) -> &[u8] {
+        match self {
+            Self::U8(bytes) => bytes,
+            Self::Bytes(bytes) => bytes,
+            Self::Vertex(vertices) => unsafe { vertices.align_to::<u8>().1 },
+        }
+    }
+
+    pub fn to_writer(&self, mut writer: impl Write) -> io::Result<()> {
+        writer.write_all(self.get_bytes())?;
+        writer.write_all(&[0; 3][..self.padding()])
+    }
+}

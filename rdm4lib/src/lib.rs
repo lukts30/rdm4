@@ -9,6 +9,7 @@ extern crate log;
 #[macro_use]
 extern crate approx;
 
+mod gltf_buffers;
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod gltf_reader_vertex;

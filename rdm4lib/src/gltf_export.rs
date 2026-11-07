@@ -1,4 +1,9 @@
-use crate::{rdm_material::RdMaterial, vertex::*, MeshInfo, RdJoint, RdModell};
+use crate::{
+    gltf_buffers::{BufferContainer, GltfBuffers, Vertex},
+    rdm_material::RdMaterial,
+    vertex::*,
+    MeshInfo, RdJoint, RdModell,
+};
 use gltf::json::validation::USize64;
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
@@ -6,19 +11,13 @@ use std::{
     collections::{BTreeMap, HashMap},
     env,
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    io::{Read, Write},
     path::PathBuf,
     str::FromStr,
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use nalgebra::*;
-
-#[derive(Debug)]
-#[repr(C)]
-struct Vertex {
-    position: [f32; 3],
-}
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 #[allow(dead_code)]
@@ -28,15 +27,12 @@ pub enum JointOption {
 }
 
 struct RdGltfBuilder {
-    buffers: Vec<json::Buffer>,
-    buffer_views: Vec<json::buffer::View>,
-    accessors: Vec<json::Accessor>,
+    binary: GltfBuffers,
     nodes: Vec<json::Node>,
     attr_map: BTreeMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
     rdm: RdModell,
-    obj: RdGltf, // private
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
     material_idx: Option<Vec<u32>>,
@@ -49,13 +45,10 @@ struct RdGltfBuilder {
 impl RdGltfBuilder {
     fn new(rdm: RdModell) -> Self {
         RdGltfBuilder {
-            buffers: Vec::new(),
-            buffer_views: Vec::new(),
-            accessors: Vec::new(),
+            binary: GltfBuffers::default(),
             nodes: Vec::new(),
             attr_map: BTreeMap::new(),
             rdm,
-            obj: RdGltf::new(),
             skin: None,
             idx: None,
             anim_node: None,
@@ -68,10 +61,9 @@ impl RdGltfBuilder {
     }
 
     pub fn put_rdm_anim(&mut self) {
-        // TODO: must not circumvent PushBufferResult
-        let buffv_idx = self.buffers.len() as u32;
-        let mut bv_idx = self.buffer_views.len() as u32;
-        let mut acc_idx = self.accessors.len() as u32;
+        let buffv_idx = self.binary.buffers.len() as u32;
+        let mut bv_idx = self.binary.views.len() as u32;
+        let mut acc_idx = self.binary.accessors.len() as u32;
 
         let anim = self.rdm.anim.clone().unwrap();
         let anim_vec = anim.anim_vec.clone();
@@ -330,24 +322,12 @@ impl RdGltfBuilder {
 
         b1.append(&mut b2);
         b1.append(&mut b3);
-        let buffer_result = self.obj.push_buffer(BufferContainer::U8(b1));
-        assert_eq!(buffv_idx, buffer_result.idx);
+        let buffer = self.binary.push_buffer(BufferContainer::U8(b1));
+        assert_eq!(buffv_idx as usize, buffer.value());
 
-        let anim_buffer = json::Buffer {
-            byte_length: USize64(
-                (rot_anim_buf.len() + trans_anim_buf.len() + t_anim_buf.len()) as u64,
-            ),
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            uri: Some(buffer_result.file_name),
-        };
+        self.binary.views.append(&mut buffer_v_vec);
 
-        self.buffers.push(anim_buffer);
-
-        self.buffer_views.append(&mut buffer_v_vec);
-
-        self.accessors.append(&mut acc_vec);
+        self.binary.accessors.append(&mut acc_vec);
 
         self.anim_node = Some(anim_node);
     }
@@ -746,51 +726,13 @@ impl RdGltfBuilder {
 
                     e.uri = None;
                     e.mime_type = Some(json::image::MimeType("image/png".to_string()));
-                    let buffer_view_idx = RdGltfBuilder::put_buffer_and_view(
-                        &mut self.obj,
-                        BufferContainer::U8(buffer),
-                        &mut self.buffers,
-                        &mut self.buffer_views,
-                        None,
+                    e.buffer_view = Some(
+                        self.binary
+                            .push_buffer_view(BufferContainer::U8(buffer), None),
                     );
-                    e.buffer_view = Some(json::Index::new(buffer_view_idx));
                 }
             }
         }
-    }
-
-    fn put_buffer_and_view(
-        inner: &mut RdGltf,
-        buffer: BufferContainer,
-        buffers: &mut Vec<json::Buffer>,
-        buffer_views: &mut Vec<json::buffer::View>,
-        target: Option<json::validation::Checked<gltf::buffer::Target>>,
-    ) -> u32 {
-        let buffer_p = inner.push_buffer(buffer);
-        let buffer = json::Buffer {
-            byte_length: USize64(buffer_p.len as u64),
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            uri: Some(buffer_p.file_name),
-        };
-
-        let buffer_view = json::buffer::View {
-            buffer: json::Index::new(buffer_p.idx),
-            byte_length: buffer.byte_length,
-            byte_offset: None,
-            byte_stride: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-            target,
-        };
-
-        buffers.push(buffer);
-        let buffer_view_idx = buffer_views.len() as u32;
-        buffer_views.push(buffer_view);
-
-        buffer_view_idx
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -807,16 +749,10 @@ impl RdGltfBuilder {
     ) -> u32 {
         let vattr_len = self.rdm.vertex.len();
 
-        let buffer_views_idx = RdGltfBuilder::put_buffer_and_view(
-            &mut self.obj,
-            buffer,
-            &mut self.buffers,
-            &mut self.buffer_views,
-            target,
-        );
+        let view = self.binary.push_buffer_view(buffer, target);
 
         let normals_acc = json::Accessor {
-            buffer_view: Some(json::Index::new(buffer_views_idx)),
+            buffer_view: Some(view),
             byte_offset: None,
             count: USize64(count.unwrap_or(vattr_len) as u64),
             component_type: Valid(json::accessor::GenericComponentType(component_type)),
@@ -830,14 +766,12 @@ impl RdGltfBuilder {
             sparse: None,
         };
 
-        let accessors_idx = self.accessors.len() as u32;
-        self.accessors.push(normals_acc);
+        let accessor = self.binary.push_accessor(normals_acc);
 
         if let Some(semantic) = semantic {
-            self.attr_map
-                .insert(Valid(semantic), json::Index::new(accessors_idx));
+            self.attr_map.insert(Valid(semantic), accessor);
         }
-        accessors_idx
+        accessor.value() as u32
     }
 
     fn put_normal(&mut self) {
@@ -926,7 +860,7 @@ impl RdGltfBuilder {
         self.idx = Some(accessor_idx_meshes);
     }
 
-    pub fn build(mut self) -> RdGltf {
+    fn build(mut self, single_buffer: bool) -> RdGltf {
         let animation = self.anim_node.map_or(Default::default(), |n| vec![n]);
 
         // put_material must already have been run otherwise this panics!
@@ -978,10 +912,7 @@ impl RdGltfBuilder {
         // get index of last node (scene root node)
         let root_node_idx = json::Index::new((self.nodes.len() - 1) as u32);
 
-        let root = json::Root {
-            accessors: self.accessors,
-            buffers: self.buffers,
-            buffer_views: self.buffer_views,
+        let mut root = json::Root {
             meshes: vec![mesh],
             nodes: self.nodes,
             scene: Some(json::Index::new(0)),
@@ -1004,49 +935,8 @@ impl RdGltfBuilder {
             ..Default::default()
         };
 
-        self.obj.root = Some(root);
-
-        self.obj
-    }
-
-    fn merge_buffers(&mut self) {
-        let size_merge_buffer = self
-            .obj
-            .buffers
-            .iter()
-            .map(|x| x.get_bytes_len_padded())
-            .sum();
-
-        debug!("size_merge_buffer: {:#?}", size_merge_buffer);
-        let mut combined_vec = vec![0; size_merge_buffer];
-
-        let mut view_off_mapping = Vec::new();
-        let mut cnt = 0;
-        for v in &self.obj.buffers {
-            v.to_writer(&mut combined_vec[cnt..cnt + v.get_bytes_len_padded()])
-                .unwrap();
-            view_off_mapping.push(cnt as u32);
-            cnt += v.get_bytes_len_padded();
-        }
-
-        for view in self.buffer_views.iter_mut() {
-            let n = view_off_mapping[view.buffer.value()];
-            view.byte_offset = Some(USize64(
-                view.byte_offset.map(|x| x.0).unwrap_or(0) + n as u64,
-            ));
-            view.buffer = json::Index::new(0);
-        }
-
-        self.buffers[0].byte_length = USize64(combined_vec.len() as u64);
-        let padded_combined_vec = BufferContainer::U8(combined_vec);
-        debug!(
-            "size_merge_buffer: {:#?}",
-            padded_combined_vec.get_bytes_len_padded()
-        );
-        debug!("cnt: {:#?}", cnt);
-
-        self.buffers.truncate(1);
-        self.obj.buffers = vec![padded_combined_vec];
+        let buffers = self.binary.finish(&mut root, single_buffer);
+        RdGltf { buffers, root }
     }
 }
 
@@ -1083,67 +973,17 @@ pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
     let mat_opt = rdm.mat.clone();
     let mut b = RdGltfBuilder::from(rdm);
     b.run_dds(config == GltfExportFormat::Glb);
-    if config == GltfExportFormat::Glb || config == GltfExportFormat::GltfSeparateMinimise {
-        b.merge_buffers();
-        if config == GltfExportFormat::Glb {
-            b.buffers[0].uri = None;
-        }
+    let mut p = b.build(config != GltfExportFormat::GltfSeparate);
+    if config == GltfExportFormat::Glb {
+        p.root.buffers[0].uri = None;
     }
-
-    let p = b.build();
     info!("Built glTF");
     p.write_gltf(dir, mat_opt, create_new, config);
 }
 
 struct RdGltf {
     buffers: Vec<BufferContainer>,
-    root: Option<json::Root>,
-}
-enum BufferContainer {
-    U8(Vec<u8>),
-    Bytes(Bytes),
-    Vertex(Vec<Vertex>),
-}
-
-impl BufferContainer {
-    fn get_bytes_len_real(&self) -> usize {
-        self.get_bytes().len()
-    }
-
-    fn get_padded_added(&self) -> usize {
-        let real_len = self.get_bytes_len_real();
-        assert_ne!(real_len, 0);
-        if real_len.is_multiple_of(4) {
-            0
-        } else {
-            4 - (real_len % 4)
-        }
-    }
-
-    fn get_bytes_len_padded(&self) -> usize {
-        self.get_bytes_len_real() + self.get_padded_added()
-    }
-
-    fn get_bytes(&self) -> &[u8] {
-        unsafe {
-            match self {
-                BufferContainer::U8(v) => v.align_to::<u8>().1,
-                BufferContainer::Vertex(vert) => vert.align_to::<u8>().1,
-                BufferContainer::Bytes(b) => b,
-            }
-        }
-    }
-
-    fn to_writer(&self, mut writer: impl io::Write) -> std::io::Result<()> {
-        static PAD: &[u8] = &[0x0, 0x0, 0x0];
-        let bytes = self.get_bytes();
-        let to_add = self.get_padded_added();
-        writer.write_all(bytes)?;
-        if to_add < 4 && to_add != 0 {
-            writer.write_all(&PAD[0..to_add])?;
-        }
-        Ok(())
-    }
+    root: json::Root,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1170,13 +1010,6 @@ impl FromStr for GltfExportFormat {
 }
 
 impl RdGltf {
-    fn new() -> Self {
-        RdGltf {
-            buffers: vec![],
-            root: None,
-        }
-    }
-
     fn write_gltf(
         self,
         dir: Option<PathBuf>,
@@ -1217,7 +1050,7 @@ impl RdGltf {
                     version: 2,
                     length: 0xDEAD_BEEF,
                 };
-                let j = json::serialize::to_vec(&self.root.unwrap()).expect("Serialization error");
+                let j = json::serialize::to_vec(&self.root).expect("Serialization error");
                 let glb = gltf::Glb {
                     header,
                     json: Cow::from(&j),
@@ -1228,8 +1061,8 @@ impl RdGltf {
                 debug!("bin: {}", self.buffers[0].get_bytes_len_padded());
             }
             _ => {
-                let vjson = json::serialize::to_vec_pretty(&self.root.unwrap())
-                    .expect("Serialization error");
+                let vjson =
+                    json::serialize::to_vec_pretty(&self.root).expect("Serialization error");
                 writer.write_all(&vjson).expect("I/O error");
 
                 debug!("wrote json to disk!");
@@ -1267,24 +1100,4 @@ impl RdGltf {
         }
         info!("Wrote glTF {:?}", output_path);
     }
-
-    fn push_buffer(&mut self, b: BufferContainer) -> PushBufferResult {
-        let idx = self.buffers.len();
-
-        let file_name = format!("buffer{}.bin", idx);
-        let len = b.get_bytes_len_padded();
-        self.buffers.push(b);
-
-        PushBufferResult {
-            file_name,
-            len: len as u32,
-            idx: idx as u32,
-        }
-    }
-}
-
-struct PushBufferResult {
-    file_name: String,
-    len: u32,
-    idx: u32,
 }
