@@ -171,6 +171,7 @@ fn entry_do_work(opts: Opts) {
             files,
             format,
             mesh_index: Some(opts.gltf_mesh_index),
+            legacy: true,
             skeleton: opts.skeleton,
             animation: opts.animation,
             sampling_rate: None,

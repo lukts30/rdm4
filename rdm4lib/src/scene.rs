@@ -258,6 +258,7 @@ mod tests {
                 mirror_x: false,
                 no_transform: true,
                 material_indices: None,
+                legacy_metadata: false,
             },
         )
         .unwrap();
@@ -396,6 +397,7 @@ mod tests {
         assert_eq!(imported.meshes.len(), 2);
         assert_eq!(imported.skeletons.len(), 1);
         assert_eq!(imported.animations.len(), 1);
+        assert_eq!(imported.animations[0].name, "working");
         assert!(imported.meshes.iter().all(|mesh| mesh.skeleton == Some(0)));
         let target = imported.skeletons[0]
             .joints

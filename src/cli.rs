@@ -186,6 +186,7 @@ pub fn run() -> ExitCode {
                 files: args.files.into(),
                 format: args.format,
                 mesh_index: args.mesh_index,
+                legacy: false,
                 skeleton: args.skeleton,
                 animation: args.animation,
                 sampling_rate: args.sampling_rate,

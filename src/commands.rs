@@ -276,6 +276,8 @@ pub struct RdmOptions {
     pub files: Files,
     pub format: TargetVertexFormat,
     pub mesh_index: Option<u32>,
+    /// Preserve the old CLI's metadata and per-primitive material defaults.
+    pub legacy: bool,
     pub skeleton: bool,
     pub animation: bool,
     pub sampling_rate: Option<u32>,
@@ -372,7 +374,7 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     } else {
         gltf.read_active_scene(opts.skeleton, animations)?
     };
-    let material_indices = if opts.mesh_index.is_some() {
+    let material_indices = if opts.legacy {
         Some(
             opts.material_indices
                 .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
@@ -387,6 +389,7 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
             mirror_x: opts.mirror_x,
             no_transform: opts.no_transform,
             material_indices,
+            legacy_metadata: opts.legacy,
         },
         output,
         !opts.files.force,

@@ -475,9 +475,17 @@ fn make_glb(directory: &Path) -> PathBuf {
 }
 
 #[test]
-fn rdm_command_and_alias_match_legacy_output() {
+fn rdm_commands_keep_payloads_and_import_active_scene_models() {
     let output = tempfile::tempdir().unwrap();
     let input = make_glb(output.path());
+    use rdm4lib::rdm::{RdmDocument, RdmReader};
+    let read = |path: &Path| {
+        RdmReader::new(std::io::Cursor::new(fs::read(path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value
+    };
     let expected = output.path().join("legacy.rdm");
     succeeds(
         legacy()
@@ -505,10 +513,38 @@ fn rdm_command_and_alias_match_legacy_output() {
                 .arg("-o")
                 .arg(&directory),
         );
+        let actual = read(&directory.join("mesh.rdm"));
+        let mut original = read(&expected);
+        assert!(actual.export_info.as_ref().unwrap().source_path.is_none());
         assert_eq!(
-            fs::read(directory.join("mesh.rdm")).unwrap(),
-            fs::read(&expected).unwrap()
+            actual.export_info.as_ref().unwrap().rmp_name,
+            original.export_info.as_ref().unwrap().rmp_name
         );
+        assert_eq!(
+            actual.materials.as_ref().unwrap().len(),
+            original.materials.as_ref().unwrap().len()
+        );
+        assert!(actual.materials.as_ref().unwrap().iter().all(|entry| entry
+            .material
+            .name
+            .is_none()
+            && entry.material.texture.is_none()));
+        for (original, current) in original
+            .models
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .zip(actual.models.as_ref().unwrap())
+        {
+            original.name = current.name.clone();
+        }
+        original.export_info = actual.export_info.clone();
+        original.materials = actual.materials.clone();
+        assert_eq!(
+            actual, original,
+            "all fields except intentional metadata changes"
+        );
+        let expected_bytes = fs::read(directory.join("mesh.rdm")).unwrap();
         let destination = directory.join("mesh.rdm");
         let mut retry = ng();
         retry
@@ -525,18 +561,11 @@ fn rdm_command_and_alias_match_legacy_output() {
             "{error}"
         );
         assert!(!error.contains("panicked"), "{error}");
-        assert_eq!(
-            fs::read(&destination).unwrap(),
-            fs::read(&expected).unwrap()
-        );
+        assert_eq!(fs::read(&destination).unwrap(), expected_bytes);
         succeeds(retry.arg("--force"));
-        assert_eq!(
-            fs::read(&destination).unwrap(),
-            fs::read(&expected).unwrap()
-        );
+        assert_eq!(fs::read(&destination).unwrap(), expected_bytes);
     }
     // Only active-scene instances are imported; repeated mesh definitions stay separate models.
-    use rdm4lib::rdm::{RdmDocument, RdmReader};
     let bytes = fs::read(&input).unwrap();
     let glb = gltf::Glb::from_slice(&bytes).unwrap();
     let mut root: serde_json::Value = serde_json::from_slice(&glb.json).unwrap();
@@ -569,16 +598,16 @@ fn rdm_command_and_alias_match_legacy_output() {
             .arg("-o")
             .arg(&destination),
     );
-    let read = |path: &Path| {
-        RdmReader::new(std::io::Cursor::new(fs::read(path).unwrap()))
-            .unwrap()
-            .read_root::<RdmDocument>()
-            .unwrap()
-            .value
-    };
     let document = read(&destination);
     let models = document.models.unwrap();
     assert_eq!(models.len(), 2);
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.name.name.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("first"), Some("instance")]
+    );
     // Baking into half precision can round the two translated extrema differently.
     assert!((models[1].bounds_min[0] - models[0].bounds_min[0] - 4.0).abs() < 0.01);
     assert!((models[1].bounds_max[0] - models[0].bounds_max[0] - 4.0).abs() < 0.01);

@@ -22,6 +22,19 @@ use crate::{
     MeshInfo, RdJoint, RdModell, Triangle,
 };
 
+const LEGACY_NAME: &str = "basalt_crusher_others_lod0";
+
+fn export_info(animation: bool, legacy: bool) -> RdmExportInfo {
+    RdmExportInfo {
+        source_path: legacy.then(|| if animation {
+            r"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max".into()
+        } else {
+            r"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max".into()
+        }),
+        rmp_name: Some(if animation { "Anno5_Building_Anim_UnCompressed.rmp" } else { "Anno5_Building_Skin_1Blend.rmp" }.into()),
+    }
+}
+
 /// Compatibility entrypoint backed by the current document writer.
 pub struct RdWriter2 {
     inner: RdmDocument,
@@ -156,9 +169,7 @@ impl TryFrom<RdModell> for RdmDocument {
         };
         let (bounds_min, bounds_max) = model.vertex.calculate_bounds();
         let mesh = RdmModel {
-            name: RdmModelName {
-                name: Some("basalt_crusher_others_lod0".into()),
-            },
+            name: RdmModelName { name: model.name },
             vertex_format: format,
             index_format: RdmIndexFormat { storage_type },
             vertices,
@@ -181,13 +192,15 @@ impl TryFrom<RdModell> for RdmDocument {
             model.joints.map(|joints| RdmSkin {
                 joints: joints.into_iter().map(RdmJoint::from).collect(),
             }),
+            true,
         )
     }
 }
 
 fn mesh_document(
-    models: Vec<RdmModel>,
+    mut models: Vec<RdmModel>,
     skin: Option<RdmSkin>,
+    legacy: bool,
 ) -> Result<RdmDocument, Box<dyn Error>> {
     let max_material = models
         .iter()
@@ -195,49 +208,56 @@ fn mesh_document(
         .map(|group| group.material)
         .max()
         .ok_or("scene has no material groups")?;
+    if legacy {
+        for model in &mut models {
+            model.name.name = Some(LEGACY_NAME.into());
+        }
+    }
     Ok(RdmDocument {
-            export_info: Some(RdmExportInfo {
-                source_path: Some(r"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max".into()),
-                rmp_name: Some("Anno5_Building_Skin_1Blend.rmp".into()),
-            }),
-            models: Some(models),
-            materials: Some((0..=max_material).map(|_| RdmMaterialEntry {
-                material: RdmMaterial {
-                    name: Some("Default Standard12432142134".into()),
-                    texture: Some("d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png".into()),
-                },
-            }).collect()),
-            skin,
-            animations: None,
-        })
+        export_info: Some(export_info(false, legacy)),
+        models: Some(models),
+        materials: Some((0..=max_material).map(|_| RdmMaterialEntry {
+            material: RdmMaterial {
+                name: legacy.then(|| "Default Standard12432142134".into()),
+                texture: legacy.then(|| "d:/projekte/anno5/game/testdata/graphics/dummy_objects/dummy_christian/rdm/basalt_crusher_others/diffuse.png".into()),
+            },
+        }).collect()),
+        skin, animations: None,
+    })
 }
 
 impl From<RdAnim> for RdmDocument {
     /// Build a standalone animation document, retaining the legacy export defaults.
     fn from(animation: RdAnim) -> Self {
-        animation_document(RdmAnimation {
-            name: "basalt_crusher_others_lod0".into(),
-            time_max: animation.time_max,
-            sampling_rate: animation.sampling_rate,
-            tracks: animation
-                .anim_vec
-                .into_iter()
-                .map(|track| RdmTrack {
-                    joint_name: track.name,
-                    frames: track.frames,
-                })
-                .collect(),
-        })
+        animation_document(
+            RdmAnimation {
+                name: animation.name,
+                time_max: animation.time_max,
+                sampling_rate: animation.sampling_rate,
+                tracks: animation
+                    .anim_vec
+                    .into_iter()
+                    .map(|track| RdmTrack {
+                        joint_name: track.name,
+                        frames: track.frames,
+                    })
+                    .collect(),
+            },
+            true,
+        )
     }
 }
 
-fn animation_document(animation: RdmAnimation) -> RdmDocument {
+fn animation_document(mut animation: RdmAnimation, legacy: bool) -> RdmDocument {
+    if legacy {
+        animation.name = LEGACY_NAME.into();
+    }
     RdmDocument {
-        export_info: Some(RdmExportInfo {
-            source_path: Some(r"G:\graphic\danny\Anno5\preproduction\buildings\others\basalt_crusher_others\scenes\basalt_crusher_others_idle01_01.max".into()),
-            rmp_name: Some("Anno5_Building_Anim_UnCompressed.rmp".into()),
-        }),
-        models: None, materials: None, skin: None, animations: Some(vec![animation]),
+        export_info: Some(export_info(true, legacy)),
+        models: None,
+        materials: None,
+        skin: None,
+        animations: Some(vec![animation]),
     }
 }
 
@@ -248,11 +268,11 @@ pub fn write_scene(
     dir: Option<PathBuf>,
     create_new: bool,
 ) -> Result<PathBuf, Box<dyn Error>> {
-    let names = scene
-        .animations
-        .iter()
-        .map(|clip| clip.name.clone())
+    // Keep stable CLI filenames while record names retain the source clip names.
+    let names = (0..scene.animations.len())
+        .map(|index| format!("anim_{index}"))
         .collect::<Vec<_>>();
+    let legacy = options.legacy_metadata;
     let mut document = RdmDocument::from_scene(scene, options)?;
     for (name, animation) in names
         .into_iter()
@@ -260,7 +280,7 @@ pub fn write_scene(
     {
         RdAnimWriter2 {
             name,
-            export: animation_document(animation),
+            export: animation_document(animation, legacy),
         }
         .try_write_anim_rdm(dir.clone(), create_new)?;
     }
@@ -315,7 +335,11 @@ impl RdmDocument {
                 })
                 .collect::<Result<_, Box<dyn Error>>>()?;
             animations.push(RdmAnimation {
-                name: "basalt_crusher_others_lod0".into(),
+                name: if options.legacy_metadata {
+                    LEGACY_NAME.into()
+                } else {
+                    clip.name
+                },
                 time_max: clip.duration_millis,
                 sampling_rate: clip.sampling_rate,
                 tracks,
@@ -358,7 +382,7 @@ impl RdmDocument {
                 })
                 .collect(),
         });
-        let mut document = mesh_document(models, skin)?;
+        let mut document = mesh_document(models, skin, options.legacy_metadata)?;
         document.animations = (!animations.is_empty()).then_some(animations);
         Ok(document)
     }

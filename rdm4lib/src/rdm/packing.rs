@@ -23,6 +23,8 @@ pub struct RdmExportOptions {
     pub no_transform: bool,
     /// Override material slots in model and primitive order.
     pub material_indices: Option<Vec<u32>>,
+    /// Retain the original CLI's record names, source paths and dummy material strings.
+    pub legacy_metadata: bool,
 }
 
 pub(super) fn pack_mesh(
@@ -295,9 +297,7 @@ fn finish_mesh(
         StorageType::U16
     };
     Ok(RdmModel {
-        name: RdmModelName {
-            name: Some("basalt_crusher_others_lod0".into()),
-        },
+        name: RdmModelName { name: mesh.name },
         vertex_format: RdmVertexFormat {
             attributes: format,
             selector: u32::from(mesh.skeleton.is_some()),

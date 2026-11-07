@@ -264,6 +264,7 @@ impl ImportedGltf {
                 mirror_x,
                 no_transform,
                 material_indices,
+                legacy_metadata: true,
             },
         )
         .expect("cannot pack scene")

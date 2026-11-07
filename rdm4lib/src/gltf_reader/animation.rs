@@ -225,8 +225,9 @@ impl ImportedGltf {
         Ok(self
             .read_clips(&names, 0, &nodes, options)?
             .into_iter()
-            .map(|clip| RdAnim {
-                name: clip.name,
+            .enumerate()
+            .map(|(index, clip)| RdAnim {
+                name: format!("anim_{index}"),
                 time_max: clip.duration_millis,
                 sampling_rate: clip.sampling_rate,
                 anim_vec: clip
@@ -410,7 +411,10 @@ impl ImportedGltf {
             }
             collections.sort_by(|a, b| joints[a.joint].cmp(joints[b.joint]));
             result.push(Animation {
-                name: format!("anim_{index}"),
+                name: animation
+                    .name()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("anim_{index}")),
                 sampling_rate: rate,
                 duration_millis: (duration * 1000.0) as u32,
                 skeleton: skeleton_index,
