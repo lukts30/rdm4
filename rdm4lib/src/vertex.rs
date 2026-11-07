@@ -1,20 +1,15 @@
 use bytes::{Buf, Bytes};
-use rdm_derive::{RdmRecord, RdmStructSize};
+use rdm_derive::RdmRecord;
 use std::{fmt, str::FromStr};
 
 use crate::*;
-use binrw::binread;
 
 /// One 16-byte descriptor for an attribute in each vertex.
 #[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[binread]
-#[derive(RdmStructSize, RdmRecord)]
+#[derive(Clone, Debug, PartialEq, Eq, RdmRecord)]
 #[rdm(strides(16), write)]
 pub struct VertexIdentifier {
     pub semantic: VertexSemantic,
-    #[br(assert(matches!(storage_type, StorageType::U32 | StorageType::F16 | StorageType::F32),
-        "Unsupported vertex storage type"))]
     pub storage_type: StorageType,
     pub interpretation: VertexInterpretation,
     pub storage_count: u32,
@@ -60,15 +55,12 @@ impl fmt::Display for VertexIdentifier {
 /// For packed U32 attributes, Anno 2070's format-name builder
 /// uses `4c` for codes 3 through 5 and `4b` for other codes.
 #[repr(transparent)]
-#[binread]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VertexInterpretation(pub u32);
 
 /// Role of an attribute within a vertex, encoded by the RDM semantic ID.
 #[repr(u32)]
 #[derive(Debug, Clone, Eq, PartialEq)]
-#[binread]
-#[br(repr(u32))]
 pub enum VertexSemantic {
     Position = 0x0,
     Normal = 0x1,
@@ -426,8 +418,6 @@ impl VertexFormat2 {
 }
 
 /// Supported RDM scalar storage codes, shared by vertex and index formats.
-#[binread]
-#[br(repr(u32))]
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum StorageType {
@@ -866,10 +856,17 @@ mod tests_vertex {
 
     #[test]
     fn preserves_unknown_interpretation_codes_when_read_and_written() {
-        use crate::rdm::{RdmEndian, RdmWriteField, RdmWriter};
-        use binrw::BinReaderExt;
-        let mut cursor = std::io::Cursor::new(99u32.to_le_bytes());
-        let value: VertexInterpretation = cursor.read_le().unwrap();
+        use crate::rdm::{RdmEndian, RdmReadField, RdmReader, RdmWriteField, RdmWriter};
+        let source = include_bytes!("../rdm/fishery_others_lod2.rdm");
+        let mut reader = RdmReader::new(std::io::Cursor::new(source)).unwrap();
+        let value = VertexInterpretation::read_field(
+            &mut reader,
+            &99u32.to_le_bytes(),
+            0,
+            "interpretation",
+            (),
+        )
+        .unwrap();
         assert_eq!(value, VertexInterpretation(99));
         let mut writer = RdmWriter::new(std::io::Cursor::new(Vec::new()), RdmEndian::Little);
         let mut output = [0; 4];
@@ -882,7 +879,13 @@ mod tests_vertex {
     #[test]
     fn matches_vertex_descriptor_bytes() {
         let p = p4h_n4b_g4b_b4b_t2h_i4b();
-        let bytes = unsafe { p.align_to::<[u8; 16]>().1 };
+        use crate::rdm::{RdmEndian, RdmWriteRecord, RdmWriter};
+        let mut writer = RdmWriter::new(std::io::Cursor::new(Vec::new()), RdmEndian::Little);
+        for (i, descriptor) in p.iter().enumerate() {
+            descriptor.write(&mut writer, i * 16).unwrap();
+        }
+        let output = writer.into_inner().into_inner();
+        let bytes: Vec<&[u8]> = output.chunks_exact(16).collect();
         assert_eq!(bytes.len(), 6);
 
         const P4H_IDENTIFIER: [u8; 16] = [

@@ -664,3 +664,211 @@ impl From<RdJoint> for RdmJoint {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{rdm::*, vertex::StorageType, RdModell};
+    use std::{fs, io::Cursor};
+
+    fn read_source(path: &str) -> RdmReadResult<RdmDocument> {
+        RdmReader::new(std::io::BufReader::new(fs::File::open(path).unwrap()))
+            .unwrap()
+            .read_root()
+            .unwrap()
+    }
+
+    fn stored_bounds(document: &RdmDocument) -> ([f32; 3], [f32; 3]) {
+        let model = &document.models.as_ref().unwrap()[0];
+        (model.bounds_min, model.bounds_max)
+    }
+
+    #[test]
+    fn reads_68_byte_metadata_tails_in_both_byte_orders() {
+        for (source, endian) in [
+            (
+                include_bytes!("../../rdm/n_nature_small_stone_02_lod0.rdm").as_slice(),
+                RdmEndian::Big,
+            ),
+            (
+                include_bytes!("../../rdm/jellyfish_lod0.rdm").as_slice(),
+                RdmEndian::Little,
+            ),
+        ] {
+            let mut bytes = source.to_vec();
+            let meta = endian.decode::<u32>(&bytes[0x20..0x24]) as usize;
+            for i in 0..4 {
+                endian.encode(
+                    i as u32 + 1,
+                    &mut bytes[meta + 52 + i * 4..meta + 56 + i * 4],
+                );
+            }
+            let mut reader = RdmReader::new(Cursor::new(bytes)).unwrap();
+            let block = reader.read_block::<RdmModel>(meta as u32).unwrap();
+            assert_eq!(block.source.stride, 68);
+            assert_eq!(block.source.payload.end, meta + 68);
+            let words: Vec<u32> = block
+                .tails
+                .chunks_exact(4)
+                .map(|raw| endian.decode(raw))
+                .collect();
+            assert_eq!(words, [1, 2, 3, 4]);
+        }
+    }
+
+    #[test]
+    fn converts_be_68_byte_metadata_to_le_92_byte_metadata() {
+        use crate::vertex::{N3f, N4b};
+        let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
+        let source = read_source("rdm/n_nature_small_stone_02_lod0.rdm");
+        assert_eq!(source.layout.endian, RdmEndian::Big);
+        let models = source
+            .layout
+            .blocks
+            .iter()
+            .find(|b| b.context == "RdmDocument.models")
+            .unwrap();
+        assert_eq!(models.source.stride, 68);
+        // The packed normal must be decoded as a BE word, not four unchanged bytes.
+        let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
+        for (actual, expected) in normal
+            .data
+            .into_iter()
+            .zip([0.90588236, 0.42745098, 0.03529412])
+        {
+            assert!((actual - expected).abs() < 0.000001);
+        }
+        let bounds = model.vertex.calculate_bounds();
+        let document = crate::rdm::RdmDocument::try_from(model).unwrap();
+        let output = std::io::Cursor::new(Vec::new());
+        let output = crate::rdm::RdmWriter::new(output, crate::rdm::RdmEndian::Little)
+            .write_root(&document)
+            .unwrap();
+        let result = RdmReader::new(Cursor::new(output.get_ref()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        assert_eq!(result.layout.endian, RdmEndian::Little);
+        let models = result
+            .layout
+            .blocks
+            .iter()
+            .find(|b| b.context == "RdmDocument.models")
+            .unwrap();
+        assert_eq!(models.source.stride, 92);
+        assert_eq!(models.tails, [0; 40]);
+        assert_eq!(
+            RdModell::new(output.into_inner()).vertex.calculate_bounds(),
+            bounds
+        );
+    }
+
+    #[test]
+    fn writes_bounds_from_quantized_vertices_instead_of_source_bounds() {
+        let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
+        let stored = stored_bounds(
+            &read_source("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm").value,
+        );
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(model.vertex.identifiers[0].storage_type, StorageType::F16);
+        assert_ne!(stored, calculated);
+        let round = |value| half::f16::from_f32(value).to_f32();
+        assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
+        assert_eq!(
+            {
+                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
+                let model = &document.models.as_ref().unwrap()[0];
+                (model.bounds_min, model.bounds_max)
+            },
+            calculated
+        );
+    }
+
+    #[test]
+    fn preserves_f32_position_bounds_when_writing_rdm() {
+        let model = crate::RdModell::from("rdm/eden_line_flagpole_variation_cloth_lod0.rdm");
+        let position = &model.vertex.identifiers[0];
+        assert_eq!(position.to_string(), "P3f");
+        let calculated = model.vertex.calculate_bounds();
+        assert_eq!(
+            calculated.0.map(f32::to_bits),
+            [0x3c70ef5c, 0x3d073c7a, 0xbe9ba652]
+        );
+        assert_eq!(
+            calculated.1.map(f32::to_bits),
+            [0x3cf1c51e, 0x3fc6c946, 0x3e9ba652]
+        );
+        assert_eq!(
+            stored_bounds(&read_source("rdm/eden_line_flagpole_variation_cloth_lod0.rdm").value),
+            calculated
+        );
+        assert_eq!(
+            {
+                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
+                let model = &document.models.as_ref().unwrap()[0];
+                (model.bounds_min, model.bounds_max)
+            },
+            calculated
+        );
+    }
+
+    #[test]
+    fn calculates_bounds_matching_existing_mesh_metadata() {
+        for data in [
+            include_bytes!("../../rdm/fishery_others_lod2.rdm").as_slice(),
+            include_bytes!("../../rdm/ark_waterfall2.rdm").as_slice(),
+        ] {
+            let rdm = RdmReader::new(Cursor::new(data))
+                .unwrap()
+                .read_root::<RdmDocument>()
+                .unwrap();
+            let model = RdModell::new(data.to_vec());
+            assert_eq!(stored_bounds(&rdm.value), model.vertex.calculate_bounds());
+        }
+    }
+
+    #[test]
+    fn matches_serialized_record_strides() {
+        assert_eq!(RdmMaterialEntry::STRIDES, [28]);
+        assert_eq!(RdmSkin::STRIDES, [32]);
+        assert_eq!(RdmModel::STRIDES, [92, 68]);
+        assert_eq!(RdmModelName::STRIDES, [28]);
+        assert_eq!(RdmVertexFormat::STRIDES, [24]);
+        assert_eq!(RdmMeshGroup::STRIDES, [28]);
+        assert_eq!(RdmJoint::STRIDES, [84]);
+        assert_eq!(RdmExportInfo::STRIDES, [72]);
+    }
+
+    #[test]
+    fn preserves_sampling_rate_when_loading_and_writing_animation() {
+        for sampling_rate in [1u32, 30, 60, 78] {
+            let mut data = include_bytes!("../../rdm/basalt_crusher_others_idle01.rdm").to_vec();
+            let animation = u32::from_le_bytes(data[0x2c..0x30].try_into().unwrap()) as usize;
+            data[animation + 12..animation + 16].copy_from_slice(&sampling_rate.to_le_bytes());
+            let anim = crate::rdm_anim::RdAnim::new(data, "idle".into());
+            assert_eq!(anim.sampling_rate, sampling_rate);
+            let document = crate::rdm::RdmDocument::from(anim);
+            let writer = std::io::Cursor::new(Vec::new());
+            let writer = crate::rdm::RdmWriter::new(writer, crate::rdm::RdmEndian::Little)
+                .write_root(&document)
+                .unwrap();
+            let written = RdmReader::new(writer)
+                .unwrap()
+                .read_root::<RdmDocument>()
+                .unwrap();
+            assert_eq!(
+                written.value.animations.unwrap()[0].sampling_rate,
+                sampling_rate
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn writes_loaded_animation_without_errors() {
+        let anim = crate::rdm_anim::RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
+        let rdaw = RdAnimWriter2::new(anim);
+        let output_dir = tempfile::tempdir().unwrap();
+        rdaw.write_anim_rdm(Some(output_dir.path().into()), false);
+    }
+}

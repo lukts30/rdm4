@@ -1,4 +1,3 @@
-use rdm_data_main::RDMStructSizeTr;
 use std::{fs::File, io::BufReader, path::Path};
 
 use half::f16;
@@ -38,7 +37,6 @@ pub struct RdModell {
     pub mat: Option<RdMaterial>,
 }
 
-pub mod rdm_container;
 pub mod rdm_data_anim;
 pub mod rdm_data_main;
 
