@@ -271,10 +271,6 @@ impl VertexFormat2 {
         self.get_size() > 0
     }
 
-    pub fn identifiers_len(&self) -> u32 {
-        self.identifiers.len() as u32
-    }
-
     // TODO: remove for_each?
     pub fn set_weight_sum(&mut self) {
         let n = self.find_component_offsets(VertexSemantic::Weight).count();
@@ -290,12 +286,6 @@ impl VertexFormat2 {
             }
             self.weight_sum = Some(vec);
         }
-    }
-
-    pub fn identifiers_as_bytes(&self) -> &[u8] {
-        let bytes = unsafe { self.identifiers.align_to::<u8>().1 };
-        assert_eq!(bytes.len(), self.identifiers.len() * 0x10);
-        bytes
     }
 
     pub fn new(

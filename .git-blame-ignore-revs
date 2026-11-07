@@ -1,2 +1,5 @@
 # Scene import and RDM packing extraction.
 eb06b1ef7d65b92058a3e0dbd94a3249d50fb13c
+
+# Legacy wire schema retirement and codec test relocation.
+bd0df525799e6b7ae476fdcd884813d2b4a22a20
