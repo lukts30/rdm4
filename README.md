@@ -40,11 +40,11 @@ for options. `rdm4-bin` remains available with its existing arguments.
 Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
-`rdm4ng gltf` exports all static models by default; `--mesh-index` selects one
-(zero-based). Multi-model skeleton, animation and DDS texture export still requires
-an explicit selection. Both entry points use the new reader
-and writer with the existing glTF code. `rdm4-bin` retains its arguments and
-first-model default.
+`rdm4ng gltf` exports all models by default; `--mesh-index` selects one
+(zero-based). Both entry points use the scene layer and the new reader and writer.
+`rdm4-bin` retains its arguments and first-model default.
+See [RDM round trips](docs/RDM_ROUNDTRIP.md) for measured fidelity, known shading
+changes and hash history.
 
 `split` writes `<stem>.model-000.rdm`, etc., one per model. It preserves source
 byte order, strides and opaque tails, retaining shared materials, skeleton and
