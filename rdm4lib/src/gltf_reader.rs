@@ -1,18 +1,14 @@
 use crate::vertex::*;
 use crate::vertex_transform::*;
+use crate::MeshInfo;
 use crate::RdModell;
 use crate::{gltf_reader_vertex::PutVertex, RdJoint};
-use crate::{rdm_anim::Frame, MeshInfo};
 use crate::{vertex::TargetVertexFormat, Triangle};
 
-use gltf::animation::Channel;
 use gltf::Node;
 use nalgebra::*;
 
 use bytes::BytesMut;
-
-use crate::rdm_anim::*;
-use gltf::animation::util::ReadOutputs::*;
 
 use crate::VertexFormat2;
 use std::collections::hash_map::DefaultHasher;
@@ -24,6 +20,9 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
 };
+
+mod animation;
+pub use animation::AnimationImportOptions;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResolveNodeName {
@@ -68,54 +67,6 @@ fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
     let mut isometry: Isometry3<f32> = similarity.isometry;
     isometry.rotation = isometry.rotation.inverse();
     isometry
-}
-
-fn extract_rotations(
-    time: impl Iterator<Item = f32>,
-    origin_translation: [f32; 3],
-    mut rot_iter: impl Iterator<Item = [f32; 4]>,
-) -> Vec<Frame> {
-    let mut frames_rot: Vec<Frame> = Vec::new();
-    for t in time {
-        let r = rot_iter.next().unwrap();
-        frames_rot.push(Frame {
-            time: t,
-            rotation: [r[0], r[1], r[2], -r[3]],
-            translation: origin_translation,
-        });
-    }
-    frames_rot
-}
-
-fn extract_translations(
-    time: impl Iterator<Item = f32>,
-    origin_rotation: [f32; 4],
-    mut trans: impl Iterator<Item = [f32; 3]>,
-) -> Vec<Frame> {
-    let mut frames: Vec<Frame> = Vec::new();
-    for t in time {
-        frames.push(Frame {
-            time: t,
-            rotation: origin_rotation,
-            translation: trans.next().unwrap(),
-        });
-    }
-    frames
-}
-
-fn read_animation_channel(buffers: &[gltf::buffer::Data], channel: Channel) -> Vec<Frame> {
-    let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
-    let time = reader.read_inputs().unwrap();
-    let output = reader.read_outputs().unwrap();
-
-    match output {
-        Rotations(rot) => {
-            let rot_iter = rot.into_f32();
-            extract_rotations(time, Default::default(), rot_iter)
-        }
-        Translations(trans) => extract_translations(time, Default::default(), trans),
-        _ => unreachable!(),
-    }
 }
 
 impl<'a> ImportedGltf {
@@ -184,210 +135,6 @@ impl<'a> ImportedGltf {
             ResolveNodeName::UnstableIndex => format!("UnnamedGltfNode{}", target_node.index()),
             ResolveNodeName::UniqueName => target_node.name().unwrap().to_owned(),
         }
-    }
-
-    /// Author RDM tracks, including static joints and glTF's held pose at time zero.
-    /// Existing key times and pose values are retained; no resampling is performed.
-    /// Restore the nominal rate from `extras.rdm4.samplingRate`, otherwise use 15 Hz.
-    /// `frames` controls idle-track intervals, independently of the sample rate.
-    pub fn read_animation(
-        &self,
-        joints: &[RdJoint],
-        frames: usize,
-        _tmax: f32,
-    ) -> Option<Vec<RdAnim>> {
-        let (gltf, buffers) = (&self.gltf, &self.buffers);
-
-        let mut translation_map: HashMap<String, Vec<Frame>> = HashMap::new();
-        let mut rd_animations = Vec::new();
-
-        let real_joints: HashSet<_> = joints.iter().map(|e| e.name.as_str()).collect();
-
-        let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
-
-        for (anim_idx, animation) in gltf.animations().enumerate() {
-            let sampling_rate = animation
-                .extras()
-                .as_ref()
-                .and_then(|extra| serde_json::from_str::<serde_json::Value>(extra.get()).ok())
-                .and_then(|extra| extra["rdm4"]["samplingRate"].as_u64())
-                .and_then(|rate| u32::try_from(rate).ok())
-                .unwrap_or(15);
-            let mut t_max = 0.0;
-            let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
-
-            info!(
-                "  Animation #{} {:?}",
-                anim_idx,
-                animation.name().unwrap_or("default")
-            );
-            for channel in animation.channels() {
-                let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
-                let time = reader.read_inputs().unwrap();
-                let output = reader.read_outputs().unwrap();
-
-                let target_node_name_v2 = self.node_get_name(&channel.target().node());
-
-                debug!("{}", time.len());
-                info!(
-                    "    Channel: {} | {:?}",
-                    target_node_name_v2,
-                    channel.target().property()
-                );
-                // ugly as hell
-                t_max = t_max.max(
-                    channel
-                        .sampler()
-                        .input()
-                        .max()
-                        .unwrap()
-                        .as_array()
-                        .unwrap()
-                        .first()
-                        .unwrap()
-                        .as_f64()
-                        .unwrap(),
-                );
-
-                let origin = node_get_local_transform(&channel.target().node());
-                let origin_translation = [
-                    origin.translation.x,
-                    origin.translation.y,
-                    origin.translation.z,
-                ];
-                let origin_quaternio_raw = origin.rotation.quaternion().coords;
-                let origin_rotation = [
-                    origin_quaternio_raw.x,
-                    origin_quaternio_raw.y,
-                    origin_quaternio_raw.z,
-                    origin_quaternio_raw.w,
-                ];
-
-                if real_joints.contains(target_node_name_v2.as_str()) {
-                    match output {
-                        Rotations(rot) => {
-                            let mut rot_iter = rot.into_f32();
-                            if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
-                                for (frame, t) in frames.iter_mut().zip(time) {
-                                    if !relative_eq!(t, frame.time) {
-                                        interpolate_channel.insert(
-                                            target_node_name_v2,
-                                            (
-                                                frames.clone(),
-                                                read_animation_channel(buffers, channel),
-                                            ),
-                                        );
-                                        break;
-                                    }
-                                    let r = rot_iter.next().unwrap();
-                                    frame.rotation = [r[0], r[1], r[2], -r[3]];
-                                }
-                            } else {
-                                translation_map.insert(
-                                    target_node_name_v2,
-                                    extract_rotations(time, origin_translation, rot_iter),
-                                );
-                            }
-                        }
-                        Translations(mut trans) => {
-                            if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
-                                for (frame, t) in frames.iter_mut().zip(time) {
-                                    if !relative_eq!(t, frame.time) {
-                                        interpolate_channel.insert(
-                                            target_node_name_v2,
-                                            (
-                                                read_animation_channel(buffers, channel),
-                                                frames.clone(),
-                                            ),
-                                        );
-                                        break;
-                                    }
-                                    frame.translation = trans.next().unwrap();
-                                }
-                            } else {
-                                translation_map.insert(
-                                    target_node_name_v2,
-                                    extract_translations(time, origin_rotation, trans),
-                                );
-                            };
-                        }
-                        _ => {
-                            warn!(
-                                "output sampler not supported: '{:?}'",
-                                channel.target().property()
-                            );
-                            continue;
-                        }
-                    }
-                } else {
-                    warn!("Node: {:?} is referenced by an animation channel but the node is not part of the skinned mesh inverseBindMatrices!",target_node_name_v2)
-                }
-            }
-
-            // TODO: finish interpolate
-            if interpolate_channel.drain().next().is_some() {
-                unimplemented!("{}", interpolate_error_message);
-            }
-
-            for joint in joints {
-                if !translation_map.contains_key(&joint.name) {
-                    let node_idx = gltf
-                        .nodes()
-                        .find(|n| self.node_get_name(n) == joint.name)
-                        .unwrap();
-                    let origin = node_get_local_transform(&node_idx);
-                    let origin_translation = [
-                        origin.translation.x,
-                        origin.translation.y,
-                        origin.translation.z,
-                    ];
-                    let origin_quaternio_raw = origin.rotation.quaternion().coords;
-                    let origin_rotation = [
-                        origin_quaternio_raw.x,
-                        origin_quaternio_raw.y,
-                        origin_quaternio_raw.z,
-                        origin_quaternio_raw.w,
-                    ];
-                    let intervals = if t_max > 0.0 { frames.max(1) } else { 0 };
-                    let interval = t_max as f32 / intervals.max(1) as f32;
-                    let mut v = Vec::with_capacity(intervals + 1);
-                    for i in 0..=intervals {
-                        v.push(Frame {
-                            rotation: origin_rotation,
-                            translation: origin_translation,
-                            time: i as f32 * interval,
-                        });
-                    }
-                    warn!("idle_anim: adding idle for joint: {:?}", joint.name);
-                    translation_map.insert(joint.name.clone(), v);
-                }
-            }
-
-            let mut frame_collections: Vec<FrameCollection> = Vec::new();
-            for (node_str, mut frames) in translation_map.drain() {
-                // glTF holds the first pose before its first key. Make that pose explicit for RDM.
-                if let Some(first) = frames.first().copied().filter(|frame| frame.time > 0.0) {
-                    frames.insert(0, Frame { time: 0.0, ..first });
-                }
-                frame_collections.push(FrameCollection {
-                    frames,
-                    name: node_str.to_string(),
-                })
-            }
-
-            assert_eq!(joints.len() - frame_collections.len(), 0);
-
-            frame_collections.sort_by(|a, b| a.name.cmp(&b.name));
-
-            let name = format!("anim_{}", anim_idx);
-            rd_animations.push(RdAnim {
-                time_max: (t_max * 1000.0) as u32,
-                sampling_rate,
-                anim_vec: frame_collections,
-                name,
-            });
-        }
-        Some(rd_animations)
     }
 
     pub fn gltf_to_rdm(

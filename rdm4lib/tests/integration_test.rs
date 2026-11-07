@@ -188,7 +188,23 @@ mod tests {
         }
         let input = output_dir.path().join("out.gltf");
         let imported = gltf_reader::ImportedGltf::try_from(input.as_path()).unwrap();
-        let animations = imported.read_animation(&joints, 6, 0.33333).unwrap();
+        let error = imported
+            .read_animations(&joints, Default::default())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("t=0") && error.contains(&tracks[0].name),
+            "{error}"
+        );
+        let animations = imported
+            .read_animations(
+                &joints,
+                gltf_reader::AnimationImportOptions {
+                    interpolate: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let animation = &animations[0];
         assert_eq!(animation.sampling_rate, 60);
         for source in tracks {
@@ -197,8 +213,6 @@ mod tests {
                 .iter()
                 .find(|t| t.name == source.name)
                 .unwrap();
-            let added = usize::from(source.frames[0].time > 0.0);
-            assert_eq!(track.frames.len(), source.frames.len() + added);
             assert_eq!(track.frames[0].time.to_bits(), 0.0f32.to_bits());
             let bits = |frame: &rdm4lib::rdm_anim::Frame| {
                 (
@@ -207,7 +221,12 @@ mod tests {
                 )
             };
             assert_eq!(bits(&track.frames[0]), bits(&source.frames[0]));
-            for (actual, expected) in track.frames[added..].iter().zip(source.frames) {
+            for expected in source.frames {
+                let index = track
+                    .frames
+                    .binary_search_by(|frame| frame.time.total_cmp(&expected.time))
+                    .unwrap();
+                let actual = &track.frames[index];
                 assert_eq!(actual.time.to_bits(), expected.time.to_bits());
                 assert_eq!(bits(actual), bits(&expected));
             }
@@ -222,7 +241,16 @@ mod tests {
             frame.rotation == idle.frames[0].rotation
                 && frame.translation == idle.frames[0].translation
         }));
-        let minimal = imported.read_animation(&joints, 0, 0.0).unwrap();
+        let minimal = imported
+            .read_animations(
+                &joints,
+                gltf_reader::AnimationImportOptions {
+                    interpolate: true,
+                    idle_intervals: 0,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let idle = minimal[0]
             .anim_vec
             .iter()
