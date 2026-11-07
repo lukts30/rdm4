@@ -21,20 +21,17 @@ pub struct RdmExportOptions {
     pub mirror_x: bool,
     /// Leave the scene's mesh transform unapplied.
     pub no_transform: bool,
-    /// Override material slots in primitive order for the selected mesh.
+    /// Override material slots in model and primitive order.
     pub material_indices: Option<Vec<u32>>,
 }
 
 pub(super) fn pack_mesh(
     mut mesh: Mesh,
     options: &RdmExportOptions,
+    material_indices: Option<&[u32]>,
 ) -> Result<RdmModel, Box<dyn Error>> {
     mesh.validate()?;
-    if options
-        .material_indices
-        .as_ref()
-        .is_some_and(|v| v.len() != mesh.primitives.len())
-    {
+    if material_indices.is_some_and(|v| v.len() != mesh.primitives.len()) {
         return Err("material override count must match primitive count".into());
     }
     let format = match options.format {
@@ -54,7 +51,7 @@ pub(super) fn pack_mesh(
             .eq(format.iter())
     {
         let columns = mesh.attributes.drain(..).map(|a| a.values).collect();
-        return finish_mesh(mesh, format, columns, options, false);
+        return finish_mesh(mesh, format, columns, material_indices, false);
     }
     let column =
         |semantic, set, width, default: &[f32]| -> Result<Cow<'_, [f32]>, Box<dyn Error>> {
@@ -255,14 +252,14 @@ pub(super) fn pack_mesh(
         };
         columns.push(values);
     }
-    finish_mesh(mesh, format, columns, options, reverse)
+    finish_mesh(mesh, format, columns, material_indices, reverse)
 }
 
 fn finish_mesh(
     mesh: Mesh,
     format: Vec<VertexIdentifier>,
     columns: Vec<AttributeValues>,
-    options: &RdmExportOptions,
+    material_indices: Option<&[u32]>,
     reverse: bool,
 ) -> Result<RdmModel, Box<dyn Error>> {
     let mut bounds_min = [f32::INFINITY; 3];
@@ -319,10 +316,7 @@ fn finish_mesh(
                 Ok(RdmMeshGroup {
                     first_index: u32::try_from(primitive.indices.start)?,
                     index_count: u32::try_from(primitive.indices.len())?,
-                    material: options
-                        .material_indices
-                        .as_ref()
-                        .map_or(primitive.material, |v| v[i]),
+                    material: material_indices.map_or(primitive.material, |v| v[i]),
                 })
             })
             .collect::<Result<_, Box<dyn Error>>>()?,

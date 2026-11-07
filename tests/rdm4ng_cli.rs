@@ -535,6 +535,128 @@ fn rdm_command_and_alias_match_legacy_output() {
             fs::read(&expected).unwrap()
         );
     }
+    // Only active-scene instances are imported; repeated mesh definitions stay separate models.
+    use rdm4lib::rdm::{RdmDocument, RdmReader};
+    let bytes = fs::read(&input).unwrap();
+    let glb = gltf::Glb::from_slice(&bytes).unwrap();
+    let mut root: serde_json::Value = serde_json::from_slice(&glb.json).unwrap();
+    root["buffers"][0]["uri"] = "multi.bin".into();
+    fs::write(output.path().join("multi.bin"), glb.bin.unwrap()).unwrap();
+    root["materials"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({}));
+    let mut mesh = root["meshes"][0].clone();
+    mesh["primitives"][0]["material"] = 2.into();
+    mesh["primitives"][1]["material"] = 0.into();
+    root["meshes"] = serde_json::json!([mesh.clone(), mesh.clone(), mesh]);
+    root["nodes"] = serde_json::json!([
+        {"name": "outside", "mesh": 0, "translation": [90, 0, 0]},
+        {"name": "parent", "translation": [1, 2, 3], "children": [2, 3]},
+        {"name": "first", "mesh": 1},
+        {"name": "instance", "mesh": 1, "translation": [4, 0, 0]},
+        {"name": "unreferenced", "mesh": 2}
+    ]);
+    root["scenes"] = serde_json::json!([{"nodes": [0]}, {"nodes": [1]}]);
+    root["scene"] = 1.into();
+    let input = output.path().join("multi.gltf");
+    fs::write(&input, serde_json::to_vec(&root).unwrap()).unwrap();
+    let destination = output.path().join("all.rdm");
+    succeeds(
+        ng().arg("rdm")
+            .arg(&input)
+            .args(["--format", "P4h_N4b_G4b_B4b_T2h"])
+            .arg("-o")
+            .arg(&destination),
+    );
+    let read = |path: &Path| {
+        RdmReader::new(std::io::Cursor::new(fs::read(path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value
+    };
+    let document = read(&destination);
+    let models = document.models.unwrap();
+    assert_eq!(models.len(), 2);
+    // Baking into half precision can round the two translated extrema differently.
+    assert!((models[1].bounds_min[0] - models[0].bounds_min[0] - 4.0).abs() < 0.01);
+    assert!((models[1].bounds_max[0] - models[0].bounds_max[0] - 4.0).abs() < 0.01);
+    for model in &models {
+        assert_eq!(
+            model
+                .groups
+                .iter()
+                .map(|group| group.material)
+                .collect::<Vec<_>>(),
+            [2, 0]
+        );
+    }
+    succeeds(
+        ng().arg("rdm")
+            .arg(&input)
+            .args([
+                "--format",
+                "P4h_N4b_G4b_B4b_T2h",
+                "--material-indices",
+                "4",
+                "3",
+                "2",
+                "1",
+                "--force",
+            ])
+            .arg("-o")
+            .arg(&destination),
+    );
+    assert_eq!(
+        read(&destination)
+            .models
+            .unwrap()
+            .iter()
+            .flat_map(|model| model.groups.iter().map(|group| group.material))
+            .collect::<Vec<_>>(),
+        [4, 3, 2, 1]
+    );
+    succeeds(
+        legacy()
+            .arg("--gltf=P4h_N4b_G4b_B4b_T2h")
+            .arg("-i")
+            .arg(&input)
+            .arg("-o")
+            .arg(output.path().join("first.rdm")),
+    );
+    assert_eq!(
+        read(&output.path().join("first.rdm")).models.unwrap().len(),
+        1
+    );
+    succeeds(
+        ng().arg("rdm")
+            .arg(&input)
+            .args([
+                "--format",
+                "P4h_N4b_G4b_B4b_T2h",
+                "--mesh-index",
+                "1",
+                "--force",
+            ])
+            .arg("-o")
+            .arg(&destination),
+    );
+    assert_eq!(read(&destination).models.unwrap().len(), 1);
+    let invalid = ng()
+        .arg("rdm")
+        .arg(&input)
+        .args(["--format", "P4h_N4b_G4b_B4b_T2h", "--mesh-index", "99"])
+        .arg("-o")
+        .arg(output.path().join("invalid.rdm"))
+        .output()
+        .unwrap();
+    assert_eq!(invalid.status.code(), Some(1));
+    let error = String::from_utf8(invalid.stderr).unwrap();
+    assert!(
+        error.contains("mesh index 99") && !error.contains("panicked"),
+        "{error}"
+    );
 }
 
 #[test]

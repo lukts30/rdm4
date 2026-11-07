@@ -107,7 +107,7 @@ impl From<FileArgs> for Files {
 struct GltfArgs {
     #[command(flatten)]
     files: FileArgs,
-    /// Export one RDM model; animations/textures require selection for multi-model files.
+    /// Export one RDM model; DDS textures require selection for multi-model files.
     #[arg(long)]
     mesh_index: Option<usize>,
     /// Export the available skeleton.
@@ -131,9 +131,9 @@ struct RdmArgs {
     /// Target vertex format, e.g. P4h_N4b_G4b_B4b_T2h.
     #[arg(short, long)]
     format: TargetVertexFormat,
-    /// glTF mesh index.
-    #[arg(long, default_value = "0")]
-    mesh_index: u32,
+    /// Import one glTF mesh definition; otherwise import all mesh nodes in the active scene.
+    #[arg(long)]
+    mesh_index: Option<u32>,
     /// Export the available skeleton.
     #[arg(short, long)]
     skeleton: bool,
@@ -152,7 +152,7 @@ struct RdmArgs {
     /// Mirror X and reverse triangle winding.
     #[arg(long, conflicts_with_all = ["skeleton", "animation"])]
     mirror_x: bool,
-    /// Override material indices in primitive order.
+    /// Override material slots in model and primitive order.
     #[arg(long, num_args = 1..)]
     material_indices: Option<Vec<u32>>,
     /// Joint identifiers: UniqueName or UnstableIndex.

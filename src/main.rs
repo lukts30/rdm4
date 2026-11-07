@@ -170,7 +170,7 @@ fn entry_do_work(opts: Opts) {
         commands::rdm(RdmOptions {
             files,
             format,
-            mesh_index: opts.gltf_mesh_index,
+            mesh_index: Some(opts.gltf_mesh_index),
             skeleton: opts.skeleton,
             animation: opts.animation,
             sampling_rate: None,

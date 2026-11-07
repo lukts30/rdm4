@@ -275,7 +275,7 @@ pub struct GltfOptions {
 pub struct RdmOptions {
     pub files: Files,
     pub format: TargetVertexFormat,
-    pub mesh_index: u32,
+    pub mesh_index: Option<u32>,
     pub skeleton: bool,
     pub animation: bool,
     pub sampling_rate: Option<u32>,
@@ -357,24 +357,29 @@ fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
         .value)
 }
 
-/// Convert a selected glTF mesh, optionally with skin and animation, to RDM.
+/// Convert selected geometry or all active-scene mesh nodes, optionally with skin and animation.
 pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     let output = opts.files.destination("rdm");
-    let gltf = ImportedGltf::try_import(
-        opts.files.input.as_path(),
-        opts.mesh_index,
-        opts.joint_names,
-    )?;
+    let mut gltf = ImportedGltf::load(opts.files.input.as_path(), opts.joint_names)?;
     let animations = (opts.skeleton && opts.animation).then_some(AnimationImportOptions {
         interpolate: opts.interpolate_animations,
         sampling_rate: opts.sampling_rate,
         ..Default::default()
     });
-    let scene = gltf.read_scene(opts.skeleton, animations)?;
-    let material_indices = Some(
+    let scene = if let Some(index) = opts.mesh_index {
+        gltf.select_mesh(index)?;
+        gltf.read_scene(opts.skeleton, animations)?
+    } else {
+        gltf.read_active_scene(opts.skeleton, animations)?
+    };
+    let material_indices = if opts.mesh_index.is_some() {
+        Some(
+            opts.material_indices
+                .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
+        )
+    } else {
         opts.material_indices
-            .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
-    );
+    };
     write_scene(
         scene,
         RdmExportOptions {

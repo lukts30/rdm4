@@ -271,7 +271,11 @@ impl RdmDocument {
     /// Pack typed scene values for RDM, applying only the explicit export decisions.
     pub fn from_scene(scene: Scene, options: RdmExportOptions) -> Result<Self, Box<dyn Error>> {
         if scene.skeletons.len() > 1 {
-            return Err("RDM export currently supports one skeleton".into());
+            return Err(format!(
+                "RDM export supports one skeleton, found {}; select one mesh instead",
+                scene.skeletons.len()
+            )
+            .into());
         }
         if scene.meshes.iter().any(|mesh| {
             mesh.skeleton
@@ -317,10 +321,27 @@ impl RdmDocument {
                 tracks,
             });
         }
+        let primitive_count: usize = scene.meshes.iter().map(|mesh| mesh.primitives.len()).sum();
+        if options
+            .material_indices
+            .as_ref()
+            .is_some_and(|v| v.len() != primitive_count)
+        {
+            return Err(format!(
+                "material override count must match {primitive_count} primitives across all models"
+            )
+            .into());
+        }
+        let mut offset = 0;
         let models = scene
             .meshes
             .into_iter()
-            .map(|mesh| super::packing::pack_mesh(mesh, &options))
+            .map(|mesh| {
+                let end = offset + mesh.primitives.len();
+                let materials = options.material_indices.as_ref().map(|v| &v[offset..end]);
+                offset = end;
+                super::packing::pack_mesh(mesh, &options, materials)
+            })
             .collect::<Result<_, _>>()?;
         let skin = scene.skeletons.into_iter().next().map(|skeleton| RdmSkin {
             joints: skeleton
