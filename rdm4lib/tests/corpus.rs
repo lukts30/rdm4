@@ -168,7 +168,10 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
             indices += word(&bytes, word(&bytes, model + 0x10) - 8);
             let format_at = word(&bytes, model + 4);
             let attributes = word(&bytes, format_at);
-            assert_eq!(decoded.vertex_format.selector, bytes[format_at + 4]);
+            assert_eq!(
+                decoded.vertex_format.selector as usize,
+                word(&bytes, format_at + 4)
+            );
             let legacy: Vec<VertexIdentifier> = (0..word(&bytes, attributes - 8))
                 .map(|i| {
                     Cursor::new(&bytes[attributes + i * 16..])

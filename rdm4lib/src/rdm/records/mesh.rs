@@ -100,8 +100,8 @@ pub struct RdmExportInfo {
 pub struct RdmVertexFormat {
     /// Attributes in their order within each vertex.
     pub attributes: Vec<VertexIdentifier>,
-    /// Stored vertex/skin selector, preserved without interpreting its values.
-    pub selector: u8,
+    /// Native 32-bit format parameter; its full semantics are not established.
+    pub selector: u32,
 }
 
 impl std::fmt::Display for RdmVertexFormat {

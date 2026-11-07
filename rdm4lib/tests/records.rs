@@ -138,6 +138,41 @@ fn word(bytes: &[u8], at: usize) -> usize {
 }
 
 #[test]
+fn vertex_format_selector_is_a_full_word_in_both_orders() {
+    let format = RdmVertexFormat {
+        selector: 0x12345678,
+        attributes: vec![VertexIdentifier {
+            semantic: VertexSemantic::Position,
+            storage_type: StorageType::F32,
+            interpretation: VertexInterpretation(0),
+            storage_count: 3,
+        }],
+    };
+    for endian in [RdmEndian::Little, RdmEndian::Big] {
+        let bytes = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_root(&format)
+            .unwrap()
+            .into_inner();
+        let expected = match endian {
+            RdmEndian::Little => [0x78, 0x56, 0x34, 0x12],
+            RdmEndian::Big => [0x12, 0x34, 0x56, 0x78],
+        };
+        assert_eq!(bytes[32..36], expected);
+        let decoded = RdmReader::new(Cursor::new(&bytes))
+            .unwrap()
+            .read_root::<RdmVertexFormat>()
+            .unwrap();
+        assert_eq!(decoded.value, format);
+        assert_eq!(decoded.layout.blocks[0].known_size, 8);
+        let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
+            .write_preserving(&decoded.value, decoded.layout)
+            .unwrap()
+            .into_inner();
+        assert_eq!(output, bytes);
+    }
+}
+
+#[test]
 fn reads_corpus_material_ranges_from_buffered_files() {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rdm/benchmark");
     let manifest: Vec<Value> =

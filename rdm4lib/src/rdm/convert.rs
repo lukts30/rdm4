@@ -133,7 +133,7 @@ impl TryFrom<RdModell> for RdmDocument {
         let with_skin = model.has_skin();
         let format = RdmVertexFormat {
             attributes: model.vertex.identifiers.to_vec(),
-            selector: u8::from(with_skin),
+            selector: u32::from(with_skin),
         };
         let vertices = vertices_from_bytes(
             model.vertex.as_bytes(),
