@@ -39,14 +39,13 @@ impl FromStr for ResolveNodeName {
     }
 }
 
-/// Loaded glTF document and accessor buffers, with a selected mesh.
+/// Loaded glTF document and accessor buffers, with optional mesh selection.
 pub struct ImportedGltf {
     gltf: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
     /// Policy for joint names.
     pub name_setting: ResolveNodeName,
-    mesh_idx: u32,
-    mesh_node: u32,
+    selected_node: Option<usize>,
 }
 
 impl TryFrom<&Path> for ImportedGltf {
@@ -63,30 +62,39 @@ impl ImportedGltf {
         mesh_idx: u32,
         joint_name_src: ResolveNodeName,
     ) -> Result<Self, gltf::Error> {
-        let (gltf, buffers, _) = gltf::import(path)?;
-        let mut result = Self {
-            gltf,
-            buffers,
-            name_setting: joint_name_src,
-            mesh_idx: 0,
-            mesh_node: 0,
-        };
+        let mut result = Self::load(path, joint_name_src)?;
         result.change_mesh_index(mesh_idx);
         Ok(result)
     }
 
+    /// Load without selecting a mesh, allowing all mesh nodes in the active scene.
+    pub fn load(path: &Path, joint_name_src: ResolveNodeName) -> Result<Self, gltf::Error> {
+        let (gltf, buffers, _) = gltf::import(path)?;
+        Ok(Self {
+            gltf,
+            buffers,
+            name_setting: joint_name_src,
+            selected_node: None,
+        })
+    }
+
     /// Select a mesh using the legacy first-instance behavior.
     pub fn change_mesh_index(&mut self, index: u32) {
-        self.mesh_idx = index;
-        self.mesh_node = self
+        self.select_mesh(index).expect("selected mesh has no node");
+    }
+
+    /// Select a mesh definition's first instance, reporting absent indices.
+    pub fn select_mesh(&mut self, index: u32) -> Result<(), Box<dyn Error>> {
+        let node = self
             .gltf
             .nodes()
             .find(|node| {
                 node.mesh()
                     .is_some_and(|mesh| mesh.index() == index as usize)
             })
-            .expect("selected mesh has no node")
-            .index() as u32;
+            .ok_or_else(|| format!("mesh index {index} has no node"))?;
+        self.selected_node = Some(node.index());
+        Ok(())
     }
 
     fn check_node_name_uniqueness(&self, joints: &[usize]) {
@@ -122,21 +130,96 @@ impl ImportedGltf {
         load_skin: bool,
         animations: Option<AnimationImportOptions>,
     ) -> Result<Scene, Box<dyn Error>> {
-        let skeletons = if load_skin {
-            vec![self.read_skin()?]
-        } else {
-            Vec::new()
-        };
-        let clips = match (skeletons.first(), animations) {
-            (Some(skeleton), Some(options)) => self.read_scene_animations(skeleton, 0, options)?,
-            (None, Some(_)) => return Err("animation import requires a skeleton".into()),
-            _ => Vec::new(),
-        };
-        Ok(Scene {
-            meshes: vec![self.read_mesh(load_skin)?],
-            skeletons,
-            animations: clips,
-        })
+        let node = self.selected_node.ok_or("no mesh selected")?;
+        if load_skin && self.gltf.nodes().nth(node).unwrap().skin().is_none() {
+            return Err("requested skeleton is absent".into());
+        }
+        self.read_nodes(&[node], load_skin, animations)
+    }
+
+    /// Import every mesh node in the default glTF scene, or the first scene if
+    /// none is marked default. Repeated mesh instances retain their own transforms.
+    pub fn read_active_scene(
+        &self,
+        load_skin: bool,
+        animations: Option<AnimationImportOptions>,
+    ) -> Result<Scene, Box<dyn Error>> {
+        let active = self
+            .gltf
+            .default_scene()
+            .or_else(|| self.gltf.scenes().next())
+            .ok_or("input has no glTF scene")?;
+        let mut pending = active.nodes().collect::<Vec<_>>();
+        pending.reverse();
+        let mut visited = HashSet::new();
+        let mut meshes = Vec::new();
+        while let Some(node) = pending.pop() {
+            if !visited.insert(node.index()) {
+                return Err("glTF scene contains repeated or cyclic node references".into());
+            }
+            if node.mesh().is_some() {
+                meshes.push(node.index());
+            }
+            let mut children = node.children().collect::<Vec<_>>();
+            children.reverse();
+            pending.extend(children);
+        }
+        if meshes.is_empty() {
+            return Err("active glTF scene contains no mesh nodes".into());
+        }
+        self.read_nodes(&meshes, load_skin, animations)
+    }
+
+    fn read_nodes(
+        &self,
+        nodes: &[usize],
+        load_skin: bool,
+        animations: Option<AnimationImportOptions>,
+    ) -> Result<Scene, Box<dyn Error>> {
+        let mut scene = Scene::default();
+        let mut skins = HashMap::new();
+        let mut joint_nodes = Vec::new();
+        for &node_index in nodes {
+            let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
+            let skeleton = if let Some(skin) = node.skin().filter(|_| load_skin) {
+                let index = if let Some(&index) = skins.get(&skin.index()) {
+                    index
+                } else {
+                    let (skeleton, source_nodes) = self.read_skin(node_index)?;
+                    let index = scene.skeletons.len();
+                    scene.skeletons.push(skeleton);
+                    joint_nodes.push(source_nodes);
+                    skins.insert(skin.index(), index);
+                    index
+                };
+                Some(index)
+            } else {
+                None
+            };
+            scene.meshes.push(self.read_mesh(node_index, skeleton)?);
+        }
+        if load_skin && scene.skeletons.is_empty() {
+            return Err("requested skeleton is absent".into());
+        }
+        if let Some(options) = animations {
+            if !load_skin {
+                return Err("animation import requires a skeleton".into());
+            }
+            for (index, skeleton) in scene.skeletons.iter().enumerate() {
+                let names = skeleton
+                    .joints
+                    .iter()
+                    .map(|joint| joint.name.as_str())
+                    .collect::<Vec<_>>();
+                scene.animations.extend(self.read_clips(
+                    &names,
+                    index,
+                    &joint_nodes[index],
+                    options,
+                )?);
+            }
+        }
+        Ok(scene)
     }
 
     /// Compatibility API; new callers should import a scene and choose RDM export options.
@@ -190,12 +273,13 @@ impl ImportedGltf {
         model
     }
 
-    fn read_mesh(&self, load_skin: bool) -> Result<Mesh, Box<dyn Error>> {
-        let mesh = self
-            .gltf
-            .meshes()
-            .nth(self.mesh_idx as usize)
-            .ok_or("selected mesh is absent")?;
+    fn read_mesh(
+        &self,
+        node_index: usize,
+        skeleton: Option<usize>,
+    ) -> Result<Mesh, Box<dyn Error>> {
+        let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
+        let mesh = node.mesh().ok_or("node has no mesh")?;
         let mut semantics: BTreeSet<_> = mesh
             .primitives()
             .flat_map(|primitive| primitive.attributes().map(|(semantic, _)| semantic))
@@ -399,23 +483,24 @@ impl ImportedGltf {
                 material: primitive.material().index().unwrap_or(0) as u32,
             });
         }
-        let transform = build_transform2(&self.gltf, self.mesh_node as usize);
+        let transform = build_transform2(&self.gltf, node_index);
         let result = Mesh {
-            name: mesh.name().map(str::to_owned),
+            name: node.name().or_else(|| mesh.name()).map(str::to_owned),
             vertex_count,
             attributes,
             indices,
             primitives,
-            skeleton: load_skin.then_some(0),
+            skeleton,
             transform: Some(transform.into()),
         };
         result.validate()?;
         Ok(result)
     }
 
-    fn read_skin(&self) -> Result<Skeleton, Box<dyn Error>> {
-        let joints = self
-            .read_bind_poses()?
+    fn read_skin(&self, node_index: usize) -> Result<(Skeleton, Vec<usize>), Box<dyn Error>> {
+        let poses = self.read_bind_poses_for(node_index)?;
+        let source_nodes = poses.iter().map(|(node, _, _)| *node).collect();
+        let joints = poses
             .into_iter()
             .map(|(node, parent, pose)| {
                 let rotation =
@@ -432,15 +517,15 @@ impl ImportedGltf {
                 }
             })
             .collect();
-        Ok(Skeleton { joints })
+        Ok((Skeleton { joints }, source_nodes))
     }
 
     fn read_bind_poses(&self) -> Result<Vec<BindPose>, Box<dyn Error>> {
-        let node = self
-            .gltf
-            .nodes()
-            .nth(self.mesh_node as usize)
-            .expect("mesh node exists");
+        self.read_bind_poses_for(self.selected_node.ok_or("no mesh selected")?)
+    }
+
+    fn read_bind_poses_for(&self, node_index: usize) -> Result<Vec<BindPose>, Box<dyn Error>> {
+        let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
         let skin = node.skin().ok_or("requested skeleton is absent")?;
         let mut nodes: Vec<_> = skin.joints().map(|node| node.index()).collect();
         let mut parents = vec![None; self.gltf.nodes().len()];

@@ -16,6 +16,7 @@ use crate::{
 };
 
 /// Controls conversion from independent glTF channels to RDM pose tracks.
+#[derive(Clone, Copy)]
 pub struct AnimationImportOptions {
     /// Bake glTF interpolation at the nominal rate, retaining every original key.
     /// STEP and cubic curves are approximated between the resulting RDM samples.
@@ -216,8 +217,13 @@ impl ImportedGltf {
             .iter()
             .map(|joint| joint.name.as_str())
             .collect::<Vec<_>>();
+        let nodes = self
+            .read_bind_poses()?
+            .into_iter()
+            .map(|(node, _, _)| node)
+            .collect::<Vec<_>>();
         Ok(self
-            .read_clips(&names, 0, options)?
+            .read_clips(&names, 0, &nodes, options)?
             .into_iter()
             .map(|clip| RdAnim {
                 name: clip.name,
@@ -258,20 +264,21 @@ impl ImportedGltf {
             .iter()
             .map(|joint| joint.name.as_str())
             .collect::<Vec<_>>();
-        self.read_clips(&names, skeleton_index, options)
-    }
-
-    fn read_clips(
-        &self,
-        joints: &[&str],
-        skeleton_index: usize,
-        options: AnimationImportOptions,
-    ) -> Result<Vec<Animation>, Box<dyn Error>> {
-        let joint_nodes = self
+        let nodes = self
             .read_bind_poses()?
             .into_iter()
             .map(|(node, _, _)| node)
             .collect::<Vec<_>>();
+        self.read_clips(&names, skeleton_index, &nodes, options)
+    }
+
+    pub(super) fn read_clips(
+        &self,
+        joints: &[&str],
+        skeleton_index: usize,
+        joint_nodes: &[usize],
+        options: AnimationImportOptions,
+    ) -> Result<Vec<Animation>, Box<dyn Error>> {
         let mut result = Vec::new();
         for (index, animation) in self.gltf.animations().enumerate() {
             let rate = options

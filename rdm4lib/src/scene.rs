@@ -386,11 +386,17 @@ mod tests {
                 .flatten()
                 .all(|i| usize::from(i) < joint_count));
         }
-        let imported =
-            crate::gltf_reader::ImportedGltf::try_from(output.path().join("out.glb").as_path())
-                .unwrap()
-                .read_scene(true, Some(Default::default()))
-                .unwrap();
+        let imported = crate::gltf_reader::ImportedGltf::load(
+            output.path().join("out.glb").as_path(),
+            crate::gltf_reader::ResolveNodeName::UniqueName,
+        )
+        .unwrap()
+        .read_active_scene(true, Some(Default::default()))
+        .unwrap();
+        assert_eq!(imported.meshes.len(), 2);
+        assert_eq!(imported.skeletons.len(), 1);
+        assert_eq!(imported.animations.len(), 1);
+        assert!(imported.meshes.iter().all(|mesh| mesh.skeleton == Some(0)));
         let target = imported.skeletons[0]
             .joints
             .iter()
