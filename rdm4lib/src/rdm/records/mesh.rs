@@ -64,18 +64,8 @@ pub struct RdmVertices {
     pub attributes: Vec<RdmAttributeValues>,
 }
 
-/// Scalar values of one vertex attribute; packed values remain integer words.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RdmAttributeValues {
-    /// Unsigned 16-bit components.
-    U16(Vec<u16>),
-    /// Unsigned 32-bit components or packed words.
-    U32(Vec<u32>),
-    /// Half-precision components.
-    F16(Vec<half::f16>),
-    /// Single-precision components.
-    F32(Vec<f32>),
-}
+/// Compatibility name for the shared typed attribute column.
+pub use crate::scene::AttributeValues as RdmAttributeValues;
 
 /// Decoded indices, widened from the original U16 or U32 representation.
 #[derive(Debug, Clone, PartialEq, Eq)]

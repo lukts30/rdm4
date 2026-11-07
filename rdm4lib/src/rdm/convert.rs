@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
-    scene::Scene,
+    scene::{Attribute, Mesh, Primitive, Scene},
     vertex::{StorageType, VertexFormat2},
     MeshInfo, RdJoint, RdModell, Triangle,
 };
@@ -234,7 +234,7 @@ impl RdmDocument {
             .models
             .unwrap_or_default()
             .into_iter()
-            .map(RdModell::try_from)
+            .map(Mesh::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         if meshes.is_empty() {
             return Err("input contains no models".into());
@@ -289,6 +289,43 @@ impl RdmDocument {
                 })
                 .collect(),
         })
+    }
+}
+
+impl TryFrom<RdmModel> for Mesh {
+    type Error = Box<dyn Error>;
+
+    fn try_from(model: RdmModel) -> Result<Self, Self::Error> {
+        if model.vertex_format.attributes.len() != model.vertices.attributes.len() {
+            return Err("vertex descriptors and attribute columns disagree".into());
+        }
+        let mesh = Self {
+            name: model.name.name,
+            vertex_count: model.vertices.count,
+            attributes: model
+                .vertex_format
+                .attributes
+                .into_iter()
+                .zip(model.vertices.attributes)
+                .map(|(descriptor, values)| Attribute { descriptor, values })
+                .collect(),
+            indices: model.indices.values,
+            primitives: model
+                .groups
+                .into_iter()
+                .map(|group| {
+                    Ok(Primitive {
+                        indices: group.first_index as usize
+                            ..usize::try_from(
+                                u64::from(group.first_index) + u64::from(group.index_count),
+                            )?,
+                        material: group.material,
+                    })
+                })
+                .collect::<Result<_, Box<dyn Error>>>()?,
+        };
+        mesh.validate()?;
+        Ok(mesh)
     }
 }
 

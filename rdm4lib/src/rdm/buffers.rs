@@ -266,12 +266,7 @@ pub(super) fn vertex_bytes(
         .zip(&vertices.attributes)
         .enumerate()
     {
-        let (storage, len) = match values {
-            RdmAttributeValues::U16(v) => (StorageType::U16, v.len()),
-            RdmAttributeValues::U32(v) => (StorageType::U32, v.len()),
-            RdmAttributeValues::F16(v) => (StorageType::F16, v.len()),
-            RdmAttributeValues::F32(v) => (StorageType::F32, v.len()),
-        };
+        let (storage, len) = values.storage_and_len();
         let components = attribute.storage_count as usize;
         let count = vertices.count * components;
         if storage != attribute.storage_type || len != count {

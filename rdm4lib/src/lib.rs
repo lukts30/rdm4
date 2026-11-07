@@ -20,11 +20,27 @@ pub mod scene;
 pub mod vertex;
 pub mod vertex_transform;
 use crate::rdm_anim::RdAnim;
+use rdm_material::RdMaterial;
 
 use vertex::VertexFormat2;
 
-/// Compatibility name for the shared scene mesh.
-pub use scene::Mesh as RdModell;
+/// Compatibility mesh used by the selected and rigged conversion paths.
+pub struct RdModell {
+    /// Optional source model name.
+    pub name: Option<String>,
+    pub(crate) pending_joints: Option<Vec<RdJoint>>,
+    /// Draw ranges and material slots.
+    pub mesh_info: Vec<MeshInfo>,
+    /// Activated skeleton.
+    pub joints: Option<Vec<RdJoint>>,
+    /// Triangle indices into the vertex buffer.
+    pub triangle_indices: Vec<Triangle>,
+    /// Vertex attributes and their current packed storage.
+    pub vertex: VertexFormat2,
+    pub(crate) anim: Option<RdAnim>,
+    /// Optional external texture inputs.
+    pub mat: Option<RdMaterial>,
+}
 
 pub mod rdm_container;
 pub mod rdm_data_anim;

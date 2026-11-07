@@ -1,0 +1,178 @@
+//! Static scene export directly from typed attribute columns.
+
+#![forbid(unsafe_code)]
+
+use std::{collections::BTreeMap, error::Error, path::PathBuf};
+
+use gltf::json::{self, validation::Checked::Valid};
+
+use super::{mesh_node, GltfExportFormat, RdGltf};
+use crate::{
+    gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
+    scene::{Mesh, Scene},
+    vertex::VertexSemantic,
+};
+
+/// Export all static meshes, retaining source names, draw ranges and material slots.
+pub fn build_scene(
+    scene: Scene,
+    dir: Option<PathBuf>,
+    create_new: bool,
+    config: GltfExportFormat,
+) -> Result<(), Box<dyn Error>> {
+    let material_count = scene
+        .meshes
+        .iter()
+        .flat_map(|mesh| &mesh.primitives)
+        .map(|primitive| primitive.material)
+        .max()
+        .ok_or("scene contains no primitives")?;
+    let mut binary = GltfBuffers::default();
+    let mut meshes = Vec::new();
+    let mut nodes = Vec::new();
+    for mesh in scene.meshes {
+        mesh.validate()?;
+        let index = json::Index::new(meshes.len() as u32);
+        meshes.push(export_mesh(&mesh, &mut binary)?);
+        nodes.push(mesh_node(index, mesh.name));
+    }
+    let mut root = json::Root {
+        scenes: vec![json::Scene {
+            nodes: (0..nodes.len())
+                .map(|i| json::Index::new(i as u32))
+                .collect(),
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+        }],
+        scene: Some(json::Index::new(0)),
+        nodes,
+        meshes,
+        materials: (0..=material_count)
+            .map(|_| json::Material::default())
+            .collect(),
+        ..Default::default()
+    };
+    let buffers = binary.finish(&mut root, config != GltfExportFormat::GltfSeparate);
+    RdGltf { root, buffers }.write_gltf(dir, None, create_new, config);
+    Ok(())
+}
+
+fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<dyn Error>> {
+    use json::{
+        accessor::{ComponentType, Type},
+        mesh::Semantic,
+    };
+
+    let find = |semantic| {
+        mesh.attributes
+            .iter()
+            .find(|attribute| attribute.descriptor.semantic == semantic)
+    };
+    let positions = find(VertexSemantic::Position)
+        .ok_or("mesh has no position attribute")?
+        .floats(3)?;
+    let mut min = [f32::MAX; 3];
+    let mut max = [f32::MIN; 3];
+    for position in positions.as_chunks::<3>().0 {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(position[axis]);
+            max[axis] = max[axis].max(position[axis]);
+        }
+    }
+    let position = binary.push_attribute(
+        floats(&positions),
+        AccessorBuilder::new(mesh.vertex_count, Type::Vec3, ComponentType::F32)
+            .bounds(Some(json::Value::from(min)), Some(json::Value::from(max))),
+        Some(Valid(json::buffer::Target::ArrayBuffer)),
+    );
+    let mut attributes = BTreeMap::from([(Valid(Semantic::Positions), position)]);
+    let mut indices = Vec::new();
+    for primitive in &mesh.primitives {
+        let values = &mesh.indices[primitive.indices.clone()];
+        let bytes = values
+            .iter()
+            .flat_map(|index| index.to_le_bytes())
+            .collect();
+        indices.push(binary.push_attribute(
+            BufferContainer::U8(bytes),
+            AccessorBuilder::new(values.len(), Type::Scalar, ComponentType::U32),
+            None,
+        ));
+    }
+    // Retain the existing static export order and attribute coverage during migration.
+    for (source, semantic, width, shape) in [
+        (
+            VertexSemantic::Texcoord,
+            Semantic::TexCoords(0),
+            2,
+            Type::Vec2,
+        ),
+        (VertexSemantic::Normal, Semantic::Normals, 3, Type::Vec3),
+        (VertexSemantic::Tangent, Semantic::Tangents, 3, Type::Vec4),
+    ] {
+        let Some(attribute) = find(source) else {
+            continue;
+        };
+        let tangent = semantic == Semantic::Tangents;
+        let width = if tangent && attribute.descriptor.storage_count == 4 {
+            4
+        } else {
+            width
+        };
+        let values = attribute.floats(width)?;
+        let payload = if tangent && width == 3 {
+            BufferContainer::U8(
+                values
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .flat_map(|xyz| {
+                        xyz.iter()
+                            .copied()
+                            .chain(std::iter::once(1.0))
+                            .flat_map(f32::to_le_bytes)
+                    })
+                    .collect(),
+            )
+        } else {
+            floats(&values)
+        };
+        let accessor = binary.push_attribute(
+            payload,
+            AccessorBuilder::new(mesh.vertex_count, shape, ComponentType::F32),
+            None,
+        );
+        attributes.insert(Valid(semantic), accessor);
+    }
+    let primitives = mesh
+        .primitives
+        .iter()
+        .zip(indices)
+        .map(|(primitive, indices)| json::mesh::Primitive {
+            attributes: attributes.clone(),
+            indices: Some(indices),
+            material: Some(json::Index::new(primitive.material)),
+            mode: Valid(json::mesh::Mode::Triangles),
+            extensions: Default::default(),
+            extras: Default::default(),
+            targets: None,
+        })
+        .collect();
+    Ok(json::Mesh {
+        name: mesh.name.clone(),
+        primitives,
+        extensions: Default::default(),
+        extras: Default::default(),
+        weights: None,
+    })
+}
+
+fn floats(values: &[f32]) -> BufferContainer {
+    BufferContainer::U8(
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect(),
+    )
+}

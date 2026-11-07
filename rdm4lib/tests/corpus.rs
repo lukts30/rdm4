@@ -520,9 +520,9 @@ fn assert_exports_all_models(id: usize) {
         .meshes
         .iter()
         .map(|mesh| {
-            mesh.mesh_info
+            mesh.primitives
                 .iter()
-                .map(|group| (group.material, group.index_count as usize))
+                .map(|group| (group.material, group.indices.len()))
                 .collect()
         })
         .collect();

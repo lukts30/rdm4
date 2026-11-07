@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    gltf_buffers::{BufferContainer, GltfBuffers},
+    gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
     rdm_material::RdMaterial,
-    scene::{Mesh, Scene},
     vertex::*,
     MeshInfo, RdJoint, RdModell,
 };
@@ -13,7 +12,6 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
     env,
-    error::Error,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
@@ -22,6 +20,9 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use nalgebra::*;
+
+mod scene;
+pub use scene::build_scene;
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 #[allow(dead_code)]
@@ -36,7 +37,7 @@ struct RdGltfBuilder {
     attr_map: BTreeMap<json::validation::Checked<Semantic>, json::Index<json::Accessor>>,
     idx: Option<Vec<u32>>,
 
-    rdm: Mesh,
+    rdm: RdModell,
     skin: Option<json::Skin>,
     anim_node: Option<json::Animation>,
     material_idx: Option<Vec<u32>>,
@@ -47,7 +48,7 @@ struct RdGltfBuilder {
 }
 
 impl RdGltfBuilder {
-    fn new(rdm: Mesh) -> Self {
+    fn new(rdm: RdModell) -> Self {
         RdGltfBuilder {
             binary: GltfBuffers::default(),
             nodes: Vec::new(),
@@ -747,26 +748,16 @@ impl RdGltfBuilder {
         amax: Option<json::Value>,
         target: Option<json::validation::Checked<gltf::buffer::Target>>,
     ) -> u32 {
-        let vattr_len = self.rdm.vertex.len();
-
-        let view = self.binary.push_buffer_view(buffer, target);
-
-        let normals_acc = json::Accessor {
-            buffer_view: Some(view),
-            byte_offset: None,
-            count: USize64(count.unwrap_or(vattr_len) as u64),
-            component_type: Valid(json::accessor::GenericComponentType(component_type)),
-            extensions: Default::default(),
-            extras: Default::default(),
-            type_: Valid(acctype),
-            min: amin,
-            max: amax,
-            name: None,
-            normalized: false,
-            sparse: None,
-        };
-
-        let accessor = self.binary.push_accessor(normals_acc);
+        let accessor = self.binary.push_attribute(
+            buffer,
+            AccessorBuilder::new(
+                count.unwrap_or(self.rdm.vertex.len()) as usize,
+                acctype,
+                component_type,
+            )
+            .bounds(amin, amax),
+            target,
+        );
 
         if let Some(semantic) = semantic {
             self.attr_map.insert(Valid(semantic), accessor);
@@ -774,25 +765,11 @@ impl RdGltfBuilder {
         accessor.value() as u32
     }
 
-    fn needs_normalizing(&self, semantic: VertexSemantic) -> bool {
-        self.rdm
-            .vertex
-            .identifiers
-            .iter()
-            .find(|attribute| attribute.semantic == semantic)
-            .is_some_and(|attribute| attribute.storage_type != StorageType::F32)
-    }
-
-    fn put_normal(&mut self, normalize_floats: bool) {
-        let normalize = normalize_floats || self.needs_normalizing(VertexSemantic::Normal);
+    fn put_normal(&mut self) {
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
         if let Some(iter) = self.rdm.vertex.iter::<N4b, N3f>(0) {
             for n4b in iter {
-                let n = if normalize {
-                    n4b.normalise().data
-                } else {
-                    n4b.data
-                };
+                let n = n4b.normalise().data;
                 buff.put_f32_le(n[0]);
                 buff.put_f32_le(n[1]);
                 buff.put_f32_le(n[2]);
@@ -813,17 +790,12 @@ impl RdGltfBuilder {
         }
     }
 
-    fn put_tangent(&mut self, normalize_floats: bool) {
-        let normalize = normalize_floats || self.needs_normalizing(VertexSemantic::Tangent);
+    fn put_tangent(&mut self) {
         let mut buff = BytesMut::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
 
         if let Some(iter) = self.rdm.vertex.iter::<G4b, G3f>(0) {
             for g3f in iter {
-                let t = if normalize {
-                    g3f.normalise().data
-                } else {
-                    g3f.data
-                };
+                let t = g3f.normalise().data;
                 buff.put_f32_le(t[0]);
                 buff.put_f32_le(t[1]);
                 buff.put_f32_le(t[2]);
@@ -917,7 +889,7 @@ impl RdGltfBuilder {
 
         // if nodes vec is non empty than put_joint_nodes already added a scene root node to the end
         if self.nodes.is_empty() {
-            let scene_root_node = Self::mesh_node(json::Index::new(0), None);
+            let scene_root_node = mesh_node(json::Index::new(0), None);
             self.nodes.push(scene_root_node);
         }
 
@@ -925,23 +897,6 @@ impl RdGltfBuilder {
         let root_node_idx = json::Index::new((self.nodes.len() - 1) as u32);
 
         self.finish(vec![mesh], vec![root_node_idx], single_buffer)
-    }
-
-    fn mesh_node(mesh: json::Index<json::Mesh>, name: Option<String>) -> json::Node {
-        json::Node {
-            camera: None,
-            children: None,
-            extensions: Default::default(),
-            extras: Default::default(),
-            matrix: None,
-            mesh: Some(mesh),
-            name,
-            rotation: None,
-            scale: None,
-            translation: None,
-            skin: None,
-            weights: None,
-        }
     }
 
     fn finish(
@@ -979,8 +934,8 @@ impl RdGltfBuilder {
     }
 }
 
-impl From<Mesh> for RdGltfBuilder {
-    fn from(rdm: Mesh) -> Self {
+impl From<RdModell> for RdGltfBuilder {
+    fn from(rdm: RdModell) -> Self {
         let has_skin = rdm.has_skin();
         let has_anim = rdm.anim.is_some();
 
@@ -992,8 +947,8 @@ impl From<Mesh> for RdGltfBuilder {
         b.put_tex();
         b.put_material(MeshInfo::get_max_material(&b.rdm.mesh_info) as usize + 1);
 
-        b.put_normal(true);
-        b.put_tangent(true);
+        b.put_normal();
+        b.put_tangent();
 
         if has_skin {
             b.put_joint_nodes(JointOption::ResolveParentNode);
@@ -1017,56 +972,21 @@ pub fn build(rdm: RdModell, dir: Option<PathBuf>, create_new: bool, config: Gltf
     p.write_gltf(dir, mat_opt, create_new, config);
 }
 
-/// Export every static scene mesh, retaining names, draw groups and material slots.
-/// Skeletons, animation and external textures still use the selected-mesh exporter.
-pub fn build_scene(
-    scene: Scene,
-    dir: Option<PathBuf>,
-    create_new: bool,
-    config: GltfExportFormat,
-) -> Result<(), Box<dyn Error>> {
-    if scene
-        .meshes
-        .iter()
-        .any(|mesh| mesh.has_skin() || mesh.anim.is_some() || mesh.mat.is_some())
-    {
-        return Err(
-            "scene export currently supports static meshes without external textures".into(),
-        );
+fn mesh_node(mesh: json::Index<json::Mesh>, name: Option<String>) -> json::Node {
+    json::Node {
+        camera: None,
+        children: None,
+        extensions: Default::default(),
+        extras: Default::default(),
+        matrix: None,
+        mesh: Some(mesh),
+        name,
+        rotation: None,
+        scale: None,
+        translation: None,
+        skin: None,
+        weights: None,
     }
-    let material_count = scene
-        .meshes
-        .iter()
-        .flat_map(|mesh| &mesh.mesh_info)
-        .map(|group| group.material)
-        .max()
-        .ok_or("scene contains no material groups")? as usize
-        + 1;
-    let mut remaining = scene.meshes.into_iter();
-    let first = remaining.next().ok_or("scene contains no meshes")?;
-    let mut builder = RdGltfBuilder::new(first);
-    builder.put_material(material_count);
-    let mut meshes = Vec::new();
-    let mut nodes = Vec::new();
-    loop {
-        builder.attr_map.clear();
-        builder.put_vertex();
-        builder.put_idx();
-        builder.put_tex();
-        builder.put_normal(false);
-        builder.put_tangent(false);
-        let name = builder.rdm.name.clone();
-        let mesh = json::Index::new(meshes.len() as u32);
-        meshes.push(builder.mesh(name.clone()));
-        nodes.push(json::Index::new(builder.nodes.len() as u32));
-        builder.nodes.push(RdGltfBuilder::mesh_node(mesh, name));
-        let Some(next) = remaining.next() else { break };
-        builder.rdm = next;
-    }
-    builder
-        .finish(meshes, nodes, config != GltfExportFormat::GltfSeparate)
-        .write_gltf(dir, None, create_new, config);
-    Ok(())
 }
 
 struct RdGltf {

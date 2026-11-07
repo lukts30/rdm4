@@ -7,6 +7,37 @@ use std::io::{self, Write};
 use bytes::Bytes;
 use gltf::json::{self, validation::USize64};
 
+/// Accessor metadata, separate from the binary payload and its placement.
+pub(crate) struct AccessorBuilder {
+    count: usize,
+    shape: json::accessor::Type,
+    component: json::accessor::ComponentType,
+    min: Option<json::Value>,
+    max: Option<json::Value>,
+}
+
+impl AccessorBuilder {
+    pub fn new(
+        count: usize,
+        shape: json::accessor::Type,
+        component: json::accessor::ComponentType,
+    ) -> Self {
+        Self {
+            count,
+            shape,
+            component,
+            min: None,
+            max: None,
+        }
+    }
+
+    pub fn bounds(mut self, min: Option<json::Value>, max: Option<json::Value>) -> Self {
+        self.min = min;
+        self.max = max;
+        self
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct GltfBuffers {
     pub buffers: Vec<json::Buffer>,
@@ -53,6 +84,30 @@ impl GltfBuffers {
         let index = self.accessors.len();
         self.accessors.push(accessor);
         json::Index::new(index as u32)
+    }
+
+    pub fn push_attribute(
+        &mut self,
+        payload: BufferContainer,
+        accessor: AccessorBuilder,
+        target: Option<json::validation::Checked<json::buffer::Target>>,
+    ) -> json::Index<json::Accessor> {
+        use json::validation::Checked::Valid;
+        let view = self.push_buffer_view(payload, target);
+        self.push_accessor(json::Accessor {
+            buffer_view: Some(view),
+            byte_offset: None,
+            count: USize64(accessor.count as u64),
+            component_type: Valid(json::accessor::GenericComponentType(accessor.component)),
+            type_: Valid(accessor.shape),
+            min: accessor.min,
+            max: accessor.max,
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            normalized: false,
+            sparse: None,
+        })
     }
 
     /// Finalize placement without decoding or changing any payload values.
