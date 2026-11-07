@@ -8,7 +8,6 @@ use rdm4lib::{
         RdmAnimation, RdmAttributeValues, RdmBlock, RdmDocument, RdmEndian, RdmMaterialEntry,
         RdmReader, RdmSkin, RdmWriter,
     },
-    rdm_anim::RdAnim,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -326,41 +325,6 @@ fn reads_first_model_of_each_multi_model_corpus_mesh() {
         assert_first_model(&fixture);
         let first = number(&fixture.expected["first_model"]["vertices"]);
         assert!(first < number(&fixture.expected["total_vertices"]));
-    }
-}
-
-#[test]
-fn reads_every_corpus_animation() {
-    let animations: Vec<_> = fixtures()
-        .into_iter()
-        .filter(|fixture| fixture.expected.get("animation").is_some())
-        .collect();
-    assert_eq!(animations.len(), 6);
-    for fixture in animations {
-        let path = fixture.path();
-        let animation = RdAnim::from(&path);
-        let expected = &fixture.expected["animation"];
-        assert_eq!(
-            animation.anim_vec.len(),
-            number(&expected["tracks"]),
-            "{path:?}"
-        );
-        let frames: usize = animation
-            .anim_vec
-            .iter()
-            .map(|track| track.frames.len())
-            .sum();
-        assert_eq!(frames, number(&expected["frames"]), "{path:?}");
-        assert_eq!(
-            animation.time_max as usize,
-            number(&expected["time_max"]),
-            "{path:?}"
-        );
-        assert_eq!(
-            animation.sampling_rate as usize,
-            number(&expected["sampling_rate"]),
-            "{path:?}"
-        );
     }
 }
 

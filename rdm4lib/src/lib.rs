@@ -7,7 +7,6 @@ mod gltf_buffers;
 pub mod gltf_export;
 pub mod gltf_reader;
 pub mod rdm;
-pub mod rdm_anim;
 pub mod rdm_material;
 pub mod scene;
 pub mod vertex;

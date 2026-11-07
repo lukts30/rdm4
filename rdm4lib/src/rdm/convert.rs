@@ -11,9 +11,8 @@ use super::{
     RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmExportOptions, RdmFrame, RdmJoint,
     RdmMaterial, RdmMaterialEntry, RdmModel, RdmSkin, RdmTrack, RdmWriter,
 };
-use crate::{
-    rdm_anim::{FrameCollection, RdAnim},
-    scene::{Animation, Attribute, Joint, Keyframe, Mesh, Primitive, Scene, Skeleton, Track},
+use crate::scene::{
+    Animation, Attribute, Joint, Keyframe, Mesh, Primitive, Scene, Skeleton, Track,
 };
 
 const LEGACY_NAME: &str = "basalt_crusher_others_lod0";
@@ -284,48 +283,30 @@ impl RdmDocument {
             ..Default::default()
         })
     }
-
-    /// Adapt one animation, retaining the filename-based name used by the legacy CLI.
-    pub fn into_animation(self, name: String) -> Result<RdAnim, Box<dyn Error>> {
-        let mut animations = self.animations.unwrap_or_default();
-        if animations.len() != 1 {
-            return Err(format!(
-                "animation export requires one animation, found {}",
-                animations.len()
-            )
-            .into());
-        }
-        let animation = animations.pop().expect("one animation was checked");
-        Ok(RdAnim {
-            name,
-            time_max: animation.time_max,
-            sampling_rate: animation.sampling_rate,
-            anim_vec: animation
-                .tracks
-                .into_iter()
-                .map(|track| FrameCollection {
-                    name: track.joint_name,
-                    frames: track.frames,
-                })
-                .collect(),
-        })
-    }
 }
 
-impl RdAnim {
-    /// Move RDM keys into a scene clip, resolving names within one skeleton.
-    /// Unmatched tracks are skipped, as in the legacy exporter.
-    pub fn into_scene_animation(
-        self,
+impl Scene {
+    /// Attach native RDM keys to a skeleton without resampling or normalizing them.
+    /// Unmatched tracks are skipped; duplicate joint names use the last match.
+    pub fn attach_rdm_animation(
+        &mut self,
+        animation: RdmAnimation,
         skeleton: usize,
-        joint_names: &[&str],
-    ) -> Result<Animation, Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error>> {
+        let joints = &self
+            .skeletons
+            .get(skeleton)
+            .ok_or("animation skeleton index is out of range")?
+            .joints;
         let mut tracks = Vec::new();
-        for track in self.anim_vec {
-            let Some(joint) = joint_names.iter().rposition(|name| *name == track.name) else {
+        for track in animation.tracks {
+            let Some(joint) = joints
+                .iter()
+                .rposition(|joint| joint.name == track.joint_name)
+            else {
                 warn!(
                     "Could not find animation target {:?} in skeleton",
-                    track.name
+                    track.joint_name
                 );
                 continue;
             };
@@ -346,15 +327,20 @@ impl RdAnim {
             });
         }
         if tracks.is_empty() {
-            return Err(format!("animation {:?} has no matching joint tracks", self.name).into());
+            return Err(format!(
+                "animation {:?} has no matching joint tracks",
+                animation.name
+            )
+            .into());
         }
-        Ok(Animation {
-            name: self.name,
+        self.animations.push(Animation {
+            name: animation.name,
             skeleton,
-            duration_millis: self.time_max,
-            sampling_rate: self.sampling_rate,
+            duration_millis: animation.time_max,
+            sampling_rate: animation.sampling_rate,
             tracks,
-        })
+        });
+        Ok(())
     }
 }
 
@@ -574,17 +560,26 @@ mod tests {
 
     #[test]
     fn preserves_sampling_rate_when_loading_and_writing_animation() {
+        let mut scene = read_source("rdm/basalt_crusher_others_lod0.rdm")
+            .value
+            .into_scene(true)
+            .unwrap();
         for sampling_rate in [1u32, 30, 60, 78] {
             let mut data = include_bytes!("../../rdm/basalt_crusher_others_idle01.rdm").to_vec();
             let animation = u32::from_le_bytes(data[0x2c..0x30].try_into().unwrap()) as usize;
             data[animation + 12..animation + 16].copy_from_slice(&sampling_rate.to_le_bytes());
-            let anim = crate::rdm_anim::RdAnim::new(data.clone(), "idle".into());
-            assert_eq!(anim.sampling_rate, sampling_rate);
             let document = RdmReader::new(Cursor::new(data))
                 .unwrap()
                 .read_root::<RdmDocument>()
                 .unwrap()
                 .value;
+            scene
+                .attach_rdm_animation(document.animations.as_ref().unwrap()[0].clone(), 0)
+                .unwrap();
+            assert_eq!(
+                scene.animations.last().unwrap().sampling_rate,
+                sampling_rate
+            );
             let writer = std::io::Cursor::new(Vec::new());
             let writer = crate::rdm::RdmWriter::new(writer, crate::rdm::RdmEndian::Little)
                 .write_root(&document)

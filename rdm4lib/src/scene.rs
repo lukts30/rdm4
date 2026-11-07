@@ -291,11 +291,18 @@ mod tests {
             [-x, -y, -z, w].map(f32::to_bits)
         );
         let joint_count = scene.skeletons[0].joints.len();
-        let mut animation = crate::rdm_anim::RdAnim::new(
-            include_bytes!("../rdm/basalt_crusher_others_idle01.rdm").to_vec(),
-            "working".into(),
-        );
-        let first = &mut animation.anim_vec[0].frames[0];
+        let mut animation = RdmReader::new(std::io::Cursor::new(include_bytes!(
+            "../rdm/basalt_crusher_others_idle01.rdm"
+        )))
+        .unwrap()
+        .read_root::<RdmDocument>()
+        .unwrap()
+        .value
+        .animations
+        .unwrap()
+        .remove(0);
+        animation.name = "working".into();
+        let first = &mut animation.tracks[0].frames[0];
         first.rotation = [-0.0, 0.0, -0.0, f32::from_bits(0x3f800001)];
         first.translation = [-0.0, 0.0, -0.0];
         let rotation = [
@@ -305,21 +312,14 @@ mod tests {
             -first.rotation[3],
         ];
         let translation = first.translation;
-        let animated_joint = animation.anim_vec[0].name.clone();
-        let times = animation.anim_vec[0]
+        let animated_joint = animation.tracks[0].joint_name.clone();
+        let times = animation.tracks[0]
             .frames
             .iter()
             .map(|frame| frame.time.to_bits())
             .collect::<Vec<_>>();
         let rate = animation.sampling_rate;
-        let names = scene.skeletons[0]
-            .joints
-            .iter()
-            .map(|joint| joint.name.as_str())
-            .collect::<Vec<_>>();
-        scene
-            .animations
-            .push(animation.into_scene_animation(0, &names).unwrap());
+        scene.attach_rdm_animation(animation, 0).unwrap();
         let output = tempfile::tempdir().unwrap();
         build_scene(
             scene,

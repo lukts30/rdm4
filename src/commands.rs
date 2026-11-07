@@ -12,10 +12,9 @@ use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{AnimationImportOptions, ImportedGltf, ResolveNodeName},
     rdm::{
-        write_scene, RdmDocument, RdmEndian, RdmExportOptions, RdmReader, RdmScanReport,
-        RdmScanner, RdmSplitter,
+        write_scene, RdmAnimation, RdmDocument, RdmEndian, RdmExportOptions, RdmReader,
+        RdmScanReport, RdmScanner, RdmSplitter,
     },
-    rdm_anim::RdAnim,
     rdm_material::RdMaterial,
     vertex::TargetVertexFormat,
 };
@@ -310,17 +309,10 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         scene.meshes[0].skeleton = Some(0);
     }
     if let Some(path) = &opts.animation {
-        let joints = scene
-            .skeletons
-            .first()
-            .ok_or("animation requires a skeleton")?
-            .joints
-            .iter()
-            .map(|joint| joint.name.as_str())
-            .collect::<Vec<_>>();
-        scene
-            .animations
-            .push(read_animation(path)?.into_scene_animation(0, &joints)?);
+        if scene.skeletons.is_empty() {
+            return Err("animation requires a skeleton".into());
+        }
+        scene.attach_rdm_animation(read_animation(path)?, 0)?;
     }
     let mut writer = gltf_export::GltfWriter::new(scene);
     if mesh_index.is_some() {
@@ -336,13 +328,23 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     )
 }
 
-fn read_animation(path: &Path) -> Result<RdAnim, Box<dyn Error>> {
-    let name = path
+fn read_animation(path: &Path) -> Result<RdmAnimation, Box<dyn Error>> {
+    let mut animations = read_document(path)?.animations.unwrap_or_default();
+    if animations.len() != 1 {
+        return Err(format!(
+            "animation export requires one animation, found {}",
+            animations.len()
+        )
+        .into());
+    }
+    let mut animation = animations.pop().expect("one animation was checked");
+    // Both CLIs retain the external clip's filename as its exported name.
+    animation.name = path
         .file_stem()
         .expect("animation path has a filename")
         .to_string_lossy()
         .into_owned();
-    read_document(path)?.into_animation(name)
+    Ok(animation)
 }
 
 fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {

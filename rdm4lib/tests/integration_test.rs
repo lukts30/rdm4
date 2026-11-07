@@ -1,5 +1,4 @@
 use rdm4lib::gltf_export;
-use rdm4lib::rdm_anim::RdAnim;
 
 use rdm4lib::gltf_reader;
 
@@ -19,7 +18,7 @@ mod tests {
     use std::fs;
 
     use rdm4lib::rdm::{
-        write_scene, RdmDocument, RdmEndian, RdmExportOptions, RdmReader, RdmWriter,
+        write_scene, RdmAnimation, RdmDocument, RdmEndian, RdmExportOptions, RdmReader, RdmWriter,
     };
 
     fn read_document(path: &str) -> RdmDocument {
@@ -44,15 +43,15 @@ mod tests {
         read_document(path).into_scene(skin).unwrap()
     }
 
-    fn add_animation(scene: &mut rdm4lib::scene::Scene, anim: RdAnim) {
-        let names = scene.skeletons[0]
-            .joints
-            .iter()
-            .map(|joint| joint.name.as_str())
-            .collect::<Vec<_>>();
-        scene
-            .animations
-            .push(anim.into_scene_animation(0, &names).unwrap());
+    fn read_animation(path: &str) -> RdmAnimation {
+        let mut animation = read_document(path).animations.unwrap().remove(0);
+        animation.name = Path::new(path)
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .into();
+        animation
     }
 
     pub fn check_hash(path: &Path, expected: &str) {
@@ -80,10 +79,9 @@ mod tests {
     fn exports_animated_mesh_without_gltf_validation_errors() {
         let mut scene = load_scene("rdm/basalt_crusher_others_lod2.rdm", true);
         assert_eq!(scene.meshes[0].vertex_count, 2615);
-        add_animation(
-            &mut scene,
-            RdAnim::from("rdm/basalt_crusher_others_work01.rdm"),
-        );
+        scene
+            .attach_rdm_animation(read_animation("rdm/basalt_crusher_others_work01.rdm"), 0)
+            .unwrap();
 
         let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build_scene(
@@ -176,18 +174,18 @@ mod tests {
             .find(|block| block.context == "RdmDocument.models")
             .unwrap();
         assert_eq!(models.source.stride, 68);
-        let mut anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
+        let mut anim = read_animation("rdm/jellyfish_idle01.rdm");
         assert_eq!(anim.sampling_rate, 60);
         // Exercise #176's late start and a joint with no animation channels.
-        for frame in &mut anim.anim_vec[0].frames {
+        for frame in &mut anim.tracks[0].frames {
             frame.time += 1.0 / 24.0;
         }
         anim.time_max += 42;
-        let idle_joint = anim.anim_vec.pop().unwrap().name;
-        let tracks = anim.anim_vec.clone();
+        let idle_joint = anim.tracks.pop().unwrap().joint_name;
+        let tracks = anim.tracks.clone();
 
         let mut scene = source.value.into_scene(true).unwrap();
-        add_animation(&mut scene, anim);
+        scene.attach_rdm_animation(anim, 0).unwrap();
         let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build_scene(
             scene,
@@ -204,7 +202,7 @@ mod tests {
             let node = channel.target().node();
             let track = tracks
                 .iter()
-                .find(|track| Some(track.name.as_str()) == node.name())
+                .find(|track| Some(track.joint_name.as_str()) == node.name())
                 .unwrap();
             let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
             assert_eq!(
@@ -221,7 +219,7 @@ mod tests {
                     .map(|frame| frame.time)
                     .collect::<Vec<_>>(),
                 "keyframe times for {}",
-                track.name,
+                track.joint_name,
             );
         }
         let input = output_dir.path().join("out.gltf");
@@ -232,7 +230,7 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(
-            error.contains("t=0") && error.contains(&tracks[0].name),
+            error.contains("t=0") && error.contains(&tracks[0].joint_name),
             "{error}"
         );
         let imported_scene = imported
@@ -250,7 +248,7 @@ mod tests {
             let track = animation
                 .tracks
                 .iter()
-                .find(|t| imported_scene.skeletons[0].joints[t.joint].name == source.name)
+                .find(|t| imported_scene.skeletons[0].joints[t.joint].name == source.joint_name)
                 .unwrap();
             assert_eq!(track.frames[0].time.to_bits(), 0.0f32.to_bits());
             let bits = |rotation: [f32; 4], translation: [f32; 3]| {
@@ -313,7 +311,9 @@ mod tests {
         // Exercise both linked PNGs and embedded image buffer views.
         for format in [GltfExportFormat::GltfSeparate, GltfExportFormat::Glb] {
             let mut scene = load_scene("rdm/excavator_tycoons_lod1.rdm", true);
-            add_animation(&mut scene, RdAnim::from("rdm/excavator_tycoons_work02.rdm"));
+            scene
+                .attach_rdm_animation(read_animation("rdm/excavator_tycoons_work02.rdm"), 0)
+                .unwrap();
             let output_dir = tempfile::tempdir().unwrap();
             gltf_export::GltfWriter::new(scene)
                 .textures(RdMaterial::from(r"rdm/excavator_tycoons_diff_0.dds"))

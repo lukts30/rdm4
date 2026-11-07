@@ -8,10 +8,7 @@ use std::{
     process::Command,
 };
 
-use rdm4lib::{
-    rdm::{RdmDocument, RdmReader},
-    rdm_anim::RdAnim,
-};
+use rdm4lib::rdm::{RdmDocument, RdmReader};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -159,7 +156,14 @@ fn animation_import_supports_sam_cluster_and_forced_out_glb() {
         "SKN_drill_element_W",
     ]);
     assert_eq!(joint_names, expected_names);
-    let source = RdAnim::from(&animation_path);
+    let source = RdmReader::new(std::io::Cursor::new(fs::read(&animation_path).unwrap()))
+        .unwrap()
+        .read_root::<RdmDocument>()
+        .unwrap()
+        .value
+        .animations
+        .unwrap()
+        .remove(0);
     let animation = document.animations().next().unwrap();
     assert_eq!(animation.name(), Some("idle animation"));
     assert_eq!(animation.channels().count(), 18);
@@ -173,9 +177,9 @@ fn animation_import_supports_sam_cluster_and_forced_out_glb() {
         ));
         assert!(targets.insert((name, format!("{property:?}"))));
         let source_track = source
-            .anim_vec
+            .tracks
             .iter()
-            .find(|track| track.name == name)
+            .find(|track| track.joint_name == name)
             .unwrap();
         let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
         let times: Vec<_> = reader.read_inputs().unwrap().collect();
