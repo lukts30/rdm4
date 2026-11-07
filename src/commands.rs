@@ -15,6 +15,7 @@ use rdm4lib::{
         RdAnimWriter2, RdWriter2, RdmDocument, RdmEndian, RdmReader, RdmScanReport, RdmScanner,
         RdmSplitter,
     },
+    rdm_anim::RdAnim,
     rdm_material::RdMaterial,
     vertex::TargetVertexFormat,
 };
@@ -285,17 +286,30 @@ pub struct RdmOptions {
     pub joint_names: ResolveNodeName,
 }
 
-/// Convert RDM using the new reader and the existing glTF exporter.
-/// Unselected inputs without external animation/textures use the scene layer.
+/// Convert RDM, using the scene layer for unselected inputs without DDS textures.
 pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
     let document = read_document(&opts.files.input)?;
     let count = document.models.as_ref().map_or(0, Vec::len);
     let index = match (mesh_index, count) {
         (Some(index), _) => index,
         (None, 0) => return Err("input contains no models".into()),
-        (None, _) if opts.animation.is_none() && opts.textures.is_none() => {
+        (None, _) if opts.textures.is_none() => {
+            let mut scene = document.into_scene(opts.skeleton)?;
+            if let Some(path) = &opts.animation {
+                let joints = scene
+                    .skeletons
+                    .first()
+                    .ok_or("animation requires a skeleton")?
+                    .joints
+                    .iter()
+                    .map(|joint| joint.name.as_str())
+                    .collect::<Vec<_>>();
+                scene
+                    .animations
+                    .push(read_animation(path)?.into_scene_animation(0, &joints)?);
+            }
             return gltf_export::build_scene(
-                document.into_scene(opts.skeleton)?,
+                scene,
                 opts.files.destination("gltf"),
                 !opts.files.force,
                 opts.format,
@@ -304,7 +318,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         (None, 1) => 0,
         (None, _) => {
             return Err(format!(
-                "animation and texture export requires selecting one of {count} models with --mesh-index (0..{})",
+                "texture export requires selecting one of {count} models with --mesh-index (0..{})",
                 count - 1
             )
             .into())
@@ -312,12 +326,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     };
     let mut rdm = document.into_model(index, opts.skeleton)?;
     if let Some(path) = &opts.animation {
-        let name = path
-            .file_stem()
-            .expect("animation path has a filename")
-            .to_string_lossy()
-            .into_owned();
-        rdm.add_anim(read_document(path)?.into_animation(name)?);
+        rdm.add_anim(read_animation(path)?);
     }
     info!(
         "  Model #{index}: {} vertices; {}",
@@ -331,6 +340,15 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     info!("Building glTF");
     gltf_export::build(rdm, output, !opts.files.force, opts.format);
     Ok(())
+}
+
+fn read_animation(path: &Path) -> Result<RdAnim, Box<dyn Error>> {
+    let name = path
+        .file_stem()
+        .expect("animation path has a filename")
+        .to_string_lossy()
+        .into_owned();
+    read_document(path)?.into_animation(name)
 }
 
 fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {

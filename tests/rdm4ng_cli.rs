@@ -538,7 +538,7 @@ fn rdm_command_and_alias_match_legacy_output() {
 }
 
 #[test]
-fn external_animation_includes_skeleton_and_matches_legacy_output() {
+fn external_animation_preserves_legacy_bytes_and_scene_keys() {
     let output = tempfile::tempdir().unwrap();
     let input = fixture("basalt_crusher_others_lod0.rdm");
     let animation = fixture("basalt_crusher_others_idle01.rdm");
@@ -559,11 +559,94 @@ fn external_animation_includes_skeleton_and_matches_legacy_output() {
             .arg(&input)
             .arg("--animation")
             .arg(&animation)
+            .args(["--mesh-index", "0"])
             .arg("--force")
             .arg("-o")
             .arg(&actual),
     );
-    assert_eq!(fs::read(&actual).unwrap(), fs::read(expected).unwrap());
+    assert_eq!(fs::read(&actual).unwrap(), fs::read(&expected).unwrap());
+    succeeds(
+        ng().arg("gltf")
+            .arg(&input)
+            .arg("--animation")
+            .arg(&animation)
+            .arg("--force")
+            .arg("-o")
+            .arg(&actual),
+    );
+    let clips = |path: &Path| {
+        let (document, buffers, _) = gltf::import(path).unwrap();
+        document
+            .animations()
+            .map(|animation| {
+                let channels = animation
+                    .channels()
+                    .map(|channel| {
+                        let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+                        let values: Vec<_> = match reader.read_outputs().unwrap() {
+                            gltf::animation::util::ReadOutputs::Rotations(values) => {
+                                values.into_f32().flatten().map(f32::to_bits).collect()
+                            }
+                            gltf::animation::util::ReadOutputs::Translations(values) => {
+                                values.flatten().map(f32::to_bits).collect()
+                            }
+                            _ => unreachable!(),
+                        };
+                        (
+                            channel.target().node().name().unwrap().to_owned(),
+                            channel.target().property(),
+                            channel.sampler().interpolation(),
+                            reader
+                                .read_inputs()
+                                .unwrap()
+                                .map(f32::to_bits)
+                                .collect::<Vec<_>>(),
+                            values,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                (
+                    animation.name().unwrap().to_owned(),
+                    animation.extras().as_ref().unwrap().get().to_owned(),
+                    channels,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(clips(&actual), clips(&expected));
+    // An external clip drives the shared skeleton of every model by default.
+    use rdm4lib::rdm::{RdmDocument, RdmEndian, RdmReader, RdmWriter};
+    let mut document = RdmReader::new(std::io::Cursor::new(fs::read(&input).unwrap()))
+        .unwrap()
+        .read_root::<RdmDocument>()
+        .unwrap()
+        .value;
+    let models = document.models.as_mut().unwrap();
+    models.push(models[0].clone());
+    let multi = output.path().join("multi.rdm");
+    RdmWriter::new(fs::File::create(&multi).unwrap(), RdmEndian::Little)
+        .write_root(&document)
+        .unwrap();
+    let multi_output = output.path().join("multi.glb");
+    succeeds(
+        ng().arg("gltf")
+            .arg(&multi)
+            .arg("--animation")
+            .arg(&animation)
+            .arg("-o")
+            .arg(&multi_output),
+    );
+    let (document, _, _) = gltf::import(&multi_output).unwrap();
+    assert_eq!(document.meshes().count(), 2);
+    assert_eq!(document.skins().count(), 1);
+    assert_eq!(
+        document
+            .nodes()
+            .filter(|node| node.skin().is_some())
+            .count(),
+        2
+    );
+    assert_eq!(clips(&multi_output), clips(&expected));
     let destination = output.path().join("restored.rdm");
     let animation = output.path().join("restored_anim_0.rdm");
     let mut import = ng();
