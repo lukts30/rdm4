@@ -22,7 +22,7 @@ use bytes::{BufMut, BytesMut};
 mod animation;
 mod skin;
 mod writer;
-pub use writer::build_scene;
+pub use writer::{build_scene, GltfWriter};
 
 struct RdGltfBuilder {
     binary: GltfBuffers,

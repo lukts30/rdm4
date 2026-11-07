@@ -2,15 +2,16 @@
 
 #![forbid(unsafe_code)]
 
-use std::{collections::BTreeMap, error::Error, path::PathBuf};
+use std::{collections::BTreeMap, env, error::Error, fs, path::PathBuf};
 
 use gltf::json::{self, validation::Checked::Valid};
 
 use super::{animation, mesh_node, skin, GltfExportFormat, RdGltf};
 use crate::{
     gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
+    rdm_material::RdMaterial,
     scene::{Attribute, AttributeValues, Mesh, Scene},
-    vertex::VertexSemantic,
+    vertex::{StorageType, VertexSemantic},
 };
 
 /// Export meshes, skeletons and clips, retaining names, draw ranges and key values.
@@ -20,100 +21,201 @@ pub fn build_scene(
     create_new: bool,
     config: GltfExportFormat,
 ) -> Result<(), Box<dyn Error>> {
-    let material_count = scene
-        .meshes
-        .iter()
-        .flat_map(|mesh| &mesh.primitives)
-        .map(|primitive| primitive.material)
-        .max()
-        .ok_or("scene contains no primitives")?;
-    let mut binary = GltfBuffers::default();
-    let mut meshes = Vec::new();
-    let mut nodes = Vec::new();
-    let mut roots = Vec::new();
-    let mut skins = Vec::new();
-    let mut skeleton_nodes = Vec::new();
-    for skeleton in &scene.skeletons {
-        let joints = skeleton
-            .joints
+    GltfWriter::new(scene).write(dir, create_new, config)
+}
+
+/// Shared scene exporter with optional external textures and CLI compatibility.
+pub struct GltfWriter {
+    scene: Scene,
+    textures: Option<RdMaterial>,
+    legacy: bool,
+}
+
+impl GltfWriter {
+    /// Retain typed geometry and explicit keyframes until final buffer placement.
+    pub fn new(scene: Scene) -> Self {
+        Self {
+            scene,
+            textures: None,
+            legacy: false,
+        }
+    }
+
+    /// Convert external DDS files with the existing Windows texture converter.
+    pub fn textures(mut self, textures: RdMaterial) -> Self {
+        self.textures = Some(textures);
+        self
+    }
+
+    /// Preserve the old CLI's selected-model attributes, names and armature root.
+    pub fn legacy(mut self) -> Self {
+        self.legacy = true;
+        self
+    }
+
+    /// Build accessors and nodes, then package separate buffers or a GLB.
+    pub fn write(
+        self,
+        dir: Option<PathBuf>,
+        create_new: bool,
+        config: GltfExportFormat,
+    ) -> Result<(), Box<dyn Error>> {
+        let Self {
+            scene,
+            textures,
+            legacy,
+        } = self;
+        if legacy && scene.meshes.len() != 1 {
+            return Err("legacy glTF export requires one selected model".into());
+        }
+        let material_count = scene
+            .meshes
             .iter()
-            .map(skin::GlobalJoint::from_inverse_bind)
-            .collect::<Result<Vec<_>, _>>()?;
-        skeleton_nodes.push(nodes.len());
-        let output = skin::build(&joints, &mut binary, nodes.len())?;
-        nodes.extend(output.nodes);
-        roots.extend(output.roots);
-        skins.push(output.skin);
-    }
-    for mesh in scene.meshes {
-        mesh.validate()?;
-        let joint_count = mesh
-            .skeleton
-            .map(|index| {
-                scene
+            .flat_map(|mesh| &mesh.primitives)
+            .map(|primitive| primitive.material)
+            .max()
+            .ok_or("scene contains no primitives")?;
+        let mut binary = GltfBuffers::default();
+        let mut meshes = Vec::new();
+        let mut nodes = Vec::new();
+        let mut roots = Vec::new();
+        let mut skins = Vec::new();
+        let mut skeleton_nodes = Vec::new();
+        for mesh in &scene.meshes {
+            mesh.validate()?;
+            meshes.push(export_mesh(mesh, &mut binary, legacy)?);
+        }
+        for skeleton in &scene.skeletons {
+            let joints = skeleton
+                .joints
+                .iter()
+                .map(skin::GlobalJoint::from_inverse_bind)
+                .collect::<Result<Vec<_>, _>>()?;
+            skeleton_nodes.push(nodes.len());
+            let output = skin::build(&joints, &mut binary, nodes.len())?;
+            nodes.extend(output.nodes);
+            roots.extend(output.roots);
+            skins.push(output.skin);
+        }
+        for (mesh_index, mesh) in scene.meshes.into_iter().enumerate() {
+            let joint_count = mesh
+                .skeleton
+                .map(|index| {
+                    scene
+                        .skeletons
+                        .get(index)
+                        .map(|skeleton| skeleton.joints.len())
+                        .ok_or("mesh skeleton index is out of range")
+                })
+                .transpose()?;
+            let index = json::Index::new(mesh_index as u32);
+            if let Some(count) = joint_count {
+                let influences = skin::influences(&mesh, count, &mut binary)?;
+                for primitive in &mut meshes[index.value()].primitives {
+                    primitive.attributes.extend(
+                        influences
+                            .iter()
+                            .map(|(semantic, accessor)| (Valid(semantic.clone()), *accessor)),
+                    );
+                }
+            }
+            let mut node = mesh_node(index, if legacy { None } else { mesh.name });
+            if legacy && mesh.skeleton.is_some() {
+                node.name = Some("armature".into());
+                node.children = Some(std::mem::take(&mut roots));
+            }
+            node.matrix = mesh.transform.map(|matrix| {
+                matrix
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("4x4 matrix")
+            });
+            node.skin = mesh.skeleton.map(|i| json::Index::new(i as u32));
+            roots.push(json::Index::new(nodes.len() as u32));
+            nodes.push(node);
+        }
+        let animations = scene
+            .animations
+            .iter()
+            .map(|clip| {
+                let skeleton = scene
                     .skeletons
-                    .get(index)
-                    .map(|skeleton| skeleton.joints.len())
-                    .ok_or("mesh skeleton index is out of range")
+                    .get(clip.skeleton)
+                    .ok_or("animation skeleton index is out of range")?;
+                animation::build(
+                    clip,
+                    skeleton.joints.len(),
+                    skeleton_nodes[clip.skeleton],
+                    &mut binary,
+                )
             })
-            .transpose()?;
-        let index = json::Index::new(meshes.len() as u32);
-        meshes.push(export_mesh(&mesh, &mut binary, joint_count)?);
-        let mut node = mesh_node(index, mesh.name);
-        node.matrix = mesh.transform.map(|matrix| {
-            matrix
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .try_into()
-                .expect("4x4 matrix")
-        });
-        node.skin = mesh.skeleton.map(|i| json::Index::new(i as u32));
-        roots.push(json::Index::new(nodes.len() as u32));
-        nodes.push(node);
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        let mut root = json::Root {
+            scenes: vec![json::Scene {
+                nodes: roots,
+                extensions: Default::default(),
+                extras: Default::default(),
+                name: None,
+            }],
+            scene: Some(json::Index::new(0)),
+            nodes,
+            meshes,
+            skins,
+            animations,
+            materials: (0..=material_count)
+                .map(|_| json::Material::default())
+                .collect(),
+            ..Default::default()
+        };
+        if let Some(textures) = &textures {
+            textures.run_dds_converter(&env::temp_dir());
+            for (i, (path, material)) in textures.into_iter().zip(&mut root.materials).enumerate() {
+                let name = format!("{}.PNG", path.file_stem().unwrap().to_str().unwrap());
+                let mut image = json::Image {
+                    uri: Some(name.clone()),
+                    buffer_view: None,
+                    mime_type: None,
+                    name: None,
+                    extensions: None,
+                    extras: None,
+                };
+                if config == GltfExportFormat::Glb {
+                    image.uri = None;
+                    image.mime_type = Some(json::image::MimeType("image/png".into()));
+                    image.buffer_view = Some(binary.push_buffer_view(
+                        BufferContainer::U8(fs::read(env::temp_dir().join(name))?),
+                        None,
+                    ));
+                }
+                root.images.push(image);
+                root.samplers.push(Default::default());
+                root.textures.push(json::Texture {
+                    source: json::Index::new(i as u32),
+                    sampler: Some(json::Index::new(i as u32)),
+                    name: None,
+                    extensions: None,
+                    extras: None,
+                });
+                material.pbr_metallic_roughness.base_color_texture = Some(json::texture::Info {
+                    index: json::Index::new(i as u32),
+                    tex_coord: 0,
+                    extensions: None,
+                    extras: None,
+                });
+            }
+        }
+        let buffers = binary.finish(&mut root, config != GltfExportFormat::GltfSeparate);
+        RdGltf { root, buffers }.write_gltf(dir, textures, create_new, config);
+        Ok(())
     }
-    let animations = scene
-        .animations
-        .iter()
-        .map(|clip| {
-            let skeleton = scene
-                .skeletons
-                .get(clip.skeleton)
-                .ok_or("animation skeleton index is out of range")?;
-            animation::build(
-                clip,
-                skeleton.joints.len(),
-                skeleton_nodes[clip.skeleton],
-                &mut binary,
-            )
-        })
-        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    let mut root = json::Root {
-        scenes: vec![json::Scene {
-            nodes: roots,
-            extensions: Default::default(),
-            extras: Default::default(),
-            name: None,
-        }],
-        scene: Some(json::Index::new(0)),
-        nodes,
-        meshes,
-        skins,
-        animations,
-        materials: (0..=material_count)
-            .map(|_| json::Material::default())
-            .collect(),
-        ..Default::default()
-    };
-    let buffers = binary.finish(&mut root, config != GltfExportFormat::GltfSeparate);
-    RdGltf { root, buffers }.write_gltf(dir, None, create_new, config);
-    Ok(())
 }
 
 fn export_mesh(
     mesh: &Mesh,
     binary: &mut GltfBuffers,
-    joint_count: Option<usize>,
+    legacy: bool,
 ) -> Result<json::Mesh, Box<dyn Error>> {
     use json::{
         accessor::{ComponentType, Type},
@@ -160,6 +262,7 @@ fn export_mesh(
         .attributes
         .iter()
         .filter(|attribute| attribute.descriptor.semantic == VertexSemantic::Texcoord)
+        .take(if legacy { 1 } else { usize::MAX })
         .enumerate()
     {
         let values = attribute.floats(2)?;
@@ -178,12 +281,22 @@ fn export_mesh(
             continue;
         };
         let tangent = semantic == Semantic::Tangents;
-        let width = if tangent && attribute.descriptor.storage_count == 4 {
+        let width = if tangent && !legacy && attribute.descriptor.storage_count == 4 {
             4
         } else {
             width
         };
-        let values = attribute.floats(width)?;
+        let mut values = attribute.floats(width)?;
+        // Packed vectors already require normalization when decoded. The old CLI
+        // also normalized float vectors; direct scene exports keep their bits.
+        if legacy && attribute.descriptor.storage_type != StorageType::U32 {
+            for vector in values.to_mut().chunks_exact_mut(width) {
+                let length = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+                for value in vector {
+                    *value /= length;
+                }
+            }
+        }
         let payload = if tangent && width == 3 {
             BufferContainer::U8(
                 values
@@ -211,16 +324,11 @@ fn export_mesh(
     for (set, attribute) in mesh
         .attributes
         .iter()
-        .filter(|attribute| attribute.descriptor.semantic == VertexSemantic::Color)
+        .filter(|attribute| !legacy && attribute.descriptor.semantic == VertexSemantic::Color)
         .enumerate()
     {
         let accessor = color(attribute, mesh.vertex_count, binary)?;
         attributes.insert(Valid(Semantic::Colors(set as u32)), accessor);
-    }
-    if let Some(count) = joint_count {
-        for (semantic, accessor) in skin::influences(mesh, count, binary)? {
-            attributes.insert(Valid(semantic), accessor);
-        }
     }
     let primitives = mesh
         .primitives
@@ -237,7 +345,7 @@ fn export_mesh(
         })
         .collect();
     Ok(json::Mesh {
-        name: mesh.name.clone(),
+        name: if legacy { None } else { mesh.name.clone() },
         primitives,
         extensions: Default::default(),
         extras: Default::default(),
