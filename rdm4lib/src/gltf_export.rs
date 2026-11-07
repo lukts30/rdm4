@@ -1,5 +1,5 @@
 use crate::{
-    gltf_buffers::{BufferContainer, GltfBuffers, Vertex},
+    gltf_buffers::{BufferContainer, GltfBuffers},
     rdm_material::RdMaterial,
     vertex::*,
     MeshInfo, RdJoint, RdModell,
@@ -580,8 +580,7 @@ impl RdGltfBuilder {
     }
 
     fn put_vertex(&mut self) {
-        let mut triangle_vertices: Vec<Vertex> =
-            Vec::with_capacity(3 * 4 * self.rdm.vertex.vertex_count as usize);
+        let mut positions = BytesMut::with_capacity(12 * self.rdm.vertex.vertex_count as usize);
         let mut min: Vec<f32> = vec![f32::MAX, f32::MAX, f32::MAX];
         let mut max: Vec<f32> = vec![f32::MIN, f32::MIN, f32::MIN];
 
@@ -598,16 +597,15 @@ impl RdGltfBuilder {
             max[1] = y.max(max[1]);
             max[2] = z.max(max[2]);
 
-            let t = Vertex {
-                position: [x, y, z],
-            };
-            triangle_vertices.push(t);
+            for value in [x, y, z] {
+                positions.put_f32_le(value);
+            }
         }
         let amin = Some(json::Value::from(min));
         let amax = Some(json::Value::from(max));
         // single vertex buffer
         self.put_attr(
-            BufferContainer::Vertex(triangle_vertices),
+            BufferContainer::Bytes(positions.freeze()),
             json::accessor::Type::Vec3,
             json::accessor::ComponentType::F32,
             None,
@@ -838,10 +836,14 @@ impl RdGltfBuilder {
         let mut bytes = Vec::with_capacity(self.rdm.mesh_info.len());
         let mut accessor_idx_meshes = Vec::with_capacity(self.rdm.mesh_info.len());
         for submesh in self.rdm.mesh_info.iter() {
-            let mut buff = BytesMut::with_capacity(submesh.index_count as usize);
+            let mut buff = BytesMut::with_capacity(4 * submesh.index_count as usize);
             let r = (submesh.start_index_location / 3) as usize
                 ..((submesh.start_index_location / 3) + submesh.index_count / 3) as usize;
-            unsafe { buff.put_slice(self.rdm.triangle_indices[r].align_to::<u8>().1) }
+            for triangle in &self.rdm.triangle_indices[r] {
+                for index in triangle.indices {
+                    buff.put_u32_le(index);
+                }
+            }
             bytes.push((BufferContainer::Bytes(buff.freeze()), submesh.index_count));
         }
         for b in bytes.into_iter() {

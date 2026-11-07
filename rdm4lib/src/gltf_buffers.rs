@@ -84,16 +84,9 @@ impl GltfBuffers {
     }
 }
 
-#[derive(Debug)]
-#[repr(C)]
-pub(crate) struct Vertex {
-    pub position: [f32; 3],
-}
-
 pub(crate) enum BufferContainer {
     U8(Vec<u8>),
     Bytes(Bytes),
-    Vertex(Vec<Vertex>),
 }
 
 impl BufferContainer {
@@ -111,7 +104,6 @@ impl BufferContainer {
         match self {
             Self::U8(bytes) => bytes,
             Self::Bytes(bytes) => bytes,
-            Self::Vertex(vertices) => unsafe { vertices.align_to::<u8>().1 },
         }
     }
 
