@@ -1,8 +1,7 @@
-//! Migration baseline for the unmodified reader-comparison corpus.
+//! Frozen fixture values and compatibility contracts for the RDM corpus.
 
 use std::{collections::BTreeSet, fs, io::Cursor, path::PathBuf};
 
-use binrw::BinReaderExt;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     rdm::{
@@ -10,8 +9,6 @@ use rdm4lib::{
         RdmReader, RdmSkin, RdmWriter,
     },
     rdm_anim::RdAnim,
-    rdm_data_main::{RdmFile, RdmKindAnim, RdmKindMesh},
-    vertex::VertexIdentifier,
     RdModell,
 };
 use serde_json::Value;
@@ -61,6 +58,13 @@ fn fixtures() -> Vec<Fixture> {
 // independently of the legacy reader, which discards all but the first model.
 fn word(bytes: &[u8], at: usize) -> usize {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize
+}
+
+// Captured from the independent legacy reader before retiring it. Lengths frame
+// strings/lists; float bits preserve signed zero and avoid normalization.
+fn hash_text(hash: &mut Sha256, value: &str) {
+    hash.update((value.len() as u32).to_le_bytes());
+    hash.update(value.as_bytes());
 }
 
 #[test]
@@ -172,17 +176,23 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
                 decoded.vertex_format.selector as usize,
                 word(&bytes, format_at + 4)
             );
-            let legacy: Vec<VertexIdentifier> = (0..word(&bytes, attributes - 8))
-                .map(|i| {
-                    Cursor::new(&bytes[attributes + i * 16..])
-                        .read_le()
-                        .unwrap()
-                })
-                .collect();
             assert_eq!(
-                decoded.vertex_format.attributes, legacy,
-                "{path:?} model {index}"
+                decoded.vertex_format.attributes.len(),
+                word(&bytes, attributes - 8)
             );
+            for (i, descriptor) in decoded.vertex_format.attributes.iter().enumerate() {
+                let at = attributes + i * 16;
+                assert_eq!(
+                    [
+                        descriptor.semantic.clone() as u32,
+                        descriptor.storage_type as u32,
+                        descriptor.interpretation.0,
+                        descriptor.storage_count
+                    ],
+                    std::array::from_fn(|j| word(&bytes, at + j * 4) as u32),
+                    "{path:?} model {index}"
+                );
+            }
             let vertex_at = word(&bytes, model + 0x0c);
             let vertex_stride = word(&bytes, vertex_at - 4);
             assert_eq!(decoded.vertices.count, word(&bytes, vertex_at - 8));
@@ -254,19 +264,16 @@ fn source_headers_account_for_every_model_including_legacy_omissions() {
 fn assert_first_model(fixture: &Fixture) {
     let path = fixture.path();
     let bytes = fs::read(&path).unwrap();
-    let raw: RdmFile<RdmKindMesh> = Cursor::new(bytes).read_le().unwrap();
+    let model_at = word(&bytes, 0x20);
     let expected = &fixture.expected["first_model"];
-    assert_eq!(raw.header1.meta.info.count as usize, fixture.model_count());
+    assert_eq!(word(&bytes, model_at - 8), fixture.model_count());
+    assert_eq!(word(&bytes, model_at - 4), number(&expected["stride"]));
     assert_eq!(
-        raw.header1.meta.info.part_size as usize,
-        number(&expected["stride"])
-    );
-    assert_eq!(
-        raw.header1.meta.vertex.info.part_size as usize,
+        word(&bytes, word(&bytes, model_at + 12) - 4),
         number(&expected["vertex_stride"])
     );
     assert_eq!(
-        raw.header1.meta.triangle_list.info.part_size as usize,
+        word(&bytes, word(&bytes, model_at + 16) - 4),
         number(&expected["index_stride"])
     );
     let model = RdModell::from(&path);
@@ -362,7 +369,7 @@ fn reads_every_corpus_animation() {
 }
 
 #[test]
-fn migrated_animation_records_match_legacy_values_across_the_corpus() {
+fn animation_records_match_frozen_legacy_values_across_the_corpus() {
     let mut animations = 0;
     for fixture in fixtures()
         .into_iter()
@@ -376,36 +383,33 @@ fn migrated_animation_records_match_legacy_values_across_the_corpus() {
         let decoded = reader.read_block::<RdmAnimation>(at as u32).unwrap();
         assert_eq!(decoded.records.len(), 1, "{path:?}");
         let animation = &decoded.records[0];
-        let legacy: RdmFile<RdmKindAnim> = Cursor::new(&bytes).read_le().unwrap();
-        let legacy = &legacy.header1.meta_anim;
-        assert_eq!(animation.time_max, legacy.time_max, "{path:?}");
-        assert_eq!(animation.sampling_rate, legacy.sampling_rate, "{path:?}");
-        assert_eq!(animation.tracks.len(), legacy.anims.len(), "{path:?}");
-        let name_at = word(&bytes, at);
-        assert_eq!(
-            animation.name.as_bytes(),
-            &bytes[name_at..name_at + word(&bytes, name_at - 8)]
-        );
-        for (track, legacy) in animation.tracks.iter().zip(legacy.anims.iter()) {
-            assert_eq!(track.joint_name, legacy.j_name.as_ascii(), "{path:?}");
-            assert_eq!(
-                track.frames.len(),
-                legacy.j_data.storage.items.len(),
-                "{path:?}"
-            );
-            for (frame, legacy) in track.frames.iter().zip(&legacy.j_data.storage.items) {
-                assert_eq!(
-                    frame.rotation.map(f32::to_bits),
-                    legacy.rotation.map(f32::to_bits)
-                );
-                assert_eq!(
-                    frame.translation.map(f32::to_bits),
-                    legacy.translation.map(f32::to_bits)
-                );
-                assert_eq!(frame.time.to_bits(), legacy.time.to_bits());
+        let mut hash = Sha256::new();
+        hash_text(&mut hash, &animation.name);
+        hash.update(animation.time_max.to_le_bytes());
+        hash.update(animation.sampling_rate.to_le_bytes());
+        hash.update((animation.tracks.len() as u32).to_le_bytes());
+        for track in &animation.tracks {
+            hash_text(&mut hash, &track.joint_name);
+            hash.update((track.frames.len() as u32).to_le_bytes());
+            for frame in &track.frames {
+                for value in frame
+                    .rotation
+                    .into_iter()
+                    .chain(frame.translation)
+                    .chain([frame.time])
+                {
+                    hash.update(value.to_bits().to_le_bytes());
+                }
             }
         }
-        // Exercise nested track lists and strings without switching the file writer yet.
+        assert_eq!(
+            base16ct::lower::encode_string(&hash.finalize()),
+            fixture.expected["animation"]["decoded_sha256"]
+                .as_str()
+                .unwrap(),
+            "{path:?}"
+        );
+        // Exercise nested track lists and strings in both byte orders.
         for endian in [RdmEndian::Little, RdmEndian::Big] {
             let output = RdmWriter::new(Cursor::new(Vec::new()), endian)
                 .write_root(animation)
@@ -464,45 +468,25 @@ fn migrated_materials_and_skins_match_corpus_values() {
         if skin != 0 {
             let decoded = reader.read_block::<RdmSkin>(skin as u32).unwrap();
             assert_eq!(decoded.records.len(), 1);
-            let legacy: RdmFile<RdmKindMesh> = Cursor::new(&bytes).read_le().unwrap();
-            let joints = &***legacy.header1.skin.joint;
-            assert_eq!(decoded.records[0].joints.len(), joints.len(), "{path:?}");
-            for (joint, legacy) in decoded.records[0].joints.iter().zip(joints) {
-                assert_eq!(joint.name, legacy.name.as_ascii(), "{path:?}");
-                assert_eq!(
-                    joint.translation.map(f32::to_bits),
-                    legacy.t.map(f32::to_bits)
-                );
-                assert_eq!(joint.rotation.map(f32::to_bits), legacy.r.map(f32::to_bits));
-                assert_eq!(joint.parent, legacy.parent_id, "{path:?}");
+            let joints = &decoded.records[0].joints;
+            let mut hash = Sha256::new();
+            hash.update((joints.len() as u32).to_le_bytes());
+            for joint in joints {
+                hash_text(&mut hash, &joint.name);
+                for value in joint.translation.into_iter().chain(joint.rotation) {
+                    hash.update(value.to_bits().to_le_bytes());
+                }
+                hash.update(joint.parent.to_le_bytes());
             }
+            assert_eq!(
+                base16ct::lower::encode_string(&hash.finalize()),
+                fixture.expected["skin_sha256"].as_str().unwrap(),
+                "{path:?}"
+            );
             skin_files += 1;
         }
     }
     assert_eq!((material_files, skin_files), (18, 4));
-}
-
-#[test]
-fn characterizes_kind_api_rejection_of_metadata_only_documents() {
-    for fixture in fixtures().into_iter().take(2) {
-        assert_eq!(fixture.model_count(), 0);
-        assert!(fixture.expected.get("animation").is_none());
-        let bytes = fs::read(fixture.path()).unwrap();
-        let mesh_error = Cursor::new(&bytes)
-            .read_le::<RdmFile<RdmKindMesh>>()
-            .err()
-            .expect("legacy mesh API must reject metadata-only input");
-        assert!(mesh_error
-            .to_string()
-            .contains("the input file is not a rdm mesh!"));
-        let anim_error = Cursor::new(&bytes)
-            .read_le::<RdmFile<RdmKindAnim>>()
-            .err()
-            .expect("legacy animation API must reject metadata-only input");
-        assert!(anim_error
-            .to_string()
-            .contains("the input file is not a valid rdm anim!"));
-    }
 }
 
 fn assert_exports_all_models(id: usize) {

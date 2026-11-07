@@ -130,13 +130,21 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exports_68_byte_mesh_with_60_hz_animation_preserving_keyframe_times() {
-        use binrw::BinReaderExt;
-        use rdm4lib::rdm_data_main::{RdmFile, RdmKindMesh};
+        use rdm4lib::rdm::{RdmDocument, RdmReader};
 
         // Original Anno 2070 jellyfish mesh and animation.
         let mesh_path = "rdm/jellyfish_lod0.rdm";
-        let source: RdmFile<RdmKindMesh> = File::open(mesh_path).unwrap().read_le().unwrap();
-        assert_eq!(source.header1.meta.info.part_size, 68);
+        let source = RdmReader::new(std::io::BufReader::new(File::open(mesh_path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        let models = source
+            .layout
+            .blocks
+            .iter()
+            .find(|block| block.context == "RdmDocument.models")
+            .unwrap();
+        assert_eq!(models.source.stride, 68);
         let mut anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
         assert_eq!(anim.sampling_rate, 60);
         // Exercise #176's late start and a joint with no animation channels.
