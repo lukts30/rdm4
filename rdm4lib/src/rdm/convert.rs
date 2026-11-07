@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
-    scene::{Attribute, Mesh, Primitive, Scene},
+    scene::{Attribute, Joint, Mesh, Primitive, Scene, Skeleton},
     vertex::{StorageType, VertexFormat2},
     MeshInfo, RdJoint, RdModell, Triangle,
 };
@@ -230,7 +230,12 @@ impl RdmDocument {
     /// Adapt all model geometry, without activating skeletons or animations.
     /// Source layout and opaque data remain outside the scene representation.
     pub fn into_static_scene(self) -> Result<Scene, Box<dyn Error>> {
-        let meshes = self
+        self.into_scene(false)
+    }
+
+    /// Move geometry and optionally bind poses into a scene, without normalizing joints.
+    pub fn into_scene(self, with_skin: bool) -> Result<Scene, Box<dyn Error>> {
+        let mut meshes = self
             .models
             .unwrap_or_default()
             .into_iter()
@@ -239,7 +244,31 @@ impl RdmDocument {
         if meshes.is_empty() {
             return Err("input contains no models".into());
         }
-        Ok(Scene { meshes })
+        let skeletons = if with_skin {
+            let skin = self.skin.ok_or("requested skeleton is absent")?;
+            vec![Skeleton {
+                joints: skin
+                    .joints
+                    .into_iter()
+                    .map(|joint| {
+                        let [x, y, z, w] = joint.rotation;
+                        Joint {
+                            name: joint.name,
+                            parent: (joint.parent != u32::MAX).then_some(joint.parent as usize),
+                            inverse_bind_translation: joint.translation,
+                            // RDM stores the conjugate rotation alongside inverse-bind translation.
+                            inverse_bind_rotation: [-x, -y, -z, w],
+                        }
+                    })
+                    .collect(),
+            }]
+        } else {
+            for mesh in &mut meshes {
+                mesh.skeleton = None;
+            }
+            Vec::new()
+        };
+        Ok(Scene { meshes, skeletons })
     }
 
     /// Adapt one selected model for the existing exporter, optionally with its skeleton.
@@ -301,6 +330,7 @@ impl TryFrom<RdmModel> for Mesh {
         }
         let mesh = Self {
             name: model.name.name,
+            skeleton: usize::try_from(model.skeleton_index).ok(),
             vertex_count: model.vertices.count,
             attributes: model
                 .vertex_format

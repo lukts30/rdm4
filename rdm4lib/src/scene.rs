@@ -6,10 +6,13 @@ use std::{borrow::Cow, error::Error, ops::Range};
 
 use crate::vertex::{StorageType, VertexIdentifier, VertexSemantic};
 
-/// Static meshes in scene order; each currently maps to one node.
+/// Meshes and skeletons without file framing or source placement.
+#[derive(Default)]
 pub struct Scene {
     /// All meshes selected for export.
     pub meshes: Vec<Mesh>,
+    /// Skeletons referenced by meshes.
+    pub skeletons: Vec<Skeleton>,
 }
 
 /// Geometry shared by scene consumers, retaining the source attribute encoding.
@@ -24,6 +27,26 @@ pub struct Mesh {
     pub indices: Vec<u32>,
     /// Draw ranges and their material slots.
     pub primitives: Vec<Primitive>,
+    /// Optional index into the scene's skeletons.
+    pub skeleton: Option<usize>,
+}
+
+/// Joints in the order used by vertex joint indices.
+pub struct Skeleton {
+    /// Bind poses and hierarchy, without implicit normalization.
+    pub joints: Vec<Joint>,
+}
+
+/// A joint's global inverse bind pose, stored as translation times rotation.
+pub struct Joint {
+    /// Source joint name.
+    pub name: String,
+    /// Parent joint index, or no parent for a root.
+    pub parent: Option<usize>,
+    /// Translation part of the inverse bind transform.
+    pub inverse_bind_translation: [f32; 3],
+    /// Inverse bind rotation in XYZW order; retained without normalization.
+    pub inverse_bind_rotation: [f32; 4],
 }
 
 /// One indexed draw range.
@@ -175,6 +198,73 @@ mod tests {
     };
 
     #[test]
+    fn exports_two_meshes_with_shared_skeleton_and_retains_bind_values() {
+        use crate::rdm::{RdmDocument, RdmReader};
+        let mut document = RdmReader::new(std::io::Cursor::new(include_bytes!(
+            "../rdm/basalt_crusher_others_lod0.rdm"
+        )))
+        .unwrap()
+        .read_root::<RdmDocument>()
+        .unwrap()
+        .value;
+        let joint = &mut document.skin.as_mut().unwrap().joints[0];
+        joint.rotation = [-0.0, 0.0, -0.0, f32::from_bits(0x3f800001)];
+        joint.translation = [-0.0, 0.0, -0.0];
+        let source_rotation = joint.rotation;
+        let source_translation = joint.translation;
+        let models = document.models.as_mut().unwrap();
+        models.push(models[0].clone());
+        let scene = document.into_scene(true).unwrap();
+        assert_eq!(scene.skeletons.len(), 1);
+        assert!(scene.meshes.iter().all(|mesh| mesh.skeleton == Some(0)));
+        let joint = &scene.skeletons[0].joints[0];
+        assert_eq!(
+            joint.inverse_bind_translation.map(f32::to_bits),
+            source_translation.map(f32::to_bits)
+        );
+        let [x, y, z, w] = source_rotation;
+        assert_eq!(
+            joint.inverse_bind_rotation.map(f32::to_bits),
+            [-x, -y, -z, w].map(f32::to_bits)
+        );
+        let joint_count = scene.skeletons[0].joints.len();
+        let output = tempfile::tempdir().unwrap();
+        build_scene(
+            scene,
+            Some(output.path().into()),
+            true,
+            GltfExportFormat::Glb,
+        )
+        .unwrap();
+        let (document, buffers, _) = gltf::import(output.path().join("out.glb")).unwrap();
+        assert_eq!(document.meshes().count(), 2);
+        assert_eq!(document.skins().count(), 1);
+        let skin = document.skins().next().unwrap();
+        assert_eq!(skin.joints().count(), joint_count);
+        assert_eq!(
+            document
+                .nodes()
+                .filter(|node| node.skin().is_some())
+                .count(),
+            2
+        );
+        for primitive in document.meshes().flat_map(|mesh| mesh.primitives()) {
+            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+            assert!(reader
+                .read_weights(0)
+                .unwrap()
+                .into_f32()
+                .all(|w| w == [1.0, 0.0, 0.0, 0.0]));
+            assert!(reader
+                .read_joints(0)
+                .unwrap()
+                .into_u16()
+                .flatten()
+                .all(|i| usize::from(i) < joint_count));
+        }
+    }
+
+    #[test]
     fn export_retains_float_attribute_bits_without_normalizing() {
         let positions = [[-0.0f32, 0.0, 0.0], [1.0, -0.0, 0.0], [0.0, 1.0, -0.0]];
         let normal = [f32::from_bits(0x3f800001), -0.0, 0.0];
@@ -232,10 +322,14 @@ mod tests {
                 indices: 0..3,
                 material: 0,
             }],
+            skeleton: None,
         };
         let output = tempfile::tempdir().unwrap();
         build_scene(
-            Scene { meshes: vec![mesh] },
+            Scene {
+                meshes: vec![mesh],
+                ..Default::default()
+            },
             Some(output.path().into()),
             true,
             GltfExportFormat::Glb,

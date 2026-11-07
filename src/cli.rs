@@ -107,7 +107,7 @@ impl From<FileArgs> for Files {
 struct GltfArgs {
     #[command(flatten)]
     files: FileArgs,
-    /// Export one RDM model; defaults to all static models.
+    /// Export one RDM model; animations/textures require selection for multi-model files.
     #[arg(long)]
     mesh_index: Option<usize>,
     /// Export the available skeleton.

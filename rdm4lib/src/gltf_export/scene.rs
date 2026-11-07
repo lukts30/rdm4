@@ -1,4 +1,4 @@
-//! Static scene export directly from typed attribute columns.
+//! Scene export directly from typed attributes and bind poses.
 
 #![forbid(unsafe_code)]
 
@@ -6,14 +6,14 @@ use std::{collections::BTreeMap, error::Error, path::PathBuf};
 
 use gltf::json::{self, validation::Checked::Valid};
 
-use super::{mesh_node, GltfExportFormat, RdGltf};
+use super::{mesh_node, skin, GltfExportFormat, RdGltf};
 use crate::{
     gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
     scene::{Attribute, AttributeValues, Mesh, Scene},
     vertex::VertexSemantic,
 };
 
-/// Export all static meshes, retaining source names, draw ranges and material slots.
+/// Export meshes and skeletons, retaining source names, draw ranges and material slots.
 pub fn build_scene(
     scene: Scene,
     dir: Option<PathBuf>,
@@ -30,17 +30,41 @@ pub fn build_scene(
     let mut binary = GltfBuffers::default();
     let mut meshes = Vec::new();
     let mut nodes = Vec::new();
+    let mut roots = Vec::new();
+    let mut skins = Vec::new();
+    for skeleton in &scene.skeletons {
+        let joints = skeleton
+            .joints
+            .iter()
+            .map(skin::GlobalJoint::from_inverse_bind)
+            .collect::<Result<Vec<_>, _>>()?;
+        let output = skin::build(&joints, &mut binary, nodes.len())?;
+        nodes.extend(output.nodes);
+        roots.extend(output.roots);
+        skins.push(output.skin);
+    }
     for mesh in scene.meshes {
         mesh.validate()?;
+        let joint_count = mesh
+            .skeleton
+            .map(|index| {
+                scene
+                    .skeletons
+                    .get(index)
+                    .map(|skeleton| skeleton.joints.len())
+                    .ok_or("mesh skeleton index is out of range")
+            })
+            .transpose()?;
         let index = json::Index::new(meshes.len() as u32);
-        meshes.push(export_mesh(&mesh, &mut binary)?);
-        nodes.push(mesh_node(index, mesh.name));
+        meshes.push(export_mesh(&mesh, &mut binary, joint_count)?);
+        let mut node = mesh_node(index, mesh.name);
+        node.skin = mesh.skeleton.map(|i| json::Index::new(i as u32));
+        roots.push(json::Index::new(nodes.len() as u32));
+        nodes.push(node);
     }
     let mut root = json::Root {
         scenes: vec![json::Scene {
-            nodes: (0..nodes.len())
-                .map(|i| json::Index::new(i as u32))
-                .collect(),
+            nodes: roots,
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
@@ -48,6 +72,7 @@ pub fn build_scene(
         scene: Some(json::Index::new(0)),
         nodes,
         meshes,
+        skins,
         materials: (0..=material_count)
             .map(|_| json::Material::default())
             .collect(),
@@ -58,7 +83,11 @@ pub fn build_scene(
     Ok(())
 }
 
-fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<dyn Error>> {
+fn export_mesh(
+    mesh: &Mesh,
+    binary: &mut GltfBuffers,
+    joint_count: Option<usize>,
+) -> Result<json::Mesh, Box<dyn Error>> {
     use json::{
         accessor::{ComponentType, Type},
         mesh::Semantic,
@@ -160,6 +189,11 @@ fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<
     {
         let accessor = color(attribute, mesh.vertex_count, binary)?;
         attributes.insert(Valid(Semantic::Colors(set as u32)), accessor);
+    }
+    if let Some(count) = joint_count {
+        for (semantic, accessor) in skin::influences(mesh, count, binary)? {
+            attributes.insert(Valid(semantic), accessor);
+        }
     }
     let primitives = mesh
         .primitives
