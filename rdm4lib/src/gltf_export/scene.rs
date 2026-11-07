@@ -9,7 +9,7 @@ use gltf::json::{self, validation::Checked::Valid};
 use super::{mesh_node, GltfExportFormat, RdGltf};
 use crate::{
     gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
-    scene::{Mesh, Scene},
+    scene::{Attribute, AttributeValues, Mesh, Scene},
     vertex::VertexSemantic,
 };
 
@@ -100,14 +100,21 @@ fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<
             None,
         ));
     }
-    // Retain the existing static export order and attribute coverage during migration.
+    for (set, attribute) in mesh
+        .attributes
+        .iter()
+        .filter(|attribute| attribute.descriptor.semantic == VertexSemantic::Texcoord)
+        .enumerate()
+    {
+        let values = attribute.floats(2)?;
+        let accessor = binary.push_attribute(
+            floats(&values),
+            AccessorBuilder::new(mesh.vertex_count, Type::Vec2, ComponentType::F32),
+            None,
+        );
+        attributes.insert(Valid(Semantic::TexCoords(set as u32)), accessor);
+    }
     for (source, semantic, width, shape) in [
-        (
-            VertexSemantic::Texcoord,
-            Semantic::TexCoords(0),
-            2,
-            Type::Vec2,
-        ),
         (VertexSemantic::Normal, Semantic::Normals, 3, Type::Vec3),
         (VertexSemantic::Tangent, Semantic::Tangents, 3, Type::Vec4),
     ] {
@@ -145,6 +152,15 @@ fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<
         );
         attributes.insert(Valid(semantic), accessor);
     }
+    for (set, attribute) in mesh
+        .attributes
+        .iter()
+        .filter(|attribute| attribute.descriptor.semantic == VertexSemantic::Color)
+        .enumerate()
+    {
+        let accessor = color(attribute, mesh.vertex_count, binary)?;
+        attributes.insert(Valid(Semantic::Colors(set as u32)), accessor);
+    }
     let primitives = mesh
         .primitives
         .iter()
@@ -166,6 +182,39 @@ fn export_mesh(mesh: &Mesh, binary: &mut GltfBuffers) -> Result<json::Mesh, Box<
         extras: Default::default(),
         weights: None,
     })
+}
+
+fn color(
+    attribute: &Attribute,
+    count: usize,
+    binary: &mut GltfBuffers,
+) -> Result<json::Index<json::Accessor>, Box<dyn Error>> {
+    use json::accessor::{ComponentType, Type};
+    let components = attribute.descriptor.storage_count;
+    let (payload, accessor) = match &attribute.values {
+        AttributeValues::U32(values)
+            if components == 1 && matches!(attribute.descriptor.interpretation.0, 2 | 4 | 6) =>
+        {
+            (
+                BufferContainer::U8(values.iter().flat_map(|v| v.to_le_bytes()).collect()),
+                AccessorBuilder::new(count, Type::Vec4, ComponentType::U8).normalized(),
+            )
+        }
+        AttributeValues::F16(_) | AttributeValues::F32(_) if matches!(components, 3 | 4) => (
+            floats(&attribute.floats(components as usize)?),
+            AccessorBuilder::new(
+                count,
+                if components == 3 {
+                    Type::Vec3
+                } else {
+                    Type::Vec4
+                },
+                ComponentType::F32,
+            ),
+        ),
+        _ => return Err(format!("unsupported color encoding: {:?}", attribute.descriptor).into()),
+    };
+    Ok(binary.push_attribute(payload, accessor, None))
 }
 
 fn floats(values: &[f32]) -> BufferContainer {

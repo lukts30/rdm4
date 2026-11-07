@@ -179,6 +179,9 @@ mod tests {
         let positions = [[-0.0f32, 0.0, 0.0], [1.0, -0.0, 0.0], [0.0, 1.0, -0.0]];
         let normal = [f32::from_bits(0x3f800001), -0.0, 0.0];
         let tangent = [-0.0, f32::from_bits(0x3f800001), 0.0, -1.0];
+        let texcoords = [[-0.0f32, 0.0], [1.0, -0.0], [0.25, 1.0]];
+        let colors = [[0u8, 255, 1, 128], [255, 0, 127, 64], [8, 16, 32, 0]];
+        let float_color = [-0.0f32, 0.5, 1.0];
         let mesh = Mesh {
             name: Some("precision".into()),
             vertex_count: 3,
@@ -197,6 +200,31 @@ mod tests {
                         ..VertexIdentifier::g3f()
                     },
                     values: AttributeValues::F32(tangent.repeat(3)),
+                },
+                Attribute {
+                    descriptor: VertexIdentifier::t2f(),
+                    values: AttributeValues::F32(texcoords.into_iter().flatten().collect()),
+                },
+                Attribute {
+                    descriptor: VertexIdentifier::t2h(),
+                    values: AttributeValues::F16(
+                        texcoords
+                            .into_iter()
+                            .flatten()
+                            .map(half::f16::from_f32)
+                            .collect(),
+                    ),
+                },
+                Attribute {
+                    descriptor: VertexIdentifier::c4b(),
+                    values: AttributeValues::U32(colors.map(u32::from_le_bytes).to_vec()),
+                },
+                Attribute {
+                    descriptor: VertexIdentifier {
+                        semantic: VertexSemantic::Color,
+                        ..VertexIdentifier::p3f()
+                    },
+                    values: AttributeValues::F32(float_color.repeat(3)),
                 },
             ],
             indices: vec![0, 1, 2],
@@ -235,6 +263,32 @@ mod tests {
         }
         for value in reader.read_tangents().unwrap() {
             assert_eq!(value.map(f32::to_bits), tangent.map(f32::to_bits));
+        }
+        for set in 0..2 {
+            assert_eq!(
+                reader
+                    .read_tex_coords(set)
+                    .unwrap()
+                    .into_f32()
+                    .map(|v| v.map(f32::to_bits))
+                    .collect::<Vec<_>>(),
+                texcoords.map(|v| v.map(f32::to_bits))
+            );
+        }
+        assert!(primitive
+            .get(&gltf::Semantic::Colors(0))
+            .unwrap()
+            .normalized());
+        assert_eq!(
+            reader
+                .read_colors(0)
+                .unwrap()
+                .into_rgba_u8()
+                .collect::<Vec<_>>(),
+            colors
+        );
+        for value in reader.read_colors(1).unwrap().into_rgb_f32() {
+            assert_eq!(value.map(f32::to_bits), float_color.map(f32::to_bits));
         }
     }
 }

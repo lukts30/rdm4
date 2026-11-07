@@ -418,6 +418,8 @@ fn gltf_command_and_alias_match_legacy_output() {
         succeeds(
             ng().arg("gltf")
                 .arg(fixture(name))
+                // Selected export keeps the legacy attribute coverage.
+                .args(["--mesh-index", "0"])
                 .arg("-o")
                 .arg(&actual)
                 .arg("--force"),

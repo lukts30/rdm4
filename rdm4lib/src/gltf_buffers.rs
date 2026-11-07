@@ -12,6 +12,7 @@ pub(crate) struct AccessorBuilder {
     count: usize,
     shape: json::accessor::Type,
     component: json::accessor::ComponentType,
+    normalized: bool,
     min: Option<json::Value>,
     max: Option<json::Value>,
 }
@@ -26,6 +27,7 @@ impl AccessorBuilder {
             count,
             shape,
             component,
+            normalized: false,
             min: None,
             max: None,
         }
@@ -34,6 +36,11 @@ impl AccessorBuilder {
     pub fn bounds(mut self, min: Option<json::Value>, max: Option<json::Value>) -> Self {
         self.min = min;
         self.max = max;
+        self
+    }
+
+    pub fn normalized(mut self) -> Self {
+        self.normalized = true;
         self
     }
 }
@@ -105,7 +112,7 @@ impl GltfBuffers {
             extensions: Default::default(),
             extras: Default::default(),
             name: None,
-            normalized: false,
+            normalized: accessor.normalized,
             sparse: None,
         })
     }
