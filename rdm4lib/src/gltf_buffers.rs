@@ -2,7 +2,10 @@
 
 #![forbid(unsafe_code)]
 
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    ops::Range,
+};
 
 use bytes::Bytes;
 use gltf::json::{self, validation::USize64};
@@ -99,8 +102,40 @@ impl GltfBuffers {
         accessor: AccessorBuilder,
         target: Option<json::validation::Checked<json::buffer::Target>>,
     ) -> json::Index<json::Accessor> {
-        use json::validation::Checked::Valid;
         let view = self.push_buffer_view(payload, target);
+        self.push_view_accessor(view, accessor)
+    }
+
+    /// Reference a contiguous range within an existing payload.
+    pub fn push_accessor_range(
+        &mut self,
+        buffer: json::Index<json::Buffer>,
+        range: Range<usize>,
+        accessor: AccessorBuilder,
+    ) -> json::Index<json::Accessor> {
+        assert!(
+            range.start < range.end && range.end <= self.payloads[buffer.value()].get_bytes().len()
+        );
+        let view = json::Index::new(self.views.len() as u32);
+        self.views.push(json::buffer::View {
+            buffer,
+            byte_offset: Some(USize64(range.start as u64)),
+            byte_length: USize64(range.len() as u64),
+            byte_stride: None,
+            target: None,
+            name: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+        });
+        self.push_view_accessor(view, accessor)
+    }
+
+    fn push_view_accessor(
+        &mut self,
+        view: json::Index<json::buffer::View>,
+        accessor: AccessorBuilder,
+    ) -> json::Index<json::Accessor> {
+        use json::validation::Checked::Valid;
         self.push_accessor(json::Accessor {
             buffer_view: Some(view),
             byte_offset: None,

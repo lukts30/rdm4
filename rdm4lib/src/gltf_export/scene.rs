@@ -6,14 +6,14 @@ use std::{collections::BTreeMap, error::Error, path::PathBuf};
 
 use gltf::json::{self, validation::Checked::Valid};
 
-use super::{mesh_node, skin, GltfExportFormat, RdGltf};
+use super::{animation, mesh_node, skin, GltfExportFormat, RdGltf};
 use crate::{
     gltf_buffers::{AccessorBuilder, BufferContainer, GltfBuffers},
     scene::{Attribute, AttributeValues, Mesh, Scene},
     vertex::VertexSemantic,
 };
 
-/// Export meshes and skeletons, retaining source names, draw ranges and material slots.
+/// Export meshes, skeletons and clips, retaining names, draw ranges and key values.
 pub fn build_scene(
     scene: Scene,
     dir: Option<PathBuf>,
@@ -32,12 +32,14 @@ pub fn build_scene(
     let mut nodes = Vec::new();
     let mut roots = Vec::new();
     let mut skins = Vec::new();
+    let mut skeleton_nodes = Vec::new();
     for skeleton in &scene.skeletons {
         let joints = skeleton
             .joints
             .iter()
             .map(skin::GlobalJoint::from_inverse_bind)
             .collect::<Result<Vec<_>, _>>()?;
+        skeleton_nodes.push(nodes.len());
         let output = skin::build(&joints, &mut binary, nodes.len())?;
         nodes.extend(output.nodes);
         roots.extend(output.roots);
@@ -62,6 +64,22 @@ pub fn build_scene(
         roots.push(json::Index::new(nodes.len() as u32));
         nodes.push(node);
     }
+    let animations = scene
+        .animations
+        .iter()
+        .map(|clip| {
+            let skeleton = scene
+                .skeletons
+                .get(clip.skeleton)
+                .ok_or("animation skeleton index is out of range")?;
+            animation::build(
+                clip,
+                skeleton.joints.len(),
+                skeleton_nodes[clip.skeleton],
+                &mut binary,
+            )
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
     let mut root = json::Root {
         scenes: vec![json::Scene {
             nodes: roots,
@@ -73,6 +91,7 @@ pub fn build_scene(
         nodes,
         meshes,
         skins,
+        animations,
         materials: (0..=material_count)
             .map(|_| json::Material::default())
             .collect(),

@@ -6,13 +6,47 @@ use std::{borrow::Cow, error::Error, ops::Range};
 
 use crate::vertex::{StorageType, VertexIdentifier, VertexSemantic};
 
-/// Meshes and skeletons without file framing or source placement.
+/// Meshes, skeletons and animation clips without file framing or source placement.
 #[derive(Default)]
 pub struct Scene {
     /// All meshes selected for export.
     pub meshes: Vec<Mesh>,
     /// Skeletons referenced by meshes.
     pub skeletons: Vec<Skeleton>,
+    /// Clips bound to individual skeletons.
+    pub animations: Vec<Animation>,
+}
+
+/// Local joint poses over time, independent of bind poses and file layout.
+pub struct Animation {
+    /// Clip name.
+    pub name: String,
+    /// Index into the scene's skeletons.
+    pub skeleton: usize,
+    /// Nominal source duration; explicit key times remain authoritative.
+    pub duration_millis: u32,
+    /// Nominal samples per second, independent of explicit key times.
+    pub sampling_rate: u32,
+    /// Joint tracks in source order.
+    pub tracks: Vec<Track>,
+}
+
+/// A single joint's local poses.
+pub struct Track {
+    /// Joint index within the clip's skeleton.
+    pub joint: usize,
+    /// Explicit keys, retained without resampling.
+    pub frames: Vec<Keyframe>,
+}
+
+/// One local pose; stored values are not implicitly normalized.
+pub struct Keyframe {
+    /// Rotation in XYZW order.
+    pub rotation: [f32; 4],
+    /// Translation relative to the parent joint.
+    pub translation: [f32; 3],
+    /// Time in seconds.
+    pub time: f32,
 }
 
 /// Geometry shared by scene consumers, retaining the source attribute encoding.
@@ -214,7 +248,7 @@ mod tests {
         let source_translation = joint.translation;
         let models = document.models.as_mut().unwrap();
         models.push(models[0].clone());
-        let scene = document.into_scene(true).unwrap();
+        let mut scene = document.into_scene(true).unwrap();
         assert_eq!(scene.skeletons.len(), 1);
         assert!(scene.meshes.iter().all(|mesh| mesh.skeleton == Some(0)));
         let joint = &scene.skeletons[0].joints[0];
@@ -228,6 +262,34 @@ mod tests {
             [-x, -y, -z, w].map(f32::to_bits)
         );
         let joint_count = scene.skeletons[0].joints.len();
+        let mut animation = crate::rdm_anim::RdAnim::new(
+            include_bytes!("../rdm/basalt_crusher_others_idle01.rdm").to_vec(),
+            "working".into(),
+        );
+        let first = &mut animation.anim_vec[0].frames[0];
+        first.rotation = [-0.0, 0.0, -0.0, f32::from_bits(0x3f800001)];
+        first.translation = [-0.0, 0.0, -0.0];
+        let rotation = [
+            first.rotation[0],
+            first.rotation[1],
+            first.rotation[2],
+            -first.rotation[3],
+        ];
+        let translation = first.translation;
+        let times = animation.anim_vec[0]
+            .frames
+            .iter()
+            .map(|frame| frame.time.to_bits())
+            .collect::<Vec<_>>();
+        let rate = animation.sampling_rate;
+        let names = scene.skeletons[0]
+            .joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        scene
+            .animations
+            .push(animation.into_scene_animation(0, &names).unwrap());
         let output = tempfile::tempdir().unwrap();
         build_scene(
             scene,
@@ -239,6 +301,39 @@ mod tests {
         let (document, buffers, _) = gltf::import(output.path().join("out.glb")).unwrap();
         assert_eq!(document.meshes().count(), 2);
         assert_eq!(document.skins().count(), 1);
+        let animation = document.animations().next().unwrap();
+        assert_eq!(animation.name(), Some("working"));
+        let extras: serde_json::Value =
+            serde_json::from_str(animation.extras().as_ref().unwrap().get()).unwrap();
+        assert_eq!(extras["rdm4"]["samplingRate"], rate);
+        for (channel, expected) in animation
+            .channels()
+            .take(2)
+            .zip([rotation.to_vec(), translation.to_vec()])
+        {
+            let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+            assert_eq!(
+                reader
+                    .read_inputs()
+                    .unwrap()
+                    .map(f32::to_bits)
+                    .collect::<Vec<_>>(),
+                times
+            );
+            let values = match reader.read_outputs().unwrap() {
+                gltf::animation::util::ReadOutputs::Rotations(values) => {
+                    values.into_f32().next().unwrap().to_vec()
+                }
+                gltf::animation::util::ReadOutputs::Translations(mut values) => {
+                    values.next().unwrap().to_vec()
+                }
+                _ => unreachable!(),
+            };
+            assert_eq!(
+                values.into_iter().map(f32::to_bits).collect::<Vec<_>>(),
+                expected.into_iter().map(f32::to_bits).collect::<Vec<_>>()
+            );
+        }
         let skin = document.skins().next().unwrap();
         assert_eq!(skin.joints().count(), joint_count);
         assert_eq!(

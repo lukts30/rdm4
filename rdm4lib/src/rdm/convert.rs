@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
-    scene::{Attribute, Joint, Mesh, Primitive, Scene, Skeleton},
+    scene::{Animation, Attribute, Joint, Keyframe, Mesh, Primitive, Scene, Skeleton, Track},
     vertex::{StorageType, VertexFormat2},
     MeshInfo, RdJoint, RdModell, Triangle,
 };
@@ -268,7 +268,11 @@ impl RdmDocument {
             }
             Vec::new()
         };
-        Ok(Scene { meshes, skeletons })
+        Ok(Scene {
+            meshes,
+            skeletons,
+            ..Default::default()
+        })
     }
 
     /// Adapt one selected model for the existing exporter, optionally with its skeleton.
@@ -317,6 +321,52 @@ impl RdmDocument {
                     frames: track.frames,
                 })
                 .collect(),
+        })
+    }
+}
+
+impl RdAnim {
+    /// Move RDM keys into a scene clip, resolving names within one skeleton.
+    /// Unmatched tracks are skipped, as in the legacy exporter.
+    pub fn into_scene_animation(
+        self,
+        skeleton: usize,
+        joint_names: &[&str],
+    ) -> Result<Animation, Box<dyn Error>> {
+        let mut tracks = Vec::new();
+        for track in self.anim_vec {
+            let Some(joint) = joint_names.iter().rposition(|name| *name == track.name) else {
+                warn!(
+                    "Could not find animation target {:?} in skeleton",
+                    track.name
+                );
+                continue;
+            };
+            tracks.push(Track {
+                joint,
+                frames: track
+                    .frames
+                    .into_iter()
+                    .map(|frame| {
+                        let [x, y, z, w] = frame.rotation;
+                        Keyframe {
+                            rotation: [x, y, z, -w],
+                            translation: frame.translation,
+                            time: frame.time,
+                        }
+                    })
+                    .collect(),
+            });
+        }
+        if tracks.is_empty() {
+            return Err(format!("animation {:?} has no matching joint tracks", self.name).into());
+        }
+        Ok(Animation {
+            name: self.name,
+            skeleton,
+            duration_millis: self.time_max,
+            sampling_rate: self.sampling_rate,
+            tracks,
         })
     }
 }

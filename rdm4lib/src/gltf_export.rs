@@ -6,11 +6,10 @@ use crate::{
     vertex::*,
     MeshInfo, RdModell,
 };
-use gltf::json::validation::USize64;
 use gltf::{json, json::validation::Checked::Valid, mesh::Semantic};
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     env,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -20,6 +19,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 
+mod animation;
 mod scene;
 mod skin;
 pub use scene::build_scene;
@@ -58,288 +58,23 @@ impl RdGltfBuilder {
         }
     }
 
-    pub fn put_rdm_anim(&mut self) {
-        let buffv_idx = self.binary.buffers.len() as u32;
-        let mut bv_idx = self.binary.views.len() as u32;
-        let mut acc_idx = self.binary.accessors.len() as u32;
-
-        let anim = self.rdm.anim.clone().unwrap();
-        let anim_vec = anim.anim_vec.clone();
-
-        let size: usize = anim_vec.iter().map(|f| f.frames.len()).sum();
-
-        let rot_size = size * 16;
-        let trans_size = size * 12;
-        let t_size = size * 4;
-
-        let mut rot_anim_buf = BytesMut::with_capacity(rot_size);
-        let mut trans_anim_buf = BytesMut::with_capacity(trans_size);
-        let mut t_anim_buf = BytesMut::with_capacity(t_size);
-
-        let mut buffer_v_vec = Vec::new();
-
-        let mut acc_vec = Vec::new();
-        let time_1000_f32_max = (anim.time_max as f32) / 1000.0;
-
-        let mut rot_sampler_chanel = 0;
-        let mut trans_sampler_chanel = 1;
-
-        let mut sampler_vec = Vec::new();
-        let mut chanel_vec = Vec::new();
-
-        let p = self.rdm.joints.clone().unwrap();
-        let mut modell_nodes = HashMap::new();
-
-        for (i, joint) in p.iter().enumerate() {
-            modell_nodes.insert(joint.name.clone(), i);
-        }
-        for janim in anim_vec.iter() {
-            let target_node_idx = match modell_nodes.get(&janim.name) {
-                Some(idx) => *idx as u32,
-                None => {
-                    warn!(
-                        "Could not find animation target {:?} in base model {:?}",
-                        janim.name, p
-                    );
-                    //TODO: proper fix for unused animation targets.
-                    for _ in 0..janim.frames.len() {
-                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
-                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
-                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
-                        rot_anim_buf.put_u32_le(0xDEAD_BEEF);
-
-                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
-                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
-                        trans_anim_buf.put_u32_le(0xDEAD_BEEF);
-
-                        t_anim_buf.put_u32_le(0xDEAD_BEEF);
-                    }
-                    continue;
-                }
-            };
-
-            let count = janim.frames.len();
-
-            let rot_start = rot_anim_buf.len();
-            let trans_start = trans_anim_buf.len();
-            let t_start = t_anim_buf.len();
-
-            let mut time_real_f32_max = 0.0f32;
-
-            for f in &janim.frames {
-                rot_anim_buf.put_f32_le(f.rotation[0]);
-                rot_anim_buf.put_f32_le(f.rotation[1]);
-                rot_anim_buf.put_f32_le(f.rotation[2]);
-                rot_anim_buf.put_f32_le(-f.rotation[3]);
-
-                trans_anim_buf.put_f32_le(f.translation[0]);
-                trans_anim_buf.put_f32_le(f.translation[1]);
-                trans_anim_buf.put_f32_le(f.translation[2]);
-
-                t_anim_buf.put_f32_le(f.time);
-                time_real_f32_max = time_real_f32_max.max(f.time);
-            }
-            debug!("time_real_f32_max: {}", time_real_f32_max);
-            debug!("time_1000_f32_max: {}", time_1000_f32_max);
-
-            let rot_end = rot_anim_buf.len();
-            debug!("{}", rot_start);
-            debug!("{}", rot_end);
-
-            let trans_end = trans_anim_buf.len();
-            let t_end = t_anim_buf.len();
-
-            let rot_real_len = rot_end - rot_start;
-            let trans_real_len = trans_end - trans_start;
-
-            let t_real_len = t_end - t_start;
-
-            let rot_buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffv_idx),
-                byte_length: USize64(rot_real_len as u64),
-                byte_offset: Some(USize64(rot_start as u64)),
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            let rot_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: None,
-                count: USize64(count as u64),
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Vec4),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-            let rot_sampler_idx = acc_idx;
-            acc_vec.push(rot_accessor);
-            acc_idx += 1;
-            bv_idx += 1;
-
-            let trans_buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffv_idx),
-                byte_length: USize64(trans_real_len as u64),
-                byte_offset: Some(USize64((rot_size + trans_start) as u64)),
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            let trans_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: None,
-                count: USize64(count as u64),
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Vec3),
-                min: None,
-                max: None,
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-            let trans_sampler_idx = acc_idx;
-            acc_vec.push(trans_accessor);
-            acc_idx += 1;
-            bv_idx += 1;
-
-            let time_buffer_view = json::buffer::View {
-                buffer: json::Index::new(buffv_idx),
-                byte_length: USize64(t_real_len as u64),
-                byte_offset: Some(USize64((rot_size + trans_size + t_start) as u64)),
-                byte_stride: None,
-                extensions: Default::default(),
-                extras: Default::default(),
-                name: None,
-                target: None,
-            };
-
-            let time_accessor = json::Accessor {
-                buffer_view: Some(json::Index::new(bv_idx)),
-                byte_offset: None,
-                count: USize64(count as u64),
-                component_type: Valid(json::accessor::GenericComponentType(
-                    json::accessor::ComponentType::F32,
-                )),
-                extensions: Default::default(),
-                extras: Default::default(),
-                type_: Valid(json::accessor::Type::Scalar),
-                min: Some(json::Value::from(vec![
-                    janim
-                        .frames
-                        .first()
-                        .expect("animation track has no frames")
-                        .time,
-                ])),
-                max: Some(json::Value::from(vec![time_real_f32_max])),
-                name: None,
-                normalized: false,
-                sparse: None,
-            };
-            let time_sampler_idx = acc_idx;
-            acc_vec.push(time_accessor);
-            acc_idx += 1;
-            bv_idx += 1;
-
-            buffer_v_vec.push(rot_buffer_view);
-            buffer_v_vec.push(trans_buffer_view);
-            buffer_v_vec.push(time_buffer_view);
-
-            let rot_sampler = json::animation::Sampler {
-                input: json::Index::new(time_sampler_idx),
-                interpolation: Valid(json::animation::Interpolation::Linear),
-                output: json::Index::new(rot_sampler_idx),
-                extensions: None,
-                extras: None,
-            };
-
-            let trans_sampler = json::animation::Sampler {
-                input: json::Index::new(time_sampler_idx),
-                interpolation: Valid(json::animation::Interpolation::Linear),
-                output: json::Index::new(trans_sampler_idx),
-                extensions: None,
-                extras: None,
-            };
-
-            let rot_chanel = json::animation::Channel {
-                sampler: json::Index::new(rot_sampler_chanel),
-                target: json::animation::Target {
-                    node: json::Index::new(target_node_idx as u32),
-                    path: Valid(json::animation::Property::Rotation),
-                    extensions: None,
-                    extras: None,
-                },
-                extensions: None,
-                extras: None,
-            };
-
-            let trans_chanel = json::animation::Channel {
-                sampler: json::Index::new(trans_sampler_chanel),
-                target: json::animation::Target {
-                    node: json::Index::new(target_node_idx as u32),
-                    path: Valid(json::animation::Property::Translation),
-                    extensions: None,
-                    extras: None,
-                },
-                extensions: None,
-                extras: None,
-            };
-
-            sampler_vec.push(rot_sampler);
-            sampler_vec.push(trans_sampler);
-
-            chanel_vec.push(rot_chanel);
-            chanel_vec.push(trans_chanel);
-
-            rot_sampler_chanel += 2;
-            trans_sampler_chanel += 2;
-        }
-
-        let anim_node = json::animation::Animation {
-            name: Some(anim.name),
-            samplers: sampler_vec,
-            channels: chanel_vec,
-            extensions: None,
-            // glTF key times do not encode RDM's independent nominal sample rate.
-            extras: Some(
-                serde_json::value::to_raw_value(&serde_json::json!({
-                    "rdm4": { "samplingRate": anim.sampling_rate }
-                }))
-                .unwrap(),
-            ),
-        };
-
-        debug!("{:#?}", anim_node);
-
-        let mut b1 = rot_anim_buf.to_vec();
-        let mut b2 = trans_anim_buf.to_vec();
-        let mut b3 = t_anim_buf.to_vec();
-
-        b1.append(&mut b2);
-        b1.append(&mut b3);
-        let buffer = self.binary.push_buffer(BufferContainer::U8(b1));
-        assert_eq!(buffv_idx as usize, buffer.value());
-
-        self.binary.views.append(&mut buffer_v_vec);
-
-        self.binary.accessors.append(&mut acc_vec);
-
-        self.anim_node = Some(anim_node);
+    fn put_rdm_anim(&mut self) {
+        let joints = self.rdm.joints.as_ref().expect("animation requires joints");
+        let names = joints
+            .iter()
+            .map(|joint| joint.name.as_str())
+            .collect::<Vec<_>>();
+        let clip = self
+            .rdm
+            .anim
+            .take()
+            .expect("animation was checked")
+            .into_scene_animation(0, &names)
+            .expect("invalid animation targets");
+        self.anim_node = Some(
+            animation::build(&clip, joints.len(), 0, &mut self.binary)
+                .expect("cannot export animation"),
+        );
     }
 
     fn put_joint_weight(&mut self, normalise: bool) {
