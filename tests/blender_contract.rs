@@ -8,7 +8,10 @@ use std::{
     process::Command,
 };
 
-use rdm4lib::{rdm_anim::RdAnim, RdModell};
+use rdm4lib::{
+    rdm::{RdmDocument, RdmReader},
+    rdm_anim::RdAnim,
+};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -209,7 +212,17 @@ fn rdm_export_supports_equals_format_and_preserves_basename_and_groups() {
     let input = output.path().join("exported mesh.rdm");
     fs::copy(fixture("fishery_others_lod2.rdm"), &input).unwrap();
     succeeds(&mut import_command(&input, output.path()));
-    let expected = RdModell::from(&input);
+    let read = |path: &Path| {
+        RdmReader::new(std::io::BufReader::new(fs::File::open(path).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value
+            .models
+            .unwrap()
+            .remove(0)
+    };
+    let expected = read(&input);
     // export_rdm deletes the old RDM before invoking the converter.
     fs::remove_file(&input).unwrap();
     succeeds(
@@ -221,25 +234,9 @@ fn rdm_export_supports_equals_format_and_preserves_basename_and_groups() {
             .arg("--outdst")
             .arg(output.path()),
     );
-    let actual = RdModell::from(&input);
-    assert_eq!(actual.vertex.len(), expected.vertex.len());
-    assert_eq!(
-        actual.triangle_indices.len(),
-        expected.triangle_indices.len()
-    );
-    assert_eq!(actual.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
-    let groups = |model: &RdModell| {
-        model
-            .mesh_info
-            .iter()
-            .map(|group| {
-                (
-                    group.start_index_location,
-                    group.index_count,
-                    group.material,
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(groups(&actual), groups(&expected));
+    let actual = read(&input);
+    assert_eq!(actual.vertices.count, expected.vertices.count);
+    assert_eq!(actual.indices.values.len(), expected.indices.values.len());
+    assert_eq!(actual.vertex_format.to_string(), "P4h_N4b_G4b_B4b_T2h");
+    assert_eq!(actual.groups, expected.groups);
 }

@@ -1,5 +1,3 @@
-use rdm4lib::RdModell;
-
 use rdm4lib::gltf_export;
 use rdm4lib::rdm_anim::RdAnim;
 
@@ -13,8 +11,6 @@ use std::str;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rdm4lib::rdm_data_anim::RdAnimWriter2;
-    use rdm4lib::rdm_data_main::RdWriter2;
     #[cfg(target_os = "windows")]
     use rdm4lib::rdm_material::RdMaterial;
     use rdm4lib::{gltf_export::GltfExportFormat, vertex::TargetVertexFormat};
@@ -22,15 +18,30 @@ mod tests {
     use std::convert::TryFrom;
     use std::fs;
 
-    fn load_scene(path: &str, skin: bool) -> rdm4lib::scene::Scene {
-        use rdm4lib::rdm::{RdmDocument, RdmReader};
+    use rdm4lib::rdm::{
+        write_scene, RdmDocument, RdmEndian, RdmExportOptions, RdmReader, RdmWriter,
+    };
+
+    fn read_document(path: &str) -> RdmDocument {
         RdmReader::new(std::io::BufReader::new(File::open(path).unwrap()))
             .unwrap()
             .read_root::<RdmDocument>()
             .unwrap()
             .value
-            .into_scene(skin)
-            .unwrap()
+    }
+
+    fn options(format: TargetVertexFormat) -> RdmExportOptions {
+        RdmExportOptions {
+            format,
+            mirror_x: false,
+            no_transform: false,
+            material_indices: None,
+            legacy_metadata: true,
+        }
+    }
+
+    fn load_scene(path: &str, skin: bool) -> rdm4lib::scene::Scene {
+        read_document(path).into_scene(skin).unwrap()
     }
 
     fn add_animation(scene: &mut rdm4lib::scene::Scene, anim: RdAnim) {
@@ -56,11 +67,12 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn reads_mesh_with_multiple_material_groups() {
-        let rdm = RdModell::from("rdm/fishery_others_lod2.rdm");
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h");
-        assert_eq!(rdm.vertex.len(), 3291);
-        assert_eq!(rdm.triangle_indices.len() * 3, 7473);
-        assert_eq!(rdm.mesh_info.len(), 2);
+        let rdm = read_document("rdm/fishery_others_lod2.rdm");
+        let model = &rdm.models.as_ref().unwrap()[0];
+        assert_eq!(model.vertex_format.to_string(), "P4h_N4b_G4b_B4b_T2h");
+        assert_eq!(model.vertices.count, 3291);
+        assert_eq!(model.indices.values.len(), 7473);
+        assert_eq!(model.groups.len(), 2);
     }
 
     #[test]
@@ -174,9 +186,6 @@ mod tests {
         let idle_joint = anim.anim_vec.pop().unwrap().name;
         let tracks = anim.anim_vec.clone();
 
-        let mut rdm = RdModell::from(mesh_path);
-        rdm.add_skin();
-        let joints = rdm.joints.clone().unwrap();
         let mut scene = source.value.into_scene(true).unwrap();
         add_animation(&mut scene, anim);
         let output_dir = tempfile::tempdir().unwrap();
@@ -218,38 +227,43 @@ mod tests {
         let input = output_dir.path().join("out.gltf");
         let imported = gltf_reader::ImportedGltf::try_from(input.as_path()).unwrap();
         let error = imported
-            .read_animations(&joints, Default::default())
-            .unwrap_err()
+            .read_scene(true, Some(Default::default()))
+            .err()
+            .unwrap()
             .to_string();
         assert!(
             error.contains("t=0") && error.contains(&tracks[0].name),
             "{error}"
         );
-        let animations = imported
-            .read_animations(
-                &joints,
-                gltf_reader::AnimationImportOptions {
+        let imported_scene = imported
+            .read_scene(
+                true,
+                Some(gltf_reader::AnimationImportOptions {
                     interpolate: true,
                     ..Default::default()
-                },
+                }),
             )
             .unwrap();
-        let animation = &animations[0];
+        let animation = &imported_scene.animations[0];
         assert_eq!(animation.sampling_rate, 60);
         for source in tracks {
             let track = animation
-                .anim_vec
+                .tracks
                 .iter()
-                .find(|t| t.name == source.name)
+                .find(|t| imported_scene.skeletons[0].joints[t.joint].name == source.name)
                 .unwrap();
             assert_eq!(track.frames[0].time.to_bits(), 0.0f32.to_bits());
-            let bits = |frame: &rdm4lib::rdm_anim::Frame| {
-                (
-                    frame.rotation.map(f32::to_bits),
-                    frame.translation.map(f32::to_bits),
-                )
+            let bits = |rotation: [f32; 4], translation: [f32; 3]| {
+                (rotation.map(f32::to_bits), translation.map(f32::to_bits))
             };
-            assert_eq!(bits(&track.frames[0]), bits(&source.frames[0]));
+            let rdm_rotation = |[x, y, z, w]: [f32; 4]| [x, y, z, -w];
+            assert_eq!(
+                bits(
+                    rdm_rotation(track.frames[0].rotation),
+                    track.frames[0].translation
+                ),
+                bits(source.frames[0].rotation, source.frames[0].translation)
+            );
             for expected in source.frames {
                 let index = track
                     .frames
@@ -257,13 +271,16 @@ mod tests {
                     .unwrap();
                 let actual = &track.frames[index];
                 assert_eq!(actual.time.to_bits(), expected.time.to_bits());
-                assert_eq!(bits(actual), bits(&expected));
+                assert_eq!(
+                    bits(rdm_rotation(actual.rotation), actual.translation),
+                    bits(expected.rotation, expected.translation)
+                );
             }
         }
         let idle = animation
-            .anim_vec
+            .tracks
             .iter()
-            .find(|t| t.name == idle_joint)
+            .find(|t| imported_scene.skeletons[0].joints[t.joint].name == idle_joint)
             .unwrap();
         assert_eq!(idle.frames[0].time, 0.0);
         assert!(idle.frames.iter().all(|frame| {
@@ -271,19 +288,19 @@ mod tests {
                 && frame.translation == idle.frames[0].translation
         }));
         let minimal = imported
-            .read_animations(
-                &joints,
-                gltf_reader::AnimationImportOptions {
+            .read_scene(
+                true,
+                Some(gltf_reader::AnimationImportOptions {
                     interpolate: true,
                     idle_intervals: 0,
                     ..Default::default()
-                },
+                }),
             )
             .unwrap();
-        let idle = minimal[0]
-            .anim_vec
+        let idle = minimal.animations[0]
+            .tracks
             .iter()
-            .find(|t| t.name == idle_joint)
+            .find(|t| minimal.skeletons[0].joints[t.joint].name == idle_joint)
             .unwrap();
         assert_eq!(idle.frames.len(), 2);
         assert!(idle.frames.iter().all(|frame| frame.time.is_finite()));
@@ -345,39 +362,38 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn reads_position_only_mesh_from_file() {
-        let rdm = RdModell::from("rdm/fishery_others_cutout_lod0.rdm");
-        assert_eq!(rdm.vertex.len(), 32);
-        assert_eq!(rdm.triangle_indices.len() * 3, 78);
-        assert_eq!(rdm.vertex.to_string(), "P4h");
-        assert_eq!(rdm.mesh_info.len(), 1);
+        let rdm = read_document("rdm/fishery_others_cutout_lod0.rdm");
+        let model = &rdm.models.as_ref().unwrap()[0];
+        assert_eq!(model.vertices.count, 32);
+        assert_eq!(model.indices.values.len(), 78);
+        assert_eq!(model.vertex_format.to_string(), "P4h");
+        assert_eq!(model.groups.len(), 1);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn formats_packed_colors_as_c4c_to_match_game_cfg() {
-        let rdm = RdModell::from("rdm/ark_waterfall2.rdm");
-        assert_eq!(rdm.vertex.len(), 105);
+        let rdm = read_document("rdm/ark_waterfall2.rdm");
+        let model = &rdm.models.as_ref().unwrap()[0];
+        assert_eq!(model.vertices.count, 105);
         // Matches the vertex format declared in the game CFG.
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_T2h_C4c");
-        assert_eq!(rdm.mesh_info.len(), 1);
+        assert_eq!(model.vertex_format.to_string(), "P4h_N4b_T2h_C4c");
+        assert_eq!(model.groups.len(), 1);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn rewrites_skinned_rdm_with_expected_bytes() {
-        let mut rdm = RdModell::from("rdm/basalt_crusher_others_lod2.rdm");
-        rdm.add_skin();
-        assert_eq!(rdm.vertex.len(), 2615);
-        assert_eq!(rdm.vertex.to_string(), "P4h_N4b_G4b_B4b_T2h_I4b");
-        assert_eq!(rdm.mesh_info.len(), 1);
-
-        let exp_rdm = RdWriter2::new(rdm);
-        let output_dir = tempfile::tempdir().unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
-        check_hash(
-            &dest_path,
-            "8f048b28e18b12aa1d078e42eb3fe7dcc8bb5017b529c09b8bfb6eb11973fc75",
-        );
+    fn preserves_skinned_rdm_bytes_and_layout() {
+        let source = fs::read("rdm/basalt_crusher_others_lod2.rdm").unwrap();
+        let decoded = RdmReader::new(std::io::Cursor::new(&source))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap();
+        let output = RdmWriter::new(std::io::Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_preserving(&decoded.value, decoded.layout)
+            .unwrap()
+            .into_inner();
+        assert_eq!(output, source);
     }
 
     #[test]
@@ -402,25 +418,23 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn converts_skinned_gltf_to_expected_rdm_bytes() {
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &gltf_reader::ImportedGltf::try_from(Path::new(
-                "rdm/gltf/stormtrooper_with_tangent.gltf",
-            ))
-            .unwrap(),
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
-            true,
+        let imported = gltf_reader::ImportedGltf::try_from(Path::new(
+            "rdm/gltf/stormtrooper_with_tangent.gltf",
+        ))
+        .unwrap();
+        let scene = imported.read_scene(true, None).unwrap();
+        assert_eq!(scene.meshes[0].vertex_count, 5184);
+        assert_eq!(scene.skeletons[0].joints.len(), 72);
+        let output = tempfile::tempdir().unwrap();
+        let path = write_scene(
+            scene,
+            options(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
+            Some(output.path().into()),
             false,
-            false,
-            None,
-        );
-        assert_eq!(rdm.vertex.len(), 5184);
-        assert_eq!(rdm.joints.as_ref().unwrap().len(), 72);
-
-        let exp_rdm = RdWriter2::new(rdm);
-        let output_dir = tempfile::tempdir().unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
+        )
+        .unwrap();
         check_hash(
-            &dest_path,
+            &path,
             "f7612fc465e1a0f27687ed7371c88f945b71858bddbe963bb39389644e41b206",
         );
     }
@@ -428,29 +442,22 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn converts_gltf_animation_to_expected_rdm_bytes() {
-        let f_path = Path::new("rdm/gltf/stormtrooper_with_tangent.gltf");
-        let i_gltf = gltf_reader::ImportedGltf::try_from(f_path).unwrap();
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &i_gltf,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b,
-            true,
+        let imported = gltf_reader::ImportedGltf::try_from(Path::new(
+            "rdm/gltf/stormtrooper_with_tangent.gltf",
+        ))
+        .unwrap();
+        let scene = imported.read_scene(true, Some(Default::default())).unwrap();
+        assert_eq!(scene.animations.len(), 1);
+        let output = tempfile::tempdir().unwrap();
+        write_scene(
+            scene,
+            options(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
+            Some(output.path().into()),
             false,
-            false,
-            None,
-        );
-        assert_eq!(rdm.vertex.len(), 5184);
-
-        let jj = &rdm.joints.unwrap();
-        let mut anims = gltf_reader::ImportedGltf::read_animation(&i_gltf, jj, 6, 0.33333).unwrap();
-
-        assert_eq!(anims.len(), 1);
-        let anim = anims.pop().unwrap();
-        let exp_rdm = RdAnimWriter2::new(anim);
-        let output_dir = tempfile::tempdir().unwrap();
-        exp_rdm.write_anim_rdm(Some(output_dir.path().into()), false);
-
+        )
+        .unwrap();
         check_hash(
-            &output_dir.path().join("anim_0.rdm"),
+            &output.path().join("anim_0.rdm"),
             "c2183cd7d5c342a6e6e1c8260b5ab93503fe2ad282d851bbee791bf3a1d6c3f1",
         );
     }
@@ -458,45 +465,43 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn converts_unskinned_gltf_to_expected_rdm_bytes() {
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf")).unwrap(),
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+        let scene = gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/stormtrooper.gltf"))
+            .unwrap()
+            .read_scene(false, None)
+            .unwrap();
+        assert_eq!(scene.meshes[0].vertex_count, 5184);
+        let output = tempfile::tempdir().unwrap();
+        let path = write_scene(
+            scene,
+            options(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
+            Some(output.path().into()),
             false,
-            false,
-            false,
-            None,
-        );
-        assert_eq!(rdm.vertex.len(), 5184);
-
-        let exp_rdm = RdWriter2::new(rdm);
-        let output_dir = tempfile::tempdir().unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
+        )
+        .unwrap();
         check_hash(
-            &dest_path,
+            &path,
             "48a52be827288189f8ec8bbf28d7c0cb50305b51c7513285472c5fcc8c7b9714",
         );
     }
-
     #[test]
     #[cfg_attr(miri, ignore)]
     #[ignore = "Triangle fixture has no normals"]
     fn converts_triangle_gltf_without_normals_to_rdm() {
-        let rdm = gltf_reader::ImportedGltf::gltf_to_rdm(
-            &gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf")).unwrap(),
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+        let scene = gltf_reader::ImportedGltf::try_from(Path::new("rdm/gltf/triangle.gltf"))
+            .unwrap()
+            .read_scene(false, None)
+            .unwrap();
+        assert_eq!(scene.meshes[0].vertex_count, 3);
+        let output = tempfile::tempdir().unwrap();
+        let path = write_scene(
+            scene,
+            options(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
+            Some(output.path().into()),
             false,
-            false,
-            false,
-            None,
-        );
-        assert_eq!(rdm.vertex.len(), 3);
-
-        let exp_rdm = RdWriter2::new(rdm);
-
-        let output_dir = tempfile::tempdir().unwrap();
-        let dest_path = exp_rdm.write_rdm(Some(output_dir.path().into()), false);
+        )
+        .unwrap();
         check_hash(
-            &dest_path,
+            &path,
             "f456d4418387e5bcbe4522064f5fdb75bd67b762793489ad6220a9718d431e3c",
         );
     }

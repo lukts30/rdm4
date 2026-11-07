@@ -9,7 +9,6 @@ use rdm4lib::{
         RdmReader, RdmSkin, RdmWriter,
     },
     rdm_anim::RdAnim,
-    RdModell,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -276,32 +275,30 @@ fn assert_first_model(fixture: &Fixture) {
         word(&bytes, word(&bytes, model_at + 16) - 4),
         number(&expected["index_stride"])
     );
-    let model = RdModell::from(&path);
+    let document = RdmReader::new(Cursor::new(&bytes))
+        .unwrap()
+        .read_root::<RdmDocument>()
+        .unwrap();
+    let model = &document.value.models.as_ref().unwrap()[0];
     assert_eq!(
-        model.vertex.len() as usize,
+        model.vertices.count,
         number(&expected["vertices"]),
         "{path:?}"
     );
     assert_eq!(
-        model.triangle_indices.len() * 3,
+        model.indices.values.len(),
         number(&expected["indices"]),
         "{path:?}"
     );
     assert_eq!(
-        model.vertex.to_string(),
+        model.vertex_format.to_string(),
         expected["format"].as_str().unwrap(),
         "{path:?}"
     );
     let groups: Vec<_> = model
-        .mesh_info
+        .groups
         .iter()
-        .map(|group| {
-            [
-                group.start_index_location,
-                group.index_count,
-                group.material,
-            ]
-        })
+        .map(|group| [group.first_index, group.index_count, group.material])
         .collect();
     assert_eq!(serde_json::json!(groups), expected["groups"], "{path:?}");
 }
@@ -319,14 +316,13 @@ fn reads_every_single_model_corpus_mesh() {
 }
 
 #[test]
-fn characterizes_legacy_multi_model_truncation() {
+fn reads_first_model_of_each_multi_model_corpus_mesh() {
     let meshes: Vec<_> = fixtures()
         .into_iter()
         .filter(|fixture| fixture.model_count() > 1)
         .collect();
     assert_eq!(meshes.len(), 4);
     for fixture in meshes {
-        // The compatibility model API intentionally selects only the first model.
         assert_first_model(&fixture);
         let first = number(&fixture.expected["first_model"]["vertices"]);
         assert!(first < number(&fixture.expected["total_vertices"]));
