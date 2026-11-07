@@ -173,6 +173,7 @@ fn entry_do_work(opts: Opts) {
             mesh_index: opts.gltf_mesh_index,
             skeleton: opts.skeleton,
             animation: opts.animation,
+            sampling_rate: None,
             no_transform: opts.no_transform,
             mirror_x: opts.negative_x_and_v0v2v1,
             material_indices: opts.overide_mesh_idx,

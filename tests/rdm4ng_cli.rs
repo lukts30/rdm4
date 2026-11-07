@@ -563,5 +563,32 @@ fn external_animation_includes_skeleton_and_matches_legacy_output() {
             .arg("-o")
             .arg(&actual),
     );
-    assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+    assert_eq!(fs::read(&actual).unwrap(), fs::read(expected).unwrap());
+    let destination = output.path().join("restored.rdm");
+    let animation = output.path().join("restored_anim_0.rdm");
+    let mut import = ng();
+    import
+        .arg("rdm")
+        .arg(&actual)
+        .args([
+            "--format",
+            "P4h_N4b_G4b_B4b_T2h_I4b",
+            "--skeleton",
+            "--animation",
+            "--no-transform",
+        ])
+        .arg("-o")
+        .arg(&destination);
+    succeeds(&mut import);
+    let mesh = fs::read(&destination).unwrap();
+    let mut expected = fs::read(&animation).unwrap();
+    let record = u32::from_le_bytes(expected[0x2c..0x30].try_into().unwrap()) as usize;
+    expected[record + 12..record + 16].copy_from_slice(&60u32.to_le_bytes());
+    succeeds(import.args(["--sampling-rate", "60", "--force"]));
+    assert_eq!(
+        fs::read(animation).unwrap(),
+        expected,
+        "only the nominal rate changes"
+    );
+    assert_eq!(fs::read(destination).unwrap(), mesh);
 }

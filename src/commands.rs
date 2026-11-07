@@ -277,6 +277,7 @@ pub struct RdmOptions {
     pub mesh_index: u32,
     pub skeleton: bool,
     pub animation: bool,
+    pub sampling_rate: Option<u32>,
     pub no_transform: bool,
     pub mirror_x: bool,
     pub material_indices: Option<Vec<u32>>,
@@ -358,7 +359,10 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
         let joints = rdm.joints.as_ref().unwrap();
         match ImportedGltf::read_animation(&gltf, joints, 6, 0.33333) {
             Some(mut animations) => {
-                for animation in animations.drain(..) {
+                for mut animation in animations.drain(..) {
+                    if let Some(rate) = opts.sampling_rate {
+                        animation.sampling_rate = rate;
+                    }
                     RdAnimWriter2::new(animation)
                         .try_write_anim_rdm(output.clone(), !opts.files.force)?;
                 }

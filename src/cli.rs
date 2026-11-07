@@ -140,6 +140,9 @@ struct RdmArgs {
     /// Export animations alongside the mesh.
     #[arg(short, long, requires = "skeleton")]
     animation: bool,
+    /// Override nominal RDM samples/second; source key times are retained, without resampling.
+    #[arg(long, requires = "animation", value_parser = clap::value_parser!(u32).range(1..))]
+    sampling_rate: Option<u32>,
     /// Do not apply node transforms; recommended for animated meshes.
     #[arg(long, alias = "no_transform")]
     no_transform: bool,
@@ -182,6 +185,7 @@ pub fn run() -> ExitCode {
                 mesh_index: args.mesh_index,
                 skeleton: args.skeleton,
                 animation: args.animation,
+                sampling_rate: args.sampling_rate,
                 no_transform: args.no_transform,
                 mirror_x: args.mirror_x,
                 material_indices: args.material_indices,
