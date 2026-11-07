@@ -9,11 +9,7 @@ use gltf::animation::{util::ReadOutputs, Interpolation};
 use nalgebra::{Quaternion, UnitQuaternion};
 
 use super::{node_get_local_transform, ImportedGltf};
-use crate::{
-    rdm_anim::{Frame, FrameCollection, RdAnim},
-    scene::{Animation, Keyframe, Skeleton, Track as SceneTrack},
-    RdJoint,
-};
+use crate::scene::{Animation, Keyframe, Track as SceneTrack};
 
 /// Controls conversion from independent glTF channels to RDM pose tracks.
 #[derive(Clone, Copy)]
@@ -188,91 +184,6 @@ impl Track {
 }
 
 impl ImportedGltf {
-    /// Compatibility API: require zero-starting, sampled channels without interpolation.
-    pub fn read_animation(
-        &self,
-        joints: &[RdJoint],
-        frames: usize,
-        _tmax: f32,
-    ) -> Option<Vec<RdAnim>> {
-        Some(
-            self.read_animations(
-                joints,
-                AnimationImportOptions {
-                    idle_intervals: frames,
-                    ..Default::default()
-                },
-            )
-            .expect("cannot import animation"),
-        )
-    }
-
-    /// Convert channels to RDM tracks. Baking is opt-in; source key values are copied exactly.
-    pub fn read_animations(
-        &self,
-        joints: &[RdJoint],
-        options: AnimationImportOptions,
-    ) -> Result<Vec<RdAnim>, Box<dyn Error>> {
-        let names = joints
-            .iter()
-            .map(|joint| joint.name.as_str())
-            .collect::<Vec<_>>();
-        let nodes = self
-            .read_bind_poses()?
-            .into_iter()
-            .map(|(node, _, _)| node)
-            .collect::<Vec<_>>();
-        Ok(self
-            .read_clips(&names, 0, &nodes, options)?
-            .into_iter()
-            .enumerate()
-            .map(|(index, clip)| RdAnim {
-                name: format!("anim_{index}"),
-                time_max: clip.duration_millis,
-                sampling_rate: clip.sampling_rate,
-                anim_vec: clip
-                    .tracks
-                    .into_iter()
-                    .map(|track| FrameCollection {
-                        name: names[track.joint].into(),
-                        frames: track
-                            .frames
-                            .into_iter()
-                            .map(|frame| {
-                                let [x, y, z, w] = frame.rotation;
-                                Frame {
-                                    rotation: [x, y, z, -w],
-                                    translation: frame.translation,
-                                    time: frame.time,
-                                }
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            })
-            .collect())
-    }
-
-    /// Read local pose clips bound to one scene skeleton. Baking remains opt-in.
-    pub fn read_scene_animations(
-        &self,
-        skeleton: &Skeleton,
-        skeleton_index: usize,
-        options: AnimationImportOptions,
-    ) -> Result<Vec<Animation>, Box<dyn Error>> {
-        let names = skeleton
-            .joints
-            .iter()
-            .map(|joint| joint.name.as_str())
-            .collect::<Vec<_>>();
-        let nodes = self
-            .read_bind_poses()?
-            .into_iter()
-            .map(|(node, _, _)| node)
-            .collect::<Vec<_>>();
-        self.read_clips(&names, skeleton_index, &nodes, options)
-    }
-
     pub(super) fn read_clips(
         &self,
         joints: &[&str],

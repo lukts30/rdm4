@@ -14,8 +14,7 @@ use nalgebra::{Isometry3, Matrix4, Similarity3};
 
 use crate::{
     scene::{Attribute, AttributeValues, Joint, Mesh, Primitive, Scene, Skeleton},
-    vertex::{TargetVertexFormat, VertexIdentifier, VertexInterpretation, VertexSemantic},
-    RdJoint, RdModell,
+    vertex::{VertexIdentifier, VertexInterpretation, VertexSemantic},
 };
 
 mod animation;
@@ -220,58 +219,6 @@ impl ImportedGltf {
             }
         }
         Ok(scene)
-    }
-
-    /// Compatibility API; new callers should import a scene and choose RDM export options.
-    pub fn gltf_to_rdm(
-        &self,
-        format: TargetVertexFormat,
-        load_skin: bool,
-        mirror_x: bool,
-        no_transform: bool,
-        material_indices: Option<Vec<u32>>,
-    ) -> RdModell {
-        let scene = self
-            .read_scene(load_skin, None)
-            .expect("cannot import scene");
-        let material_indices = Some(
-            material_indices
-                .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
-        );
-        let joints = if load_skin {
-            Some(
-                self.read_bind_poses()
-                    .expect("cannot read bind poses")
-                    .into_iter()
-                    .map(|(node, parent, pose)| {
-                        let q = pose.rotation.coords;
-                        RdJoint {
-                            name: self.node_get_name(&self.gltf.nodes().nth(node).unwrap()),
-                            parent: parent.map_or(u32::MAX, |i| i as u32),
-                            translation: pose.translation.vector.into(),
-                            quaternion: [q.x, q.y, q.z, q.w],
-                        }
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        };
-        let mut model = crate::rdm::RdmDocument::from_scene(
-            scene,
-            crate::rdm::RdmExportOptions {
-                format,
-                mirror_x,
-                no_transform,
-                material_indices,
-                legacy_metadata: true,
-            },
-        )
-        .expect("cannot pack scene")
-        .into_model(0, false)
-        .expect("cannot adapt scene");
-        model.joints = joints;
-        model
     }
 
     fn read_mesh(
@@ -519,10 +466,6 @@ impl ImportedGltf {
             })
             .collect();
         Ok((Skeleton { joints }, source_nodes))
-    }
-
-    fn read_bind_poses(&self) -> Result<Vec<BindPose>, Box<dyn Error>> {
-        self.read_bind_poses_for(self.selected_node.ok_or("no mesh selected")?)
     }
 
     fn read_bind_poses_for(&self, node_index: usize) -> Result<Vec<BindPose>, Box<dyn Error>> {

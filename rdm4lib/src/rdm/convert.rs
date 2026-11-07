@@ -1,4 +1,4 @@
-//! Adapters to the existing glTF conversion types.
+//! Scene/document conversion and RDM file output.
 
 use std::{
     error::Error,
@@ -7,19 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nalgebra::{Quaternion, UnitQuaternion, Vector3};
-
 use super::{
-    buffers::{vertex_bytes, vertices_from_bytes},
-    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmExportOptions, RdmFrame,
-    RdmIndexFormat, RdmIndices, RdmJoint, RdmMaterial, RdmMaterialEntry, RdmMeshGroup, RdmModel,
-    RdmModelName, RdmSkin, RdmTrack, RdmVertexFormat, RdmWriter,
+    RdmAnimation, RdmDocument, RdmEndian, RdmExportInfo, RdmExportOptions, RdmFrame, RdmJoint,
+    RdmMaterial, RdmMaterialEntry, RdmModel, RdmSkin, RdmTrack, RdmWriter,
 };
 use crate::{
     rdm_anim::{FrameCollection, RdAnim},
     scene::{Animation, Attribute, Joint, Keyframe, Mesh, Primitive, Scene, Skeleton, Track},
-    vertex::{StorageType, VertexFormat2},
-    MeshInfo, RdJoint, RdModell, Triangle,
 };
 
 const LEGACY_NAME: &str = "basalt_crusher_others_lod0";
@@ -32,81 +26,6 @@ fn export_info(animation: bool, legacy: bool) -> RdmExportInfo {
             r"\\060.alpha\data\Art\graphic_backup\christian\#ANNO5\buildings\others\basalt_crusher_others\Lowpoly\basalt_crusher_others_low_05.max".into()
         }),
         rmp_name: Some(if animation { "Anno5_Building_Anim_UnCompressed.rmp" } else { "Anno5_Building_Skin_1Blend.rmp" }.into()),
-    }
-}
-
-/// Compatibility entrypoint backed by the current document writer.
-pub struct RdWriter2 {
-    inner: RdmDocument,
-}
-
-impl RdWriter2 {
-    /// Write a mesh, retaining the existing output path and overwrite behavior.
-    pub fn write_rdm(self, dir: Option<PathBuf>, create_new: bool) -> PathBuf {
-        self.try_write_rdm(dir, create_new)
-            .expect("cannot write RDM output")
-    }
-
-    /// Write a mesh, returning its output path or a file/record error.
-    pub fn try_write_rdm(
-        self,
-        dir: Option<PathBuf>,
-        create_new: bool,
-    ) -> Result<PathBuf, Box<dyn Error>> {
-        let mut file = output_path(dir)?;
-        if file.is_dir() {
-            file.push("out.rdm");
-        }
-        write_document(&self.inner, &file, create_new)?;
-        Ok(file)
-    }
-
-    /// Adapt the model for the current record writer.
-    pub fn new(rdm_in: RdModell) -> Self {
-        Self {
-            inner: RdmDocument::try_from(rdm_in).expect("invalid export model"),
-        }
-    }
-}
-
-/// Compatibility entrypoint backed by the current document writer.
-pub struct RdAnimWriter2 {
-    name: String,
-    export: RdmDocument,
-}
-
-impl RdAnimWriter2 {
-    /// Write an animation, retaining filename-based naming and overwrite behavior.
-    pub fn write_anim_rdm(self, dir: Option<PathBuf>, create_new: bool) {
-        self.try_write_anim_rdm(dir, create_new)
-            .expect("cannot write animation output");
-    }
-
-    /// Write an animation, returning its output path or a file/record error.
-    pub fn try_write_anim_rdm(
-        self,
-        dir: Option<PathBuf>,
-        create_new: bool,
-    ) -> Result<PathBuf, Box<dyn Error>> {
-        let mut file = output_path(dir)?;
-        if file.is_dir() {
-            file.push(self.name);
-        } else {
-            let n = file.file_stem().unwrap();
-            let anim_name = format!("{}_{}", n.to_string_lossy(), self.name);
-            file.set_file_name(anim_name);
-        }
-        file.set_extension("rdm");
-        write_document(&self.export, &file, create_new)?;
-        Ok(file)
-    }
-
-    /// Adapt the animation for the current record writer.
-    pub fn new(anim_input: RdAnim) -> Self {
-        Self {
-            name: anim_input.name.clone(),
-            export: anim_input.into(),
-        }
     }
 }
 
@@ -139,64 +58,6 @@ fn write_document(
     Ok(())
 }
 
-impl TryFrom<RdModell> for RdmDocument {
-    type Error = Box<dyn Error>;
-
-    /// Build a fresh mesh document with the existing exporter's metadata defaults.
-    fn try_from(model: RdModell) -> Result<Self, Self::Error> {
-        let with_skin = model.has_skin();
-        let format = RdmVertexFormat {
-            attributes: model.vertex.identifiers.to_vec(),
-            selector: u32::from(with_skin),
-        };
-        let vertices = vertices_from_bytes(
-            model.vertex.as_bytes(),
-            model.vertex.len() as usize,
-            &format,
-            RdmEndian::Little,
-            0,
-            "RdmModel.vertices",
-        )?;
-        let indices: Vec<_> = model
-            .triangle_indices
-            .iter()
-            .flat_map(|triangle| triangle.indices)
-            .collect();
-        let storage_type = if indices.iter().any(|&index| index > u32::from(u16::MAX)) {
-            StorageType::U32
-        } else {
-            StorageType::U16
-        };
-        let (bounds_min, bounds_max) = model.vertex.calculate_bounds();
-        let mesh = RdmModel {
-            name: RdmModelName { name: model.name },
-            vertex_format: format,
-            index_format: RdmIndexFormat { storage_type },
-            vertices,
-            indices: RdmIndices { values: indices },
-            groups: model
-                .mesh_info
-                .into_iter()
-                .map(|group| RdmMeshGroup {
-                    first_index: group.start_index_location,
-                    index_count: group.index_count,
-                    material: group.material,
-                })
-                .collect(),
-            skeleton_index: if with_skin { 0 } else { -1 },
-            bounds_min,
-            bounds_max,
-        };
-        mesh_document(
-            vec![mesh],
-            model.joints.map(|joints| RdmSkin {
-                joints: joints.into_iter().map(RdmJoint::from).collect(),
-            }),
-            true,
-        )
-    }
-}
-
 fn mesh_document(
     mut models: Vec<RdmModel>,
     skin: Option<RdmSkin>,
@@ -226,28 +87,6 @@ fn mesh_document(
     })
 }
 
-impl From<RdAnim> for RdmDocument {
-    /// Build a standalone animation document, retaining the legacy export defaults.
-    fn from(animation: RdAnim) -> Self {
-        animation_document(
-            RdmAnimation {
-                name: animation.name,
-                time_max: animation.time_max,
-                sampling_rate: animation.sampling_rate,
-                tracks: animation
-                    .anim_vec
-                    .into_iter()
-                    .map(|track| RdmTrack {
-                        joint_name: track.name,
-                        frames: track.frames,
-                    })
-                    .collect(),
-            },
-            true,
-        )
-    }
-}
-
 fn animation_document(mut animation: RdmAnimation, legacy: bool) -> RdmDocument {
     if legacy {
         animation.name = LEGACY_NAME.into();
@@ -268,23 +107,34 @@ pub fn write_scene(
     dir: Option<PathBuf>,
     create_new: bool,
 ) -> Result<PathBuf, Box<dyn Error>> {
-    // Keep stable CLI filenames while record names retain the source clip names.
-    let names = (0..scene.animations.len())
-        .map(|index| format!("anim_{index}"))
-        .collect::<Vec<_>>();
     let legacy = options.legacy_metadata;
     let mut document = RdmDocument::from_scene(scene, options)?;
-    for (name, animation) in names
+    let mut file = output_path(dir)?;
+    let directory = file.is_dir();
+    for (index, animation) in document
+        .animations
+        .take()
+        .unwrap_or_default()
         .into_iter()
-        .zip(document.animations.take().unwrap_or_default())
+        .enumerate()
     {
-        RdAnimWriter2 {
-            name,
-            export: animation_document(animation, legacy),
-        }
-        .try_write_anim_rdm(dir.clone(), create_new)?;
+        let name = format!("anim_{index}.rdm");
+        let path = if directory {
+            file.join(name)
+        } else {
+            file.with_file_name(format!(
+                "{}_{}",
+                file.file_stem().unwrap().to_string_lossy(),
+                name
+            ))
+        };
+        write_document(&animation_document(animation, legacy), &path, create_new)?;
     }
-    RdWriter2 { inner: document }.try_write_rdm(dir, create_new)
+    if directory {
+        file.push("out.rdm");
+    }
+    write_document(&document, &file, create_new)?;
+    Ok(file)
 }
 
 impl RdmDocument {
@@ -435,29 +285,6 @@ impl RdmDocument {
         })
     }
 
-    /// Adapt one selected model for the existing exporter, optionally with its skeleton.
-    pub fn into_model(self, index: usize, with_skin: bool) -> Result<RdModell, Box<dyn Error>> {
-        let models = self.models.unwrap_or_default();
-        let count = models.len();
-        let model = models
-            .into_iter()
-            .nth(index)
-            .ok_or_else(|| format!("model index {index} out of range for {count} models"))?;
-        let mut model = RdModell::try_from(model)?;
-        model.pending_joints = self
-            .skin
-            .map(|skin| skin.joints.into_iter().map(RdJoint::from).collect());
-        if with_skin {
-            model.joints = Some(
-                model
-                    .pending_joints
-                    .take()
-                    .ok_or("requested skeleton is absent")?,
-            );
-        }
-        Ok(model)
-    }
-
     /// Adapt one animation, retaining the filename-based name used by the legacy CLI.
     pub fn into_animation(self, name: String) -> Result<RdAnim, Box<dyn Error>> {
         let mut animations = self.animations.unwrap_or_default();
@@ -570,103 +397,12 @@ impl TryFrom<RdmModel> for Mesh {
     }
 }
 
-impl TryFrom<RdmModel> for RdModell {
-    type Error = Box<dyn Error>;
-
-    fn try_from(model: RdmModel) -> Result<Self, Self::Error> {
-        let (triangles, rest) = model.indices.values.as_chunks::<3>();
-        if !rest.is_empty() {
-            return Err("triangle index count must be divisible by three".into());
-        }
-        for group in &model.groups {
-            if !group.first_index.is_multiple_of(3)
-                || !group.index_count.is_multiple_of(3)
-                || u64::from(group.first_index) + u64::from(group.index_count)
-                    > model.indices.values.len() as u64
-            {
-                return Err(
-                    "mesh group must cover complete triangles within the index buffer".into(),
-                );
-            }
-        }
-        let triangle_indices = triangles
-            .iter()
-            .map(|&indices| Triangle { indices })
-            .collect();
-        let (stride, bytes) = vertex_bytes(
-            &model.vertices,
-            &model.vertex_format,
-            RdmEndian::Little,
-            0,
-            "RdmModel.vertices",
-        )?;
-        let identifiers = model.vertex_format.attributes;
-        let count = model.vertices.count;
-        Ok(Self {
-            name: model.name.name,
-            pending_joints: None,
-            joints: None,
-            triangle_indices,
-            mesh_info: model
-                .groups
-                .into_iter()
-                .map(|group| MeshInfo {
-                    start_index_location: group.first_index,
-                    index_count: group.index_count,
-                    material: group.material,
-                    _padding: [0; 16],
-                })
-                .collect(),
-            vertex: VertexFormat2::new(
-                identifiers.into_boxed_slice(),
-                u32::try_from(count)?,
-                stride,
-                bytes.into(),
-            ),
-        })
-    }
-}
-
-impl From<RdmJoint> for RdJoint {
-    fn from(joint: RdmJoint) -> Self {
-        let [rx, ry, rz, rw] = joint.rotation;
-        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(rw, rx, ry, rz));
-        let [tx, ty, tz] = joint.translation;
-        let translation = rotation
-            .transform_vector(&Vector3::new(tx, ty, tz))
-            .scale(-1.0);
-        let q = rotation.quaternion().coords;
-        Self {
-            name: joint.name,
-            translation: [translation.x, translation.y, translation.z],
-            quaternion: [q.x, q.y, q.z, q.w],
-            parent: joint.parent,
-        }
-    }
-}
-
-impl From<RdJoint> for RdmJoint {
-    fn from(joint: RdJoint) -> Self {
-        let [rx, ry, rz, rw] = joint.quaternion;
-        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(rw, rx, ry, rz));
-        let [tx, ty, tz] = joint.translation;
-        let translation = rotation
-            .inverse_transform_vector(&Vector3::new(tx, ty, tz))
-            .scale(-1.0);
-        let q = rotation.quaternion().coords;
-        Self {
-            name: joint.name,
-            translation: [translation.x, translation.y, translation.z],
-            rotation: [q.x, q.y, q.z, q.w],
-            parent: joint.parent,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{rdm::*, vertex::StorageType, RdModell};
+    use crate::{
+        rdm::*,
+        vertex::{StorageType, TargetVertexFormat},
+    };
     use std::{fs, io::Cursor};
 
     fn read_source(path: &str) -> RdmReadResult<RdmDocument> {
@@ -716,8 +452,6 @@ mod tests {
 
     #[test]
     fn converts_be_68_byte_metadata_to_le_92_byte_metadata() {
-        use crate::vertex::{N3f, N4b};
-        let model = crate::RdModell::from("rdm/n_nature_small_stone_02_lod0.rdm");
         let source = read_source("rdm/n_nature_small_stone_02_lod0.rdm");
         assert_eq!(source.layout.endian, RdmEndian::Big);
         let models = source
@@ -727,22 +461,25 @@ mod tests {
             .find(|b| b.context == "RdmDocument.models")
             .unwrap();
         assert_eq!(models.source.stride, 68);
-        // The packed normal must be decoded as a BE word, not four unchanged bytes.
-        let normal = model.vertex.iter::<N4b, N3f>(0).unwrap().next().unwrap();
-        for (actual, expected) in normal
-            .data
+        // Check the packed BE word before direction normalization during glTF export.
+        let RdmAttributeValues::U32(normals) =
+            &source.value.models.as_ref().unwrap()[0].vertices.attributes[1]
+        else {
+            panic!("packed normals");
+        };
+        for (actual, expected) in normals[0]
+            .to_le_bytes()
             .into_iter()
+            .take(3)
+            .map(|v| 2.0 * f32::from(v) / 255.0 - 1.0)
             .zip([0.90588236, 0.42745098, 0.03529412])
         {
             assert!((actual - expected).abs() < 0.000001);
         }
-        let bounds = model.vertex.calculate_bounds();
-        let document = crate::rdm::RdmDocument::try_from(model).unwrap();
-        let output = std::io::Cursor::new(Vec::new());
-        let output = crate::rdm::RdmWriter::new(output, crate::rdm::RdmEndian::Little)
-            .write_root(&document)
+        let output = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_root(&source.value)
             .unwrap();
-        let result = RdmReader::new(Cursor::new(output.get_ref()))
+        let result = RdmReader::new(output)
             .unwrap()
             .read_root::<RdmDocument>()
             .unwrap();
@@ -755,73 +492,71 @@ mod tests {
             .unwrap();
         assert_eq!(models.source.stride, 92);
         assert_eq!(models.tails, [0; 40]);
-        assert_eq!(
-            RdModell::new(output.into_inner()).vertex.calculate_bounds(),
-            bounds
-        );
+        assert_eq!(result.value, source.value);
+    }
+
+    fn pack_static(document: RdmDocument) -> RdmDocument {
+        RdmDocument::from_scene(
+            document.into_static_scene().unwrap(),
+            RdmExportOptions {
+                format: TargetVertexFormat::P4h_N4b_G4b_B4b_T2h,
+                no_transform: true,
+                mirror_x: false,
+                material_indices: None,
+                legacy_metadata: false,
+            },
+        )
+        .unwrap()
     }
 
     #[test]
     fn writes_bounds_from_quantized_vertices_instead_of_source_bounds() {
-        let model = crate::RdModell::from("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm");
-        let stored = stored_bounds(
-            &read_source("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm").value,
+        let source = read_source("rdm/park_props_system_3x3_04_decal_detail04_lod0.rdm").value;
+        let stored = stored_bounds(&source);
+        assert_eq!(
+            source.models.as_ref().unwrap()[0].vertex_format.attributes[0].storage_type,
+            StorageType::F16
         );
-        let calculated = model.vertex.calculate_bounds();
-        assert_eq!(model.vertex.identifiers[0].storage_type, StorageType::F16);
+        let packed = pack_static(source);
+        let calculated = stored_bounds(&packed);
         assert_ne!(stored, calculated);
         let round = |value| half::f16::from_f32(value).to_f32();
         assert_eq!((stored.0.map(round), stored.1.map(round)), calculated);
-        assert_eq!(
-            {
-                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
-                let model = &document.models.as_ref().unwrap()[0];
-                (model.bounds_min, model.bounds_max)
-            },
-            calculated
-        );
     }
 
     #[test]
     fn preserves_f32_position_bounds_when_writing_rdm() {
-        let model = crate::RdModell::from("rdm/eden_line_flagpole_variation_cloth_lod0.rdm");
-        let position = &model.vertex.identifiers[0];
-        assert_eq!(position.to_string(), "P3f");
-        let calculated = model.vertex.calculate_bounds();
+        let source = read_source("rdm/eden_line_flagpole_variation_cloth_lod0.rdm").value;
         assert_eq!(
-            calculated.0.map(f32::to_bits),
+            source.models.as_ref().unwrap()[0].vertex_format.attributes[0].to_string(),
+            "P3f"
+        );
+        let output = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_root(&source)
+            .unwrap();
+        let written = RdmReader::new(output)
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value;
+        let bounds = stored_bounds(&written);
+        assert_eq!(
+            bounds.0.map(f32::to_bits),
             [0x3c70ef5c, 0x3d073c7a, 0xbe9ba652]
         );
         assert_eq!(
-            calculated.1.map(f32::to_bits),
+            bounds.1.map(f32::to_bits),
             [0x3cf1c51e, 0x3fc6c946, 0x3e9ba652]
         );
-        assert_eq!(
-            stored_bounds(&read_source("rdm/eden_line_flagpole_variation_cloth_lod0.rdm").value),
-            calculated
-        );
-        assert_eq!(
-            {
-                let document = crate::rdm::RdmDocument::try_from(model).unwrap();
-                let model = &document.models.as_ref().unwrap()[0];
-                (model.bounds_min, model.bounds_max)
-            },
-            calculated
-        );
+        assert_eq!(written, source);
     }
 
     #[test]
     fn calculates_bounds_matching_existing_mesh_metadata() {
-        for data in [
-            include_bytes!("../../rdm/fishery_others_lod2.rdm").as_slice(),
-            include_bytes!("../../rdm/ark_waterfall2.rdm").as_slice(),
-        ] {
-            let rdm = RdmReader::new(Cursor::new(data))
-                .unwrap()
-                .read_root::<RdmDocument>()
-                .unwrap();
-            let model = RdModell::new(data.to_vec());
-            assert_eq!(stored_bounds(&rdm.value), model.vertex.calculate_bounds());
+        for path in ["rdm/fishery_others_lod2.rdm", "rdm/ark_waterfall2.rdm"] {
+            let source = read_source(path).value;
+            let stored = stored_bounds(&source);
+            assert_eq!(stored, stored_bounds(&pack_static(source)));
         }
     }
 
@@ -843,9 +578,13 @@ mod tests {
             let mut data = include_bytes!("../../rdm/basalt_crusher_others_idle01.rdm").to_vec();
             let animation = u32::from_le_bytes(data[0x2c..0x30].try_into().unwrap()) as usize;
             data[animation + 12..animation + 16].copy_from_slice(&sampling_rate.to_le_bytes());
-            let anim = crate::rdm_anim::RdAnim::new(data, "idle".into());
+            let anim = crate::rdm_anim::RdAnim::new(data.clone(), "idle".into());
             assert_eq!(anim.sampling_rate, sampling_rate);
-            let document = crate::rdm::RdmDocument::from(anim);
+            let document = RdmReader::new(Cursor::new(data))
+                .unwrap()
+                .read_root::<RdmDocument>()
+                .unwrap()
+                .value;
             let writer = std::io::Cursor::new(Vec::new());
             let writer = crate::rdm::RdmWriter::new(writer, crate::rdm::RdmEndian::Little)
                 .write_root(&document)
@@ -859,14 +598,5 @@ mod tests {
                 sampling_rate
             );
         }
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn writes_loaded_animation_without_errors() {
-        let anim = crate::rdm_anim::RdAnim::from("rdm/basalt_crusher_others_work01.rdm");
-        let rdaw = RdAnimWriter2::new(anim);
-        let output_dir = tempfile::tempdir().unwrap();
-        rdaw.write_anim_rdm(Some(output_dir.path().into()), false);
     }
 }

@@ -1,6 +1,4 @@
-use std::{fs::File, io::BufReader, path::Path};
-
-use half::f16;
+//! Typed RDM codecs and scene conversion for the rdm4 CLIs.
 
 #[macro_use]
 extern crate log;
@@ -15,122 +13,33 @@ pub mod scene;
 pub mod vertex;
 pub mod vertex_transform;
 
-use vertex::VertexFormat2;
-
-/// Compatibility mesh used by the selected and rigged conversion paths.
-pub struct RdModell {
-    /// Optional source model name.
-    pub name: Option<String>,
-    pub(crate) pending_joints: Option<Vec<RdJoint>>,
-    /// Draw ranges and material slots.
-    pub mesh_info: Vec<MeshInfo>,
-    /// Activated skeleton.
-    pub joints: Option<Vec<RdJoint>>,
-    /// Triangle indices into the vertex buffer.
-    pub triangle_indices: Vec<Triangle>,
-    /// Vertex attributes and their current packed storage.
-    pub vertex: VertexFormat2,
-}
-
-pub mod rdm_data_anim;
-pub mod rdm_data_main;
-
-/// Draw range and material slot used by the shared glTF conversion code.
-#[derive(Debug, Clone)]
-pub struct MeshInfo {
-    pub start_index_location: u32,
-    pub index_count: u32,
-    pub material: u32,
-    pub _padding: [u8; 16],
-}
-
-#[derive(Debug, Clone)]
-pub struct RdJoint {
-    name: String,
-    translation: [f32; 3],
-    quaternion: [f32; 4],
-    parent: u32,
-}
-
-impl RdModell {
-    pub fn has_skin(&self) -> bool {
-        self.joints.is_some()
-    }
-
-    /// Activate the skeleton loaded with the model.
-    pub fn add_skin(&mut self) {
-        if self.joints.is_none() {
-            self.joints = Some(
-                self.pending_joints
-                    .take()
-                    .expect("requested skeleton is absent"),
-            );
-        }
-    }
-
-    fn read<R: std::io::Read + std::io::Seek>(source: R) -> Self {
-        rdm::RdmReader::new(source)
-            .expect("invalid RDM framing")
-            .read_root::<rdm::RdmDocument>()
-            .expect("invalid RDM records")
-            .value
-            .into_model(0, false)
-            .expect("input has no usable model")
-    }
-
-    #[cfg(test)]
-    fn new(bytes: Vec<u8>) -> Self {
-        Self::read(std::io::Cursor::new(bytes))
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct Triangle {
-    indices: [u32; 3],
-}
-
-impl<P: AsRef<Path>> From<P> for RdModell {
-    fn from(f_path: P) -> Self {
-        info!("Loaded {:?}", f_path.as_ref());
-        Self::read(BufReader::new(
-            File::open(f_path).expect("cannot open RDM file"),
-        ))
-    }
-}
-
 #[cfg(test)]
 mod tests_intern {
-    use super::*;
+    use crate::{rdm::*, vertex::StorageType};
+    use std::io::Cursor;
+
+    fn read(bytes: &[u8]) -> RdmDocument {
+        RdmReader::new(Cursor::new(bytes))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value
+    }
 
     #[test]
     fn reads_u32_indices_without_truncation() {
-        let model = RdModell::from("rdm/destruction_stone_building_04_decal_detail01_lod0.rdm");
-        assert_eq!(model.triangle_indices.len(), 37_240);
-        let indices = model.triangle_indices.iter().flat_map(|t| t.indices);
-        assert_eq!(indices.max(), Some(74_479));
-        let expected = model.vertex.as_bytes().to_vec();
-        let document = rdm::RdmDocument::try_from(model).unwrap();
-        assert_eq!(
-            document.models.as_ref().unwrap()[0]
-                .index_format
-                .storage_type,
-            vertex::StorageType::U32
-        );
-        let output = rdm::RdmWriter::new(std::io::Cursor::new(Vec::new()), rdm::RdmEndian::Little)
-            .write_root(&document)
+        let source = read(include_bytes!(
+            "../rdm/destruction_stone_building_04_decal_detail01_lod0.rdm"
+        ));
+        let model = &source.models.as_ref().unwrap()[0];
+        assert_eq!(model.indices.values.len() / 3, 37_240);
+        assert_eq!(model.indices.values.iter().max(), Some(&74_479));
+        assert_eq!(model.index_format.storage_type, StorageType::U32);
+        let output = RdmWriter::new(Cursor::new(Vec::new()), RdmEndian::Little)
+            .write_root(&source)
             .unwrap()
             .into_inner();
-        let model = RdModell::new(output);
-        assert_eq!(model.vertex.as_bytes(), expected);
-        assert_eq!(
-            model
-                .triangle_indices
-                .iter()
-                .flat_map(|triangle| triangle.indices)
-                .max(),
-            Some(74_479)
-        );
+        assert_eq!(read(&output), source);
     }
 
     #[test]
@@ -149,9 +58,9 @@ mod tests_intern {
             let mut invalid = bytes.to_vec();
             invalid[index_format..index_format + 4].copy_from_slice(&code.to_le_bytes());
             assert!(
-                rdm::RdmReader::new(std::io::Cursor::new(invalid))
+                RdmReader::new(std::io::Cursor::new(invalid))
                     .unwrap()
-                    .read_root::<rdm::RdmDocument>()
+                    .read_root::<RdmDocument>()
                     .is_err(),
                 "accepted {case}"
             );
@@ -161,34 +70,25 @@ mod tests_intern {
     #[test]
     fn decodes_be_vertices_and_both_index_widths_like_le() {
         let bytes = include_bytes!("../rdm/fishery_others_lod2.rdm");
-        let expected = RdModell::new(bytes.to_vec());
-        for storage_type in [vertex::StorageType::U16, vertex::StorageType::U32] {
-            let mut document = rdm::RdmReader::new(std::io::Cursor::new(bytes))
+        let expected = read(bytes);
+        for storage_type in [StorageType::U16, StorageType::U32] {
+            let mut document = RdmReader::new(std::io::Cursor::new(bytes))
                 .unwrap()
-                .read_root::<rdm::RdmDocument>()
+                .read_root::<RdmDocument>()
                 .unwrap()
                 .value;
             document.models.as_mut().unwrap()[0]
                 .index_format
                 .storage_type = storage_type;
-            let output = rdm::RdmWriter::new(std::io::Cursor::new(Vec::new()), rdm::RdmEndian::Big)
+            let output = RdmWriter::new(std::io::Cursor::new(Vec::new()), RdmEndian::Big)
                 .write_root(&document)
                 .unwrap()
                 .into_inner();
-            let actual = RdModell::new(output);
-            assert_eq!(actual.vertex.as_bytes(), expected.vertex.as_bytes());
-            let indices = |model: &RdModell| {
-                model
-                    .triangle_indices
-                    .iter()
-                    .map(|t| t.indices)
-                    .collect::<Vec<_>>()
-            };
-            assert_eq!(
-                indices(&actual),
-                indices(&expected),
-                "{storage_type:?} indices"
-            );
+            let actual = read(&output);
+            let actual = &actual.models.as_ref().unwrap()[0];
+            let expected = &expected.models.as_ref().unwrap()[0];
+            assert_eq!(actual.vertices, expected.vertices);
+            assert_eq!(actual.indices, expected.indices, "{storage_type:?} indices");
         }
     }
 
@@ -196,11 +96,10 @@ mod tests_intern {
     fn reads_position_only_mesh_from_memory() {
         // for Miri test include bytes since there is no i/o.
         let bytes = include_bytes!("../rdm/fishery_others_cutout_lod0.rdm");
-        let v = bytes.to_vec();
-
-        let rdm = RdModell::new(v);
-        assert_eq!(rdm.vertex.len(), 32);
-        assert_eq!(rdm.vertex.get_size(), 8);
-        assert_eq!(rdm.triangle_indices.len() * 3, 78);
+        let document = read(bytes);
+        let model = &document.models.as_ref().unwrap()[0];
+        assert_eq!(model.vertices.count, 32);
+        assert_eq!(model.vertex_format.to_string(), "P4h");
+        assert_eq!(model.indices.values.len(), 78);
     }
 }
