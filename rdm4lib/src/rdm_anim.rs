@@ -18,7 +18,7 @@ pub struct FrameCollection {
 #[derive(Debug, Clone)]
 pub struct RdAnim {
     pub time_max: u32,
-    /// Nominal samples per second.
+    /// Nominal samples per second, independent of the explicit key times.
     pub sampling_rate: u32,
     pub name: String,
     pub anim_vec: Vec<FrameCollection>,

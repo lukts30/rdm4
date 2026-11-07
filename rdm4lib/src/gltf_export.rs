@@ -246,7 +246,13 @@ impl RdGltfBuilder {
                 extensions: Default::default(),
                 extras: Default::default(),
                 type_: Valid(json::accessor::Type::Scalar),
-                min: Some(json::Value::from(vec![0.0])),
+                min: Some(json::Value::from(vec![
+                    janim
+                        .frames
+                        .first()
+                        .expect("animation track has no frames")
+                        .time,
+                ])),
                 max: Some(json::Value::from(vec![time_real_f32_max])),
                 name: None,
                 normalized: false,
@@ -316,7 +322,13 @@ impl RdGltfBuilder {
             samplers: sampler_vec,
             channels: chanel_vec,
             extensions: None,
-            extras: None,
+            // glTF key times do not encode RDM's independent nominal sample rate.
+            extras: Some(
+                serde_json::value::to_raw_value(&serde_json::json!({
+                    "rdm4": { "samplingRate": anim.sampling_rate }
+                }))
+                .unwrap(),
+            ),
         };
 
         debug!("{:#?}", anim_node);

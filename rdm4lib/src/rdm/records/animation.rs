@@ -10,7 +10,7 @@ pub struct RdmAnimation {
     pub tracks: Vec<RdmTrack>,
     /// Duration in the format's integer time units.
     pub time_max: u32,
-    /// Nominal samples per second.
+    /// Nominal samples per second, independent of the explicit key times.
     pub sampling_rate: u32,
 }
 

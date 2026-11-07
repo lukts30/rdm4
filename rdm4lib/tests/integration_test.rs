@@ -170,6 +170,12 @@ mod tests {
                 .unwrap();
             let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
             assert_eq!(
+                channel.sampler().input().min().unwrap()[0]
+                    .as_f64()
+                    .unwrap() as f32,
+                track.frames[0].time,
+            );
+            assert_eq!(
                 reader.read_inputs().unwrap().collect::<Vec<_>>(),
                 track
                     .frames
@@ -184,6 +190,7 @@ mod tests {
         let imported = gltf_reader::ImportedGltf::try_from(input.as_path()).unwrap();
         let animations = imported.read_animation(&joints, 6, 0.33333).unwrap();
         let animation = &animations[0];
+        assert_eq!(animation.sampling_rate, 60);
         for source in tracks {
             let track = animation
                 .anim_vec
@@ -215,6 +222,14 @@ mod tests {
             frame.rotation == idle.frames[0].rotation
                 && frame.translation == idle.frames[0].translation
         }));
+        let minimal = imported.read_animation(&joints, 0, 0.0).unwrap();
+        let idle = minimal[0]
+            .anim_vec
+            .iter()
+            .find(|t| t.name == idle_joint)
+            .unwrap();
+        assert_eq!(idle.frames.len(), 2);
+        assert!(idle.frames.iter().all(|frame| frame.time.is_finite()));
     }
 
     #[test]

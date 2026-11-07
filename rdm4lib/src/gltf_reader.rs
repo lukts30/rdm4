@@ -188,6 +188,8 @@ impl<'a> ImportedGltf {
 
     /// Author RDM tracks, including static joints and glTF's held pose at time zero.
     /// Existing key times and pose values are retained; no resampling is performed.
+    /// Restore the nominal rate from `extras.rdm4.samplingRate`, otherwise use 15 Hz.
+    /// `frames` controls idle-track intervals, independently of the sample rate.
     pub fn read_animation(
         &self,
         joints: &[RdJoint],
@@ -204,6 +206,13 @@ impl<'a> ImportedGltf {
         let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
 
         for (anim_idx, animation) in gltf.animations().enumerate() {
+            let sampling_rate = animation
+                .extras()
+                .as_ref()
+                .and_then(|extra| serde_json::from_str::<serde_json::Value>(extra.get()).ok())
+                .and_then(|extra| extra["rdm4"]["samplingRate"].as_u64())
+                .and_then(|rate| u32::try_from(rate).ok())
+                .unwrap_or(15);
             let mut t_max = 0.0;
             let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
 
@@ -339,13 +348,14 @@ impl<'a> ImportedGltf {
                         origin_quaternio_raw.z,
                         origin_quaternio_raw.w,
                     ];
-                    let intervall = t_max as f32 / frames as f32;
-                    let mut v = Vec::with_capacity(frames);
-                    for i in 0..=frames {
+                    let intervals = if t_max > 0.0 { frames.max(1) } else { 0 };
+                    let interval = t_max as f32 / intervals.max(1) as f32;
+                    let mut v = Vec::with_capacity(intervals + 1);
+                    for i in 0..=intervals {
                         v.push(Frame {
                             rotation: origin_rotation,
                             translation: origin_translation,
-                            time: i as f32 * intervall,
+                            time: i as f32 * interval,
                         });
                     }
                     warn!("idle_anim: adding idle for joint: {:?}", joint.name);
@@ -372,7 +382,7 @@ impl<'a> ImportedGltf {
             let name = format!("anim_{}", anim_idx);
             rd_animations.push(RdAnim {
                 time_max: (t_max * 1000.0) as u32,
-                sampling_rate: 15,
+                sampling_rate,
                 anim_vec: frame_collections,
                 name,
             });
