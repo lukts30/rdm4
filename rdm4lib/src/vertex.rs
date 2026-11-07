@@ -168,16 +168,12 @@ pub(crate) type G3f = AnnoData<f32, { VertexSemantic::Tangent as u32 }, 3>;
 pub(crate) type G4b = AnnoData<u8, { VertexSemantic::Tangent as u32 }, 4>;
 #[allow(dead_code)]
 pub(crate) type B3f = AnnoData<f32, { VertexSemantic::Bitangent as u32 }, 3>;
-pub(crate) type B4b = AnnoData<u8, { VertexSemantic::Bitangent as u32 }, 4>;
 
 pub(crate) type T2f = AnnoData<f32, { VertexSemantic::Texcoord as u32 }, 2>;
 pub(crate) type T2h = AnnoData<f16, { VertexSemantic::Texcoord as u32 }, 2>;
 
 pub(crate) type I4b = AnnoData<u8, { VertexSemantic::JointIndex as u32 }, 4>;
 pub(crate) type W4b = AnnoData<u8, { VertexSemantic::Weight as u32 }, 4>;
-
-pub(crate) type C4b = AnnoData<u8, { VertexSemantic::Color as u32 }, 4>;
-pub(crate) type C4c = AnnoData<i8, { VertexSemantic::Color as u32 }, 4>;
 
 impl<T: Default + Copy, const I: u32, const N: usize> Default for AnnoData<T, I, N> {
     fn default() -> Self {
