@@ -137,12 +137,19 @@ mod tests {
         let mesh_path = "rdm/jellyfish_lod0.rdm";
         let source: RdmFile<RdmKindMesh> = File::open(mesh_path).unwrap().read_le().unwrap();
         assert_eq!(source.header1.meta.info.part_size, 68);
-        let anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
+        let mut anim = RdAnim::from("rdm/jellyfish_idle01.rdm");
         assert_eq!(anim.sampling_rate, 60);
+        // Exercise #176's late start and a joint with no animation channels.
+        for frame in &mut anim.anim_vec[0].frames {
+            frame.time += 1.0 / 24.0;
+        }
+        anim.time_max += 42;
+        let idle_joint = anim.anim_vec.pop().unwrap().name;
         let tracks = anim.anim_vec.clone();
 
         let mut rdm = RdModell::from(mesh_path);
         rdm.add_skin();
+        let joints = rdm.joints.clone().unwrap();
         rdm.add_anim(anim);
         let output_dir = tempfile::tempdir().unwrap();
         gltf_export::build(
@@ -173,6 +180,41 @@ mod tests {
                 track.name,
             );
         }
+        let input = output_dir.path().join("out.gltf");
+        let imported = gltf_reader::ImportedGltf::try_from(input.as_path()).unwrap();
+        let animations = imported.read_animation(&joints, 6, 0.33333).unwrap();
+        let animation = &animations[0];
+        for source in tracks {
+            let track = animation
+                .anim_vec
+                .iter()
+                .find(|t| t.name == source.name)
+                .unwrap();
+            let added = usize::from(source.frames[0].time > 0.0);
+            assert_eq!(track.frames.len(), source.frames.len() + added);
+            assert_eq!(track.frames[0].time.to_bits(), 0.0f32.to_bits());
+            let bits = |frame: &rdm4lib::rdm_anim::Frame| {
+                (
+                    frame.rotation.map(f32::to_bits),
+                    frame.translation.map(f32::to_bits),
+                )
+            };
+            assert_eq!(bits(&track.frames[0]), bits(&source.frames[0]));
+            for (actual, expected) in track.frames[added..].iter().zip(source.frames) {
+                assert_eq!(actual.time.to_bits(), expected.time.to_bits());
+                assert_eq!(bits(actual), bits(&expected));
+            }
+        }
+        let idle = animation
+            .anim_vec
+            .iter()
+            .find(|t| t.name == idle_joint)
+            .unwrap();
+        assert_eq!(idle.frames[0].time, 0.0);
+        assert!(idle.frames.iter().all(|frame| {
+            frame.rotation == idle.frames[0].rotation
+                && frame.translation == idle.frames[0].translation
+        }));
     }
 
     #[test]

@@ -186,6 +186,8 @@ impl<'a> ImportedGltf {
         }
     }
 
+    /// Author RDM tracks, including static joints and glTF's held pose at time zero.
+    /// Existing key times and pose values are retained; no resampling is performed.
     pub fn read_animation(
         &self,
         joints: &[RdJoint],
@@ -352,7 +354,11 @@ impl<'a> ImportedGltf {
             }
 
             let mut frame_collections: Vec<FrameCollection> = Vec::new();
-            for (node_str, frames) in translation_map.drain() {
+            for (node_str, mut frames) in translation_map.drain() {
+                // glTF holds the first pose before its first key. Make that pose explicit for RDM.
+                if let Some(first) = frames.first().copied().filter(|frame| frame.time > 0.0) {
+                    frames.insert(0, Frame { time: 0.0, ..first });
+                }
                 frame_collections.push(FrameCollection {
                     frames,
                     name: node_str.to_string(),
