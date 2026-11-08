@@ -1,5 +1,8 @@
 # RDM round trips
 
+See [vertex format names](RDM_VERTEX_FORMATS.md) for ambiguous descriptor
+shorthand and future plant/cloth round-trip goals.
+
 Measured at `11e8a9e`: `RDM → GLB → RDM`, using
 `P4h_N4b_G4b_B4b_T2h` and `--no-transform` on import. These are direct
 converter round trips, without editing or re-exporting through Blender.
