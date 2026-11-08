@@ -364,7 +364,9 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     let mut scene = document.into_scene(opts.skeleton)?;
     // The old CLI activates the selected model's skeleton explicitly.
     if opts.legacy && opts.skeleton {
-        scene.meshes[0].skeleton = Some(0);
+        for mesh in &mut scene.meshes {
+            mesh.skeleton = Some(0);
+        }
     }
     if let Some(path) = &opts.animation {
         if scene.skeletons.is_empty() {
@@ -442,10 +444,14 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     reporting::meshes(&scene);
     reporting::scene(&scene);
     let material_indices = if opts.legacy {
-        Some(
-            opts.material_indices
-                .unwrap_or_else(|| (0..scene.meshes[0].primitives.len() as u32).collect()),
-        )
+        Some(opts.material_indices.unwrap_or_else(|| {
+            (0..scene
+                .meshes
+                .iter()
+                .map(|mesh| mesh.primitives.len())
+                .sum::<usize>() as u32)
+                .collect()
+        }))
     } else {
         opts.material_indices
     };

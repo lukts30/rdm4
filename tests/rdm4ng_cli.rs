@@ -920,6 +920,38 @@ fn external_animation_preserves_scene_selection_and_legacy_keys() {
         2
     );
     assert_eq!(clips(&multi_output), clips(&expected));
+    let legacy_multi = output.path().join("legacy-multi.glb");
+    succeeds(
+        legacy()
+            .arg("-i")
+            .arg(&multi)
+            .arg("-sam")
+            .arg(&animation)
+            .args(["--mesh-index", "all"])
+            .arg("-o")
+            .arg(&legacy_multi),
+    );
+    let (document, _, _) = gltf::import(&legacy_multi).unwrap();
+    assert_eq!(document.meshes().count(), 2);
+    assert_eq!(
+        document
+            .nodes()
+            .filter(|node| node.skin().is_some())
+            .count(),
+        2
+    );
+    assert_eq!(
+        document
+            .scenes()
+            .next()
+            .unwrap()
+            .nodes()
+            .filter(|node| node.mesh().is_some())
+            .count(),
+        2
+    );
+    assert_eq!(clips(&legacy_multi), clips(&expected));
+
     let destination = output.path().join("restored.rdm");
     let animation = output.path().join("restored_anim_0.rdm");
     let mut import = ng();
@@ -1066,4 +1098,87 @@ fn default_vertex_format_matches_explicit_preset() {
             .arg(&alias),
     );
     assert_eq!(fs::read(alias).unwrap(), fs::read(explicit).unwrap());
+}
+
+#[test]
+fn mesh_selection_supports_all_and_indices_in_both_clis() {
+    use rdm4lib::rdm::{RdmDocument, RdmReader};
+    let directory = tempfile::tempdir().unwrap();
+    let input = fixture("benchmark/06-heavy_04_conveyor_lod2.rdm");
+    for old in [false, true] {
+        let mut default_bytes = None;
+        for (selection, count) in [
+            (None, if old { 1 } else { 2 }),
+            (Some("0"), 1),
+            (Some("1"), 1),
+            (Some("all"), 2),
+        ] {
+            let path = directory
+                .path()
+                .join(format!("{old}-{}.glb", selection.unwrap_or("default")));
+            let mut command = if old { legacy() } else { ng() };
+            command
+                .arg(if old { "-i" } else { "gltf" })
+                .arg(&input)
+                .arg("-o")
+                .arg(&path);
+            if let Some(selection) = selection {
+                command.args(["--mesh-index", selection]);
+            }
+            succeeds(&mut command);
+            let document = gltf::Gltf::open(&path).unwrap();
+            assert_eq!(document.meshes().count(), count);
+            if selection.is_none() {
+                default_bytes = Some(fs::read(&path).unwrap());
+            }
+            if selection == Some(if old { "0" } else { "all" }) {
+                assert_eq!(fs::read(&path).unwrap(), *default_bytes.as_ref().unwrap());
+            }
+            if selection != Some("all") {
+                continue;
+            }
+            for (flag, selection, count) in [
+                ("--mesh-index", "all", 2),
+                ("--mesh-index", "1", 1),
+                ("--gltf-mesh-index", "1", 1),
+            ] {
+                if !old && flag == "--gltf-mesh-index" {
+                    continue;
+                }
+                let restored = directory
+                    .path()
+                    .join(format!("{old}-{flag}-{selection}.rdm"));
+                let mut command = if old { legacy() } else { ng() };
+                if old {
+                    command.args(["-g=default", "-i"]);
+                } else {
+                    command.arg("rdm");
+                }
+                succeeds(
+                    command
+                        .arg(&path)
+                        .args([flag, selection])
+                        .arg("-o")
+                        .arg(&restored),
+                );
+                let document =
+                    RdmReader::new(std::io::BufReader::new(fs::File::open(restored).unwrap()))
+                        .unwrap()
+                        .read_root::<RdmDocument>()
+                        .unwrap()
+                        .value;
+                assert_eq!(document.models.unwrap().len(), count);
+            }
+        }
+        for invalid in ["-1", "bad", "4294967296"] {
+            let mut command = if old { legacy() } else { ng() };
+            let output = command
+                .arg(if old { "-i" } else { "gltf" })
+                .arg(&input)
+                .arg(format!("--mesh-index={invalid}"))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(2));
+        }
+    }
 }

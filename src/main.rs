@@ -1,7 +1,7 @@
 use clap::{ArgAction, Parser};
 use log::info;
 use rdm4_bin::{
-    cli::existing_file as cli_in_is_file,
+    cli::{existing_file as cli_in_is_file, MeshSelection},
     commands::{self, Files, GltfOptions, RdmOptions},
     init_logging,
 };
@@ -72,14 +72,15 @@ struct Opts {
     )]
     gltf: Option<TargetVertexFormat>,
 
-    /// glTF mesh index to convert to rdm.
+    /// RDM model or glTF mesh index; all selects every model/active-scene mesh instance.
     #[arg(
-        display_order(1),
         long,
+        visible_alias = "gltf-mesh-index",
         default_value = "0",
-        help_heading = HEADER_GLTF2RDM
+        value_name = "N|all",
+        help_heading = HEADER_RDM2GLTF
     )]
-    gltf_mesh_index: u32,
+    mesh_index: MeshSelection,
 
     /// glTF to rdm: Do not apply node transforms. Recommended to use when working with animations.
     #[arg(
@@ -170,7 +171,7 @@ fn entry_do_work(opts: Opts) {
         commands::rdm(RdmOptions {
             files,
             format,
-            mesh_index: Some(opts.gltf_mesh_index),
+            mesh_index: opts.mesh_index.index(),
             legacy: true,
             skeleton: opts.skeleton,
             animation: opts.animation,
@@ -192,7 +193,7 @@ fn entry_do_work(opts: Opts) {
                 format: opts.gltf_export_format,
                 textures: opts.diffusetexture,
             },
-            Some(0),
+            opts.mesh_index.index().map(|index| index as usize),
         )
         .unwrap();
     }

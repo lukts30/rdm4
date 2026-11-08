@@ -65,9 +65,7 @@ impl GltfWriter {
             textures,
             legacy,
         } = self;
-        if legacy && scene.meshes.len() != 1 {
-            return Err("legacy glTF export requires one selected model".into());
-        }
+        let legacy_armature = legacy && scene.meshes.len() == 1;
         let material_count = scene
             .meshes
             .iter()
@@ -120,7 +118,7 @@ impl GltfWriter {
                 }
             }
             let mut node = mesh_node(index, if legacy { None } else { mesh.name });
-            if legacy && mesh.skeleton.is_some() {
+            if legacy_armature && mesh.skeleton.is_some() {
                 node.name = Some("armature".into());
                 node.children = Some(std::mem::take(&mut roots));
             }

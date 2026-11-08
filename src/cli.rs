@@ -19,6 +19,40 @@ pub fn existing_file(value: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// Select all source models/mesh instances or one zero-based mesh index.
+#[derive(Clone, Copy, Debug)]
+pub enum MeshSelection {
+    /// Every RDM model or mesh instance in the active glTF scene.
+    All,
+    /// One RDM model or glTF mesh definition.
+    Index(u32),
+}
+
+impl std::str::FromStr for MeshSelection {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "all" {
+            Ok(Self::All)
+        } else {
+            value
+                .parse()
+                .map(Self::Index)
+                .map_err(|_| "expected 'all' or a non-negative mesh index".into())
+        }
+    }
+}
+
+impl MeshSelection {
+    /// Return the selected index, or `None` for all models/instances.
+    pub fn index(self) -> Option<u32> {
+        match self {
+            Self::All => None,
+            Self::Index(index) => Some(index),
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "rdm4ng",
@@ -107,9 +141,9 @@ impl From<FileArgs> for Files {
 struct GltfArgs {
     #[command(flatten)]
     files: FileArgs,
-    /// Export one RDM model; DDS textures require selection for multi-model files.
-    #[arg(long)]
-    mesh_index: Option<usize>,
+    /// RDM model index or all; DDS textures require one model.
+    #[arg(long, default_value = "all", value_name = "N|all")]
+    mesh_index: MeshSelection,
     /// Export the available skeleton.
     #[arg(short, long)]
     skeleton: bool,
@@ -131,9 +165,9 @@ struct RdmArgs {
     /// Target vertex format; default means P4h_N4b_G4b_B4b_T2h.
     #[arg(short, long, default_value = "default")]
     format: TargetVertexFormat,
-    /// Import one glTF mesh definition; otherwise import all mesh nodes in the active scene.
-    #[arg(long)]
-    mesh_index: Option<u32>,
+    /// glTF mesh definition index or all mesh instances in the active scene.
+    #[arg(long, default_value = "all", value_name = "N|all")]
+    mesh_index: MeshSelection,
     /// Export the available skeleton.
     #[arg(short, long)]
     skeleton: bool,
@@ -197,7 +231,7 @@ pub fn run() -> ExitCode {
                     format,
                     textures: args.textures,
                 },
-                args.mesh_index,
+                args.mesh_index.index().map(|index| index as usize),
             );
             if let Err(error) = result {
                 eprintln!("gltf: {error}");
@@ -208,7 +242,7 @@ pub fn run() -> ExitCode {
             if let Err(error) = commands::rdm(RdmOptions {
                 files: args.files.into(),
                 format: args.format,
-                mesh_index: args.mesh_index,
+                mesh_index: args.mesh_index.index(),
                 legacy: false,
                 skeleton: args.skeleton,
                 animation: args.animation,
