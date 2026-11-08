@@ -8,7 +8,7 @@ pub struct RdmAnimation {
     pub name: String,
     /// Per-joint keyframe sequences.
     pub tracks: Vec<RdmTrack>,
-    /// Duration in the format's integer time units.
+    /// Nominal duration in milliseconds; frame sample times are in seconds.
     pub time_max: u32,
     /// Nominal samples per second, independent of the explicit key times.
     pub sampling_rate: u32,
@@ -32,6 +32,6 @@ pub struct RdmFrame {
     pub rotation: [f32; 4],
     /// Translation vector.
     pub translation: [f32; 3],
-    /// Sample time in seconds.
+    /// Sample time in seconds, unlike `RdmAnimation::time_max` (milliseconds).
     pub time: f32,
 }

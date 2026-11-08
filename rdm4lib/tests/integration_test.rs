@@ -636,3 +636,17 @@ mod tests {
         );
     }
 }
+
+#[test]
+fn rdm_frame_times_are_seconds_and_duration_is_milliseconds() {
+    let document = rdm4lib::rdm::RdmReader::new(std::io::BufReader::new(
+        File::open("rdm/basalt_crusher_others_work01.rdm").unwrap(),
+    ))
+    .unwrap()
+    .read_root::<rdm4lib::rdm::RdmDocument>()
+    .unwrap()
+    .value;
+    let animation = &document.animations.as_ref().unwrap()[0];
+    assert_eq!(animation.time_max, 24_000);
+    assert_eq!(animation.tracks[0].frames.last().unwrap().time, 24.0);
+}
