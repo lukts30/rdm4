@@ -351,6 +351,7 @@ pub const fn p4h_t2h_c4c() -> [VertexIdentifier; 3] {
     ]
 }
 
+/// Supported output presets; parsing `default` selects `P4h_N4b_G4b_B4b_T2h`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum TargetVertexFormat {
@@ -366,7 +367,7 @@ impl FromStr for TargetVertexFormat {
 
     fn from_str(input: &str) -> Result<TargetVertexFormat, Self::Err> {
         match input {
-            "P4h_N4b_G4b_B4b_T2h" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
+            "default" | "P4h_N4b_G4b_B4b_T2h" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h),
             "P4h_N4b_G4b_B4b_T2h_I4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b),
             "P4h_N4b_G4b_B4b_T2h_I4b_W4b" => Ok(TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b),
             "P3f_N3f_G3f_B3f_T2f_C4b" => Ok(TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b),

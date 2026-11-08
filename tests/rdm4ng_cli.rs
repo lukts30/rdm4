@@ -79,7 +79,6 @@ fn help_version_and_argument_errors() {
         vec!["split"],
         vec!["split", input.to_str().unwrap()],
         vec!["inspect", input.to_str().unwrap(), "--format", "invalid"],
-        vec!["rdm", input.to_str().unwrap()],
         vec!["rdm", input.to_str().unwrap(), "--format", "invalid"],
         vec![
             "rdm",
@@ -991,4 +990,49 @@ fn conversion_reports_models_and_resolves_ng_output_paths() {
         .unwrap();
     assert!(!invalid.status.success());
     assert!(!String::from_utf8_lossy(&invalid.stderr).contains("panicked"));
+}
+
+#[test]
+fn default_vertex_format_matches_explicit_preset() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = make_glb(directory.path());
+    let explicit = directory.path().join("explicit.rdm");
+    succeeds(
+        ng().arg("gltf2rdm")
+            .arg(&input)
+            .args(["--format", "P4h_N4b_G4b_B4b_T2h"])
+            .arg("-o")
+            .arg(&explicit),
+    );
+    let expected = fs::read(explicit).unwrap();
+    for (name, args) in [("implicit", vec![]), ("alias", vec!["--format", "default"])] {
+        let path = directory.path().join(format!("{name}.rdm"));
+        succeeds(
+            ng().arg("gltf2rdm")
+                .arg(&input)
+                .args(args)
+                .arg("-o")
+                .arg(&path),
+        );
+        assert_eq!(fs::read(path).unwrap(), expected);
+    }
+    let explicit = directory.path().join("legacy-explicit.rdm");
+    let alias = directory.path().join("legacy-default.rdm");
+    succeeds(
+        legacy()
+            .arg("-i")
+            .arg(&input)
+            .arg("-g=P4h_N4b_G4b_B4b_T2h")
+            .arg("-o")
+            .arg(&explicit),
+    );
+    succeeds(
+        legacy()
+            .arg("-i")
+            .arg(&input)
+            .arg("-g=default")
+            .arg("-o")
+            .arg(&alias),
+    );
+    assert_eq!(fs::read(alias).unwrap(), fs::read(explicit).unwrap());
 }

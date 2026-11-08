@@ -128,8 +128,8 @@ struct GltfArgs {
 struct RdmArgs {
     #[command(flatten)]
     files: FileArgs,
-    /// Target vertex format, e.g. P4h_N4b_G4b_B4b_T2h.
-    #[arg(short, long)]
+    /// Target vertex format; default means P4h_N4b_G4b_B4b_T2h.
+    #[arg(short, long, default_value = "default")]
     format: TargetVertexFormat,
     /// Import one glTF mesh definition; otherwise import all mesh nodes in the active scene.
     #[arg(long)]

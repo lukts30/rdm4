@@ -25,7 +25,7 @@ The subcommand CLI provides conversion and inspection:
 
 ```sh
 rdm4ng gltf model.rdm -o model.glb
-rdm4ng rdm model.glb --format P4h_N4b_G4b_B4b_T2h -o model.rdm
+rdm4ng rdm model.glb -o model.rdm
 rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
 rdm4ng gltf multi_model.rdm -o all_models.glb
 rdm4ng gltf multi_model.rdm --mesh-index 1 -o selected.glb
@@ -47,6 +47,10 @@ with the output extension. An existing output directory uses the input basename.
 For `gltf`, `-o model.gltf` selects separate glTF; otherwise GLB is the default.
 An explicit `--format` must match the output extension. Existing files still
 require `--force`.
+
+`rdm` / `gltf2rdm` defaults to `P4h_N4b_G4b_B4b_T2h`; use `--format`
+to select another preset. `--format default` and legacy `-g=default` select
+that same standard format.
 
 `rdm4ng gltf` exports all models by default; `--mesh-index` selects one
 (zero-based). Both entry points use the scene layer and the new reader and writer.

@@ -61,7 +61,7 @@ struct Opts {
 
     // end of common options
     // start of HEADER_GLTF2RDM
-    /// VertexFormat for output rdm: P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
+    /// VertexFormat for output rdm (default = P4h_N4b_G4b_B4b_T2h): P4h_N4b_G4b_B4b_T2h | P4h_N4b_G4b_B4b_T2h_I4b | P4h_N4b_G4b_B4b_T2h_I4b_W4b
     #[arg(
         display_order(0),
         short = 'g',
@@ -210,6 +210,7 @@ mod tests {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rdm4lib/rdm/gltf/stormtrooper.gltf");
         // Spellings emitted by the add-on's shell command, after tokenization.
         for (name, expected) in [
+            ("default", P4h_N4b_G4b_B4b_T2h),
             ("P4h_N4b_G4b_B4b_T2h", P4h_N4b_G4b_B4b_T2h),
             ("P4h_N4b_G4b_B4b_T2h_I4b", P4h_N4b_G4b_B4b_T2h_I4b),
             ("P4h_N4b_G4b_B4b_T2h_I4b_W4b", P4h_N4b_G4b_B4b_T2h_I4b_W4b),
