@@ -35,7 +35,7 @@ mod tests {
             mirror_x: false,
             no_transform: false,
             material_indices: None,
-            legacy_metadata: true,
+            legacy: true,
         }
     }
 

@@ -697,6 +697,70 @@ fn rdm_commands_keep_payloads_and_import_active_scene_models() {
 }
 
 #[test]
+fn extra_skin_influences_fail_without_changing_legacy_packing() {
+    let output = tempfile::tempdir().unwrap();
+    let glb = output.path().join("paloma.glb");
+    succeeds(
+        ng().arg("gltf")
+            .arg(fixture("benchmark/18-paloma.rdm"))
+            .arg("--skeleton")
+            .arg("-o")
+            .arg(&glb),
+    );
+    let restored = output.path().join("paloma.rdm");
+    let mut import = ng();
+    import
+        .arg("rdm")
+        .arg(&glb)
+        .args([
+            "--format",
+            "P4h_N4b_G4b_B4b_T2h_I4b_W4b",
+            "--skeleton",
+            "--no-transform",
+        ])
+        .arg("-o")
+        .arg(&restored);
+    let result = import.output().unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8(result.stderr).unwrap();
+    assert!(
+        error.contains("UnstableIndex") && !error.contains("panicked"),
+        "{error}"
+    );
+    let result = import
+        .args(["--joint-names", "UnstableIndex"])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8(result.stderr).unwrap();
+    assert!(
+        error.contains("WEIGHTS_1") && !error.contains("panicked"),
+        "{error}"
+    );
+    assert!(!restored.exists());
+    let result = legacy()
+        .arg("--gltf=P4h_N4b_G4b_B4b_T2h_I4b_W4b")
+        .arg("-i")
+        .arg(&glb)
+        .args([
+            "--skeleton",
+            "--no_transform",
+            "--gltf-node-joint-name-src",
+            "UnstableIndex",
+        ])
+        .arg("-o")
+        .arg(&restored)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stderr).contains("ignoring additional influences"));
+}
+
+#[test]
 fn external_animation_preserves_scene_selection_and_legacy_keys() {
     let output = tempfile::tempdir().unwrap();
     let input = fixture("basalt_crusher_others_lod0.rdm");

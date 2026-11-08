@@ -23,8 +23,8 @@ pub struct RdmExportOptions {
     pub no_transform: bool,
     /// Override material slots in model and primitive order.
     pub material_indices: Option<Vec<u32>>,
-    /// Retain the original CLI's record names, source paths and dummy material strings.
-    pub legacy_metadata: bool,
+    /// Retain original CLI metadata and first-set skin influence packing.
+    pub legacy: bool,
 }
 
 pub(super) fn pack_mesh(
@@ -54,6 +54,27 @@ pub(super) fn pack_mesh(
     {
         let columns = mesh.attributes.drain(..).map(|a| a.values).collect();
         return finish_mesh(mesh, format, columns, material_indices, false);
+    }
+    if mesh.skeleton.is_some() {
+        for (set, attribute) in mesh
+            .attributes
+            .iter()
+            .filter(|a| a.descriptor.semantic == VertexSemantic::Weight)
+            .enumerate()
+            .skip(1)
+        {
+            if attribute.floats(4)?.iter().any(|&weight| weight != 0.0) {
+                let message = format!(
+                    "mesh {:?} has nonzero WEIGHTS_{set}; RDM output presets support only the first joint/weight set (four influences)",
+                    mesh.name.as_deref().unwrap_or("<unnamed>")
+                );
+                if !options.legacy {
+                    return Err(message.into());
+                }
+                warn!("{message}; ignoring additional influences for legacy CLI compatibility");
+                break;
+            }
+        }
     }
     let column =
         |semantic, set, width, default: &[f32]| -> Result<Cow<'_, [f32]>, Box<dyn Error>> {

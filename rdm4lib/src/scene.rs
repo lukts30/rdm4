@@ -258,7 +258,7 @@ mod tests {
                 mirror_x: false,
                 no_transform: true,
                 material_indices: None,
-                legacy_metadata: false,
+                legacy: false,
             },
         )
         .unwrap();

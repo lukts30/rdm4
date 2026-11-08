@@ -106,7 +106,7 @@ pub fn write_scene(
     dir: Option<PathBuf>,
     create_new: bool,
 ) -> Result<PathBuf, Box<dyn Error>> {
-    let legacy = options.legacy_metadata;
+    let legacy = options.legacy;
     let mut document = RdmDocument::from_scene(scene, options)?;
     let mut file = output_path(dir)?;
     let directory = file.is_dir();
@@ -184,7 +184,7 @@ impl RdmDocument {
                 })
                 .collect::<Result<_, Box<dyn Error>>>()?;
             animations.push(RdmAnimation {
-                name: if options.legacy_metadata {
+                name: if options.legacy {
                     LEGACY_NAME.into()
                 } else {
                     clip.name
@@ -231,7 +231,7 @@ impl RdmDocument {
                 })
                 .collect(),
         });
-        let mut document = mesh_document(models, skin, options.legacy_metadata)?;
+        let mut document = mesh_document(models, skin, options.legacy)?;
         document.animations = (!animations.is_empty()).then_some(animations);
         Ok(document)
     }
@@ -489,7 +489,7 @@ mod tests {
                 no_transform: true,
                 mirror_x: false,
                 material_indices: None,
-                legacy_metadata: false,
+                legacy: false,
             },
         )
         .unwrap()

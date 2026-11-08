@@ -385,7 +385,7 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
             mirror_x: opts.mirror_x,
             no_transform: opts.no_transform,
             material_indices,
-            legacy_metadata: opts.legacy,
+            legacy: opts.legacy,
         },
         output,
         !opts.files.force,

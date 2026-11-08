@@ -96,7 +96,7 @@ impl ImportedGltf {
         Ok(())
     }
 
-    fn check_node_name_uniqueness(&self, joints: &[usize]) {
+    fn check_node_name_uniqueness(&self, joints: &[usize]) -> Result<(), Box<dyn Error>> {
         if self.name_setting == ResolveNodeName::UniqueName {
             let names: HashSet<_> = self
                 .gltf
@@ -104,15 +104,14 @@ impl ImportedGltf {
                 .filter(|node| joints.contains(&node.index()))
                 .map(|node| {
                     node.name()
-                        .expect("joint name missing; use --gltf-node-joint-name-src=UnstableIndex")
+                        .ok_or("joint name missing; use UnstableIndex joint names")
                 })
-                .collect();
-            assert_eq!(
-                names.len(),
-                joints.len(),
-                "node names must be unique; use --gltf-node-joint-name-src=UnstableIndex"
-            );
+                .collect::<Result<_, _>>()?;
+            if names.len() != joints.len() {
+                return Err("joint names must be unique; use UnstableIndex joint names".into());
+            }
         }
+        Ok(())
     }
 
     fn node_get_name(&self, node: &Node) -> String {
@@ -514,7 +513,7 @@ impl ImportedGltf {
             }
             cursor = end;
         }
-        self.check_node_name_uniqueness(&nodes);
+        self.check_node_name_uniqueness(&nodes)?;
         nodes
             .iter()
             .zip(binds)
