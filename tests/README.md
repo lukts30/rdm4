@@ -9,7 +9,8 @@ The binary unit test parses all six add-on vertex-format choices.
 No Blender installation or external checkout is needed. The export test
 uses a converter-generated GLB. Blender import behavior, Windows shell
 quoting and DDS conversion need separate tests. `rdm4ng_cli.rs` checks the
-new CLI and aliases against the legacy executable's conversion output.
+new CLI and aliases against the legacy executable's conversion output, selected
+model attribute coverage, file errors and the Paloma influence limit.
 
 ```sh
 nix develop --command cargo test --release --locked -p rdm4-bin --test blender_contract

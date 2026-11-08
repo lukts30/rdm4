@@ -43,6 +43,10 @@ Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 `rdm4ng gltf` exports all models by default; `--mesh-index` selects one
 (zero-based). Both entry points use the scene layer and the new reader and writer.
 `rdm4-bin` retains its arguments and first-model default.
+Selecting a model with `rdm4ng --mesh-index` retains colors and all supported UV sets.
+RDM output presets store at most four joint influences. `rdm4ng rdm` rejects
+nonzero weights in additional sets; the old CLI keeps its first-set packing and
+warns. Duplicate or missing joint names require the `UnstableIndex` naming policy.
 See [RDM round trips](docs/RDM_ROUNDTRIP.md) for measured fidelity, known shading
 changes and hash history.
 
