@@ -93,6 +93,37 @@ mod tests {
         .unwrap();
 
         let gltf_path = output_dir.path().join("out.gltf");
+        let (document, _, _) = gltf::import(&gltf_path).unwrap();
+        for primitive in document.meshes().flat_map(|mesh| mesh.primitives()) {
+            for (_, attribute) in primitive.attributes() {
+                assert_eq!(
+                    attribute.view().unwrap().target(),
+                    Some(gltf::buffer::Target::ArrayBuffer)
+                );
+            }
+            assert_eq!(
+                primitive.indices().unwrap().view().unwrap().target(),
+                Some(gltf::buffer::Target::ElementArrayBuffer)
+            );
+        }
+        for skin in document.skins() {
+            assert_eq!(
+                skin.inverse_bind_matrices()
+                    .unwrap()
+                    .view()
+                    .unwrap()
+                    .target(),
+                None
+            );
+        }
+        for sampler in document
+            .animations()
+            .flat_map(|animation| animation.samplers())
+        {
+            assert_eq!(sampler.input().view().unwrap().target(), None);
+            assert_eq!(sampler.output().view().unwrap().target(), None);
+        }
+
         if cfg!(target_os = "windows") {
             Command::new("gltf_validator.exe")
                 .arg("-ar")
@@ -125,6 +156,14 @@ mod tests {
 
         let report = str::from_utf8(&buffer).unwrap();
         let v: serde_json::Value = serde_json::from_str(report).unwrap();
+        assert!(
+            !v["issues"]["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| message["code"] == "BUFFER_VIEW_TARGET_MISSING"),
+            "{report}"
+        );
 
         assert_eq!(
             2615,

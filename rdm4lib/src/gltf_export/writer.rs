@@ -269,7 +269,7 @@ fn export_mesh(
         indices.push(binary.push_attribute(
             BufferContainer(bytes),
             AccessorBuilder::new(values.len(), Type::Scalar, ComponentType::U32),
-            None,
+            Some(Valid(json::buffer::Target::ElementArrayBuffer)),
         ));
     }
     for (set, attribute) in mesh
@@ -283,7 +283,7 @@ fn export_mesh(
         let accessor = binary.push_attribute(
             floats(&values),
             AccessorBuilder::new(mesh.vertex_count, Type::Vec2, ComponentType::F32),
-            None,
+            Some(Valid(json::buffer::Target::ArrayBuffer)),
         );
         attributes.insert(Valid(Semantic::TexCoords(set as u32)), accessor);
     }
@@ -331,7 +331,7 @@ fn export_mesh(
         let accessor = binary.push_attribute(
             payload,
             AccessorBuilder::new(mesh.vertex_count, shape, ComponentType::F32),
-            None,
+            Some(Valid(json::buffer::Target::ArrayBuffer)),
         );
         attributes.insert(Valid(semantic), accessor);
     }
@@ -401,7 +401,11 @@ fn color(
         ),
         _ => return Err(format!("unsupported color encoding: {:?}", attribute.descriptor).into()),
     };
-    Ok(binary.push_attribute(payload, accessor, None))
+    Ok(binary.push_attribute(
+        payload,
+        accessor,
+        Some(Valid(json::buffer::Target::ArrayBuffer)),
+    ))
 }
 
 fn floats(values: &[f32]) -> BufferContainer {

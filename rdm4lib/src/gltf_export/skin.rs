@@ -4,7 +4,7 @@
 
 use std::error::Error;
 
-use gltf::json;
+use gltf::json::{self, validation::Checked::Valid};
 use nalgebra::{Matrix4, Quaternion, Similarity3, Translation3, UnitQuaternion, Vector3};
 
 use crate::{
@@ -239,7 +239,7 @@ pub(super) fn influences(
                 json::accessor::Type::Vec4,
                 json::accessor::ComponentType::F32,
             ),
-            None,
+            Some(Valid(json::buffer::Target::ArrayBuffer)),
         );
         result.push((json::mesh::Semantic::Weights(set as u32), accessor));
         joint_payloads.push(js);
@@ -252,7 +252,7 @@ pub(super) fn influences(
                 json::accessor::Type::Vec4,
                 json::accessor::ComponentType::U8,
             ),
-            None,
+            Some(Valid(json::buffer::Target::ArrayBuffer)),
         );
         result.push((json::mesh::Semantic::Joints(set as u32), accessor));
     }
@@ -315,7 +315,7 @@ fn typed_influences(
             let accessor = binary.push_attribute(
                 BufferContainer(bytes),
                 AccessorBuilder::new(mesh.vertex_count, Type::Vec4, component),
-                None,
+                Some(Valid(json::buffer::Target::ArrayBuffer)),
             );
             result.push((semantic, accessor));
         }
