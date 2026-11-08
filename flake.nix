@@ -134,8 +134,20 @@
               version = cargoToml.package.version;
               src = ./.;
               cargoLock.lockFile = ./Cargo.lock;
+              cargoBuildFlags = [ "--bins" ];
+              postInstall = ''
+                test -x "$out/bin/rdm4-bin"
+                test -x "$out/bin/rdm4ng"
+              '';
+              meta.mainProgram = "rdm4-bin";
             };
             default = config.packages.rdm4-bin;
+          };
+
+          apps.rdm4ng = {
+            type = "app";
+            program = "${config.packages.rdm4-bin}/bin/rdm4ng";
+            meta.description = "RDM conversion subcommands";
           };
 
           devShells.default = pkgs.mkShell {

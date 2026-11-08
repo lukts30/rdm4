@@ -1,4 +1,3 @@
-use crate::vertex::W4b;
 use crate::vertex::*;
 use half::f16;
 use nalgebra::Vector3;
@@ -105,19 +104,6 @@ pub fn g3f(vec_tangent: Vector3<f32>) -> G3f {
 }
 
 // # Bitangents #
-pub fn b4b(vec_tangent: Vector3<f32>, vec_normal: Vector3<f32>, tangent_w: f32) -> B4b {
-    debug!("normal.dot(&tangent): {}", vec_normal.dot(&vec_tangent));
-    let b: Matrix3x1<f32> = (vec_normal.cross(&vec_tangent)) * (tangent_w);
-
-    B4b {
-        data: [
-            (((b.x + 1.0) / 2.0) * 255.0).round() as u8,
-            (((b.y + 1.0) / 2.0) * 255.0).round() as u8,
-            (((b.z + 1.0) / 2.0) * 255.0).round() as u8,
-            0,
-        ],
-    }
-}
 
 pub fn b3f(vec_tangent: Vector3<f32>, vec_normal: Vector3<f32>, tangent_w: f32) -> B3f {
     debug!("normal.dot(&tangent): {}", vec_normal.dot(&vec_tangent));
@@ -132,12 +118,6 @@ pub fn b3f(vec_tangent: Vector3<f32>, vec_normal: Vector3<f32>, tangent_w: f32) 
 pub fn t2h(uv: [f32; 2]) -> T2h {
     T2h {
         data: [f16::from_f32(uv[0]), f16::from_f32(uv[1])],
-    }
-}
-
-pub fn t2f(uv: [f32; 2]) -> T2f {
-    T2f {
-        data: [uv[0], uv[1]],
     }
 }
 
@@ -161,21 +141,6 @@ pub fn w4b(weight: [f32; 4]) -> W4b {
             (weight[1] * 255.0).round() as u8,
             (weight[2] * 255.0).round() as u8,
             (weight[3] * 255.0).round() as u8,
-        ],
-    }
-}
-
-pub fn c4b(color: [u8; 4]) -> C4b {
-    C4b { data: color }
-}
-
-pub fn c4c(color: [u8; 4]) -> C4c {
-    C4c {
-        data: [
-            (color[0] as i16 - 128) as i8,
-            (color[1] as i16 - 128) as i8,
-            (color[2] as i16 - 128) as i8,
-            (color[3] as i16 - 128) as i8,
         ],
     }
 }

@@ -6,6 +6,7 @@ authors = ["lukts30 <llukas21307@gmail.com>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/lukts30/rdm4"
+default-run = "rdm4-bin"
 
 [workspace]
 members = [
@@ -17,6 +18,11 @@ rdm4lib = { path = "rdm4lib" }
 log = { version = "0.4", features = [] }
 env_logger = "0.11"
 clap = { version = "4.5", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3"
+
+[dev-dependencies]
+gltf = "1.4.1"
 
 
 [profile.release]

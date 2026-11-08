@@ -1,259 +1,119 @@
 # AGENTS.md
 
-Guidance for AI coding agents operating in this repository.
+Guidance for coding agents working on rdm4.
 
-## Project Overview
+Before committing, read [CONTRIBUTING.md](CONTRIBUTING.md) and follow its
+Conventional Commit rules. Load other referenced files when relevant.
 
-**rdm4** is a Rust CLI tool that converts 3D model files between the
-proprietary RDM format (Anno 1800) and glTF 2.0. It is a Cargo workspace
-with three crates:
+## Release scope
 
-| Crate        | Path          | Kind                          |
-| ------------ | ------------- | ----------------------------- |
-| `rdm4-bin`   | `src/main.rs` | Binary (CLI entry point)      |
-| `rdm4lib`    | `rdm4lib/`    | Library (core RDM/glTF logic) |
-| `rdm_derive` | `rdm_derive/` | Proc-macro (`RdmStructSize`)  |
+Finish the converter migration, preserve existing CLI and Blender workflows,
+and fix edge cases in supported conversions. Keep commits small and docs short.
+Broader layouts, material features and shading convention changes are follow-ups.
 
-## Repository Layout
+## Workspace
 
-Dependency updates may touch three `Cargo.toml` files:
+| Crate        | Paths                              | Role                            |
+| ------------ | ---------------------------------- | ------------------------------- |
+| `rdm4-bin`   | `src/main.rs`, `src/bin/rdm4ng.rs` | Legacy CLI and subcommand CLI   |
+| `rdm4lib`    | `rdm4lib/src/`                     | RDM codecs and scene conversion |
+| `rdm_derive` | `rdm_derive/src/`                  | `RdmRecord` derive              |
 
-- `Cargo.toml` (workspace root / CLI package)
-- `rdm4lib/Cargo.toml` (core conversion logic)
-- `rdm_derive/Cargo.toml` (proc-macro dependencies)
+The root package and both path dependencies are workspace members.
+Dependency changes may touch all three Cargo manifests.
 
-Cargo recognizes all three crates as workspace members. The root package is
-included implicitly, `rdm_derive` is listed explicitly, and the in-tree
-`rdm4lib` path dependency is included automatically.
+## Tooling
 
-## External Instructions
-
-- `AGENTS.md` references external files; load them with the Read tool when relevant.
-- Do not preemptively load all references; use on-demand loading.
-- Treat loaded instructions as mandatory and higher priority than defaults.
-- CRITICAL: Before any git commit, read `docs/CONTRIBUTING.md` and follow the commit message rules.
-
-## Build / Lint / Test Commands
-
-Always run Rust tooling through the provided default Nix development shell.
-Do not invoke a host-installed `cargo`, `rustc`, `rustfmt`, or `clippy` directly.
-The commands below use `nix develop --command` so each invocation is guaranteed
-to use the repository's toolchain and dependencies.
+Run Rust tooling through the default Nix development shell:
 
 ```sh
-# Build
-nix develop --command cargo build --workspace
-nix develop --command cargo build --release --workspace          # as CI runs it
-
-# Lint
-nix develop --command cargo fmt -- --check                       # check formatting
-nix develop --command cargo fmt                                  # auto-fix formatting
-nix develop --command cargo clippy --tests -- -D warnings        # clippy (CI mode)
-
-# Test — all
-nix develop --command cargo test --workspace                     # debug, all crates
-nix develop --command cargo test --release --workspace           # release, all crates (as CI)
-
-# Test — single test by name
-nix develop --command cargo test -p rdm4lib -- tests::reads_mesh_with_multiple_material_groups
-# Test — single crate
-nix develop --command cargo test -p rdm4lib
-
-# Test — integration tests only
-nix develop --command cargo test -p rdm4lib --test integration_test
-
-# Test — unit tests only
-nix develop --command cargo test -p rdm4lib --lib
+nix develop --command cargo build --release --locked --workspace
+nix develop --command cargo test --release --locked --workspace
+nix develop --command cargo test --release --locked -p rdm4lib --test integration_test
+nix develop --command cargo test --release --locked -p rdm4-bin --test blender_contract
+nix develop --command cargo clippy --workspace --tests --locked -- -D warnings
+nix develop --command cargo fmt -- --check
+nix develop --command treefmt
 ```
 
-CI runs tests in **release mode** with `--locked`. Some integration tests
-require `gltf_validator` on PATH and (on Windows) `texconv.exe`.
-
-## Formatting and Linting
-
-All formatting and linting is configured in `flake.nix` (single source of
-truth). The Nix dev shell installs pre-commit hooks that run **clippy** and
-**treefmt** automatically. Use `nix develop --command` for one-off commands,
-or enter `nix develop` first and keep all Rust tooling inside that shell.
-
-Formatters managed by treefmt: rustfmt (edition 2021), nixfmt, yamlfmt,
-actionlint, mdformat. Do not add standalone config files (`rustfmt.toml`,
-`clippy.toml`, etc.) — configure via `flake.nix` instead.
-
-Run manually with `nix develop --command treefmt`,
-`nix develop --command cargo fmt`, or
-`nix develop --command cargo clippy`.
-
-## Code Style
-
-### Imports
-
-Imports are loosely grouped. No strict ordering is enforced beyond `rustfmt`.
-Common patterns:
-
-- `extern crate` is used for `rdm4lib` and `log` (legacy, do not add new ones)
-- Glob imports appear sparingly (`use nalgebra::*;`)
-- Multi-item braces are preferred: `use crate::{foo, bar};`
-
-### Error Handling
-
-The codebase uses **`unwrap()` and `assert!`** as the primary error handling
-strategy. `anyhow` / `thiserror` are not used. The `?` operator appears in
-only a few functions. When adding new code:
-
-- Prefer `unwrap()` or `expect("descriptive message")` for internal invariants
-- Use `?` with `Result<T, Box<dyn Error>>` when writing functions that
-  naturally propagate errors (e.g., file I/O entry points)
-- Use `assert!` / `assert_eq!` for precondition checks, even outside tests
-
-### Naming
-
-- **Modules**: `snake_case`, domain modules prefixed with `rdm_` or `gltf_`
-- **Structs**: `PascalCase` with `Rd` prefix for domain types (`RdModell`,
-  `RdJoint`) and `Rdm` prefix for binary format types (`RdmFile`,
-  `RdmContainer`)
-- **Enums**: `PascalCase` variants; vertex format enums use
-  `#[allow(non_camel_case_types)]` to match the RDM spec naming
-  (e.g., `P4h_N4b_G4b_B4b_T2h`)
-- **Functions**: `snake_case`; short domain helpers like `p4h()`, `n4b()`
-- **Constants**: `UPPER_SNAKE_CASE`
-
-### Types and Generics
-
-- Heavy use of **const generics** for vertex format abstractions
-  (`AnnoData<DataType, IDENTIFIER, DATA_SIZE>`)
-- Type aliases for binary containers: `RdmString`, `RdmTypedContainer<T>`,
-  `AnnoPtr<T>`
-- `From<P: AsRef<Path>>` implemented on `RdModell` and `RdAnim` for
-  constructing from file paths
-
-### Unsafe Code
-
-Unsafe is limited to `align_to` calls for zero-copy byte reinterpretation of
-`#[repr(C)]` structs. Do not introduce new categories of unsafe code. All
-structs reinterpreted via `align_to` must be `#[repr(C)]`.
-
-### Derives
-
-Common derive stacking pattern on binary format structs:
-
-```rust
-#[repr(C)]
-#[derive(Clone, Debug)]
-#[binrw]
-#[bw(import_raw(end: &mut u64))]
-#[derive(RdmStructSize)]
-pub struct SomeStruct { ... }
-```
-
-`RdmStructSize` is a custom proc-macro from `rdm_derive` used on nearly all
-binary format structs. Other common derives: `Debug`, `Clone`, `Copy`,
-`PartialEq`, `Eq`.
-
-### Module Structure
-
-File-per-module style (no `mod.rs`). Modules declared flat in `lib.rs`.
-
-### Documentation
-
-Minimal. Doc comments (`///`) exist mainly on CLI args (`clap` fields). Inline
-comments are sparse. When adding code, at minimum document public API items.
-
-### Testing
-
-- Unit tests: `#[cfg(test)] mod tests { }` inside source files
-- Integration tests: `rdm4lib/tests/`
-- Tests are data-driven, verifying vertex counts, format strings, and SHA-256
-  hashes of output files via `check_hash()`
-- Many tests are gated with `#[cfg_attr(miri, ignore)]` (file I/O)
-- Platform-specific tests use `#[cfg(target_os = "linux")]` /
-  `#[cfg(target_os = "windows")]`
-
-### Dependencies
-
-`binrw = "=0.15.2"` is pinned to an exact version because the code relies
-on specific API details. Do not bump it without verifying compatibility.
-Key crates: `binrw`, `nalgebra`, `gltf`, `half`, `clap`, `env_logger`.
+Do not use host-installed Rust tools. Formatting and hook configuration live in
+`flake.nix`; do not add separate formatter or Clippy configuration files.
+Pre-commit hooks run Clippy and treefmt. CI tests Linux and Windows in release
+mode with `--locked`. The Nix shell includes `gltf_validator`; DDS tests need
+Windows and `texconv.exe`.
 
 ## Architecture
 
-### Conversion Pipelines
+Both CLIs call `src/commands.rs`:
 
-**RDM → glTF** (`src/main.rs` without `--gltf` flag):
-`RdModell::from(path)` → optional `add_skin()` / `add_anim()` →
-`gltf_export::build()` → GLB/glTF output
+```text
+RDM input -> RdmReader -> RdmDocument -> Scene -> GltfWriter
+ glTF input -> ImportedGltf -> Scene -> RdmDocument::from_scene -> RdmWriter
+```
 
-**glTF → RDM** (`src/main.rs` with `--gltf FORMAT`):
-`ImportedGltf::try_import()` → `read_mesh()` / `read_skin()` /
-`read_animation()` → `RdWriter2::new(rdm).write_rdm()` → RDM binary
+- `rdm/scanner.rs`: sequential framing scan and physical block index. Inspection
+  can report unknown records and retain partial results.
+- `rdm/read.rs`: typed decoding over `Read + Seek`, using the block index and
+  following references in field order. Complete reads require known block owners.
+  CLI inputs use `BufReader<File>`; the reader does not require a whole-file copy.
+- `rdm/records/mesh.rs` and `animation.rs`: plain owned records, independent of
+  byte order and source placement. Unknown tails live in `RdmSourceLayout`.
+- `rdm/write.rs`: fresh serialization and `write_preserving`, which retains
+  original placement and tails when shapes and byte order stay unchanged.
+- `scene.rs`: shared meshes, typed attribute columns, skeletons and animation.
+- `rdm/packing.rs` and `convert.rs`: target presets, coordinate conversion and
+  document/scene adapters. No template-based writing remains.
+- `gltf_buffers.rs`: payload alignment, views, accessors and final merging.
+  `gltf_export/` builds scene objects; `gltf_export.rs` packages files.
 
-### Core Types
+`rdm4ng` imports active-scene mesh instances and exports all RDM models by default.
+The old CLI keeps first-model defaults and explicit compatibility settings.
+Selecting a model in `rdm4ng` does not enable legacy export behavior.
 
-| Type                 | Module             | Role                                    |
-| -------------------- | ------------------ | --------------------------------------- |
-| `RdModell`           | `lib.rs`           | Central in-memory 3D model              |
-| `RdAnim`             | `rdm_anim.rs`      | Loaded animation data                   |
-| `RdJoint`            | `lib.rs`           | Skeleton bone (name, transform, parent) |
-| `VertexFormat2`      | `vertex.rs`        | Vertex layout descriptor + raw bytes    |
-| `TargetVertexFormat` | `vertex.rs`        | Enum of 6 supported output formats      |
-| `ImportedGltf`       | `gltf_reader.rs`   | Loaded glTF document + buffers          |
-| `RdWriter2`          | `rdm_data_main.rs` | Serializes `RdModell` to RDM binary     |
-| `RdAnimWriter2`      | `rdm_data_anim.rs` | Serializes `RdAnim` to RDM binary       |
-| `RdmFile<T>`         | `rdm_data_main.rs` | Binary RDM file wrapper (mesh or anim)  |
+## Records and code style
 
-Vertex components are const-generic types: `P4h` (position f16×4), `N4b`
-(normal u8×4), `G4b` (tangent), `B4b` (bitangent), `T2h` (texcoord f16×2),
-`I4b` (joint index), `W4b` (weight), `C4b` (color).
+Keep plain annotated structs and the GAT `RdmReadField::Args<'a>` API:
 
-### RdmStructSize Proc Macro
+```rust
+#[derive(Debug, Clone, PartialEq, RdmRecord)]
+#[rdm(strides(92, 68), write)]
+pub struct RdmModel {
+    pub vertex_format: RdmVertexFormat,
+    #[rdm(args(vertex_format))]
+    pub vertices: RdmVertices,
+    // Remaining fields follow their wire order.
+}
+```
 
-`#[derive(RdmStructSize)]` generates `impl RDMStructSizeTr` by creating a
-shadow `#[repr(C, packed(1))]` struct where all `AnnoPtr<T>` fields are
-replaced with `u32`, then returning `size_of` of the packed struct. Must be
-paired with `#[binrw]` and `#[bw(import_raw(end: &mut u64))]`.
+The derive uses explicit wire sizes and supported strides. Do not replace
+structs with a generation DSL or reintroduce `binrw` or `RdmStructSize`.
+Use file-per-module layout without `mod.rs`. Keep records in the mesh and
+animation modules rather than adding one file per record.
 
-## Test Data
+Document public APIs. Use `RdmError` for codec errors and propagate conversion
+and I/O errors with `Result`; reserve assertions and `expect` for internal
+invariants. Keep dependencies small and reuse the existing glTF JSON types and
+GLB serializer. Hashing dependencies belong under dev-dependencies.
+Do not introduce unsafe code or implicit float/quaternion normalization.
+Preserve untouched scalar bits where no conversion is needed.
 
-- **RDM fixtures**: `rdm4lib/rdm/` — binary `.rdm` files (meshes and
-  animations) at various LOD levels
-- **glTF fixtures**: `rdm4lib/rdm/gltf/` — test glTF files
-  (`stormtrooper.gltf`, `triangle.gltf`)
+## Tests and compatibility
 
-Tests verify correctness via vertex count assertions, format string checks,
-and SHA-256 hash comparison (`check_hash()`). The `gltf_validator` CLI is
-invoked in integration tests and must be on PATH.
+Fixtures live in `rdm4lib/rdm/`; benchmark expectations are checked by
+`rdm4lib/tests/corpus.rs`. Extend existing checks where practical instead of
+adding large test scaffolding. Conversion hashes check compatibility; preserving
+rewrites compare original bytes. See [RDM_ROUNDTRIP.md](RDM_ROUNDTRIP.md) and
+[RDM_VERTEX_FORMATS.md](RDM_VERTEX_FORMATS.md) for known fidelity limits.
 
-## Platform-Specific Behavior
+`tests/blender_contract.rs` checks the add-on's command arguments, filenames,
+transforms, materials, skinning and animation times. It does not run Blender.
+See [the test notes](../tests/README.md) for the pinned add-on revision.
 
-- DDS texture conversion requires **Windows** + `texconv.exe`
-- Some tests are gated with `#[cfg(target_os = "linux")]` or
-  `#[cfg(target_os = "windows")]`
-- CI runs a **Linux + Windows matrix**; both download `gltf_validator`,
-  Windows also downloads `texconv.exe`
-
-## Gotchas
-
-- **No structured error handling**: the codebase uses `unwrap()` / `expect()`
-  pervasively (~130 calls). Errors surface as panics, not `Result` types.
-  There are no `anyhow` / `thiserror` dependencies.
-- **Template-based RDM writing**: `RdWriter2` uses an embedded template
-  (`basalt_crusher_others_lod0.rdm`) and patches specific sections. Changes
-  to the output format must account for this approach.
-- **Animation joint matching**: defaults to matching by unique name
-  (`ResolveNodeName::UniqueName`). Duplicate joint names require fallback
-  to `UnstableIndex`.
-- **`--no_transform` with animations**: omitting this flag when a skeleton
-  is present can cause severe mesh deformation (logged as a warning).
-- **Entire file loaded into memory**: no streaming; unsuitable for very
-  large models.
-
-## Commit Messages
-
-Follow Conventional Commits: `<type>(<scope>): <description>`
-
-- **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `build`,
-  `ci`, `perf`, `chore`
-- **Scopes**: `lib`, `cli`, `ci`, `nix`, `docs`
-- Summary: imperative mood, no capitalization, no trailing period
-
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for full details.
+- Existing six output presets remain supported. `rdm4ng` rejects active weights
+  beyond the first joint/weight set; the legacy CLI retains truncation and warns.
+- Joint names must be unique by default; `UnstableIndex` handles duplicates or
+  missing names.
+- Animation import requires keys at t=0 and compatible sampled channels by
+  default. `--interpolate-animations` explicitly enables baking.
+- Animated imports generally need `--no-transform`; preserve existing coordinate
+  and shading behavior unless the task explicitly changes it.

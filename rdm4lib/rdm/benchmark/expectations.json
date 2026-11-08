@@ -1,0 +1,514 @@
+[
+  {
+    "id": 0,
+    "root_stride": 52,
+    "model_count": 0
+  },
+  {
+    "id": 1,
+    "root_stride": 48,
+    "model_count": 0
+  },
+  {
+    "id": 2,
+    "root_stride": 52,
+    "model_count": 0,
+    "animation": {
+      "tracks": 1,
+      "frames": 2,
+      "time_max": 100,
+      "sampling_rate": 15,
+      "decoded_sha256": "2e49e86bb0349c4d31bb73a2888cd5417be96c4f00b271cd506bdbc997317347"
+    }
+  },
+  {
+    "id": 3,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 4,
+    "total_indices": 6,
+    "first_model": {
+      "stride": 92,
+      "vertices": 4,
+      "indices": 6,
+      "format": "P4h",
+      "groups": [
+        [
+          0,
+          6,
+          0
+        ]
+      ],
+      "vertex_stride": 8,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 4,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 4,
+    "total_indices": 6,
+    "first_model": {
+      "stride": 92,
+      "vertices": 4,
+      "indices": 6,
+      "format": "P4h",
+      "groups": [
+        [
+          0,
+          6,
+          0
+        ]
+      ],
+      "vertex_stride": 8,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 5,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 16,
+    "total_indices": 24,
+    "first_model": {
+      "stride": 92,
+      "vertices": 16,
+      "indices": 24,
+      "format": "P4h_T2h_C4c",
+      "groups": [
+        [
+          0,
+          24,
+          0
+        ]
+      ],
+      "vertex_stride": 16,
+      "index_stride": 4
+    }
+  },
+  {
+    "id": 6,
+    "root_stride": 48,
+    "model_count": 2,
+    "total_vertices": 28,
+    "total_indices": 42,
+    "first_model": {
+      "stride": 92,
+      "vertices": 24,
+      "indices": 36,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          36,
+          1
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 7,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 224,
+    "total_indices": 336,
+    "first_model": {
+      "stride": 92,
+      "vertices": 224,
+      "indices": 336,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          300,
+          0
+        ],
+        [
+          300,
+          36,
+          1
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 8,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 391,
+    "total_indices": 735,
+    "first_model": {
+      "stride": 92,
+      "vertices": 391,
+      "indices": 735,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          735,
+          0
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 9,
+    "root_stride": 48,
+    "model_count": 0,
+    "animation": {
+      "tracks": 31,
+      "frames": 470,
+      "time_max": 9600,
+      "sampling_rate": 15,
+      "decoded_sha256": "d8d6590610f1ad4521204b967103d2e4581b0e6c794f658616083455801aa6f5"
+    }
+  },
+  {
+    "id": 10,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 1712,
+    "total_indices": 2568,
+    "first_model": {
+      "stride": 92,
+      "vertices": 1712,
+      "indices": 2568,
+      "format": "P4h_T2h_C4c",
+      "groups": [
+        [
+          0,
+          2568,
+          0
+        ]
+      ],
+      "vertex_stride": 16,
+      "index_stride": 4
+    }
+  },
+  {
+    "id": 11,
+    "root_stride": 52,
+    "model_count": 2,
+    "total_vertices": 1745,
+    "total_indices": 3900,
+    "first_model": {
+      "stride": 92,
+      "vertices": 60,
+      "indices": 90,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          90,
+          2
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 12,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 3183,
+    "total_indices": 5760,
+    "first_model": {
+      "stride": 92,
+      "vertices": 3183,
+      "indices": 5760,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          5652,
+          1
+        ],
+        [
+          5652,
+          108,
+          0
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 13,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 3468,
+    "total_indices": 10791,
+    "first_model": {
+      "stride": 92,
+      "vertices": 3468,
+      "indices": 10791,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          10722,
+          0
+        ],
+        [
+          10722,
+          69,
+          1
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 14,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 9136,
+    "total_indices": 13704,
+    "first_model": {
+      "stride": 92,
+      "vertices": 9136,
+      "indices": 13704,
+      "format": "P4h_T2h_C4c",
+      "groups": [
+        [
+          0,
+          13704,
+          0
+        ]
+      ],
+      "vertex_stride": 16,
+      "index_stride": 4
+    }
+  },
+  {
+    "id": 15,
+    "root_stride": 48,
+    "model_count": 258,
+    "total_vertices": 15830,
+    "total_indices": 33834,
+    "first_model": {
+      "stride": 92,
+      "vertices": 2098,
+      "indices": 5496,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          5496,
+          0
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 16,
+    "root_stride": 48,
+    "model_count": 0,
+    "animation": {
+      "tracks": 64,
+      "frames": 18773,
+      "time_max": 20000,
+      "sampling_rate": 30,
+      "decoded_sha256": "71fcad36b37bea77451df0b477ca9188b18828336738c3d568ef000728199e2b"
+    }
+  },
+  {
+    "id": 17,
+    "root_stride": 48,
+    "model_count": 0,
+    "animation": {
+      "tracks": 158,
+      "frames": 76298,
+      "time_max": 20000,
+      "sampling_rate": 30,
+      "decoded_sha256": "468dcd9c5ca5ec8a48e163b7ed75ebe9f0b1b2e0139da4709c111a8c28faec94"
+    }
+  },
+  {
+    "id": 18,
+    "root_stride": 52,
+    "model_count": 1,
+    "total_vertices": 57922,
+    "total_indices": 57924,
+    "first_model": {
+      "stride": 92,
+      "vertices": 57922,
+      "indices": 57924,
+      "format": "P3f_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b",
+      "groups": [
+        [
+          0,
+          57924,
+          0
+        ]
+      ],
+      "vertex_stride": 60,
+      "index_stride": 2
+    },
+    "skin_sha256": "f958466ce89f38201a2195101ce3ee903942bea77028b369d3ce75954ab5b615"
+  },
+  {
+    "id": 19,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 62583,
+    "total_indices": 62649,
+    "first_model": {
+      "stride": 92,
+      "vertices": 62583,
+      "indices": 62649,
+      "format": "P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b",
+      "groups": [
+        [
+          0,
+          62649,
+          0
+        ]
+      ],
+      "vertex_stride": 56,
+      "index_stride": 2
+    },
+    "skin_sha256": "a3aefc086e55b0096629c49d42d6add423c5db85c9b75df4b3101b6169b4bfda"
+  },
+  {
+    "id": 20,
+    "root_stride": 48,
+    "model_count": 20,
+    "total_vertices": 217663,
+    "total_indices": 491670,
+    "first_model": {
+      "stride": 92,
+      "vertices": 26747,
+      "indices": 63108,
+      "format": "P4h_N4b_G4b_B4b_T2h",
+      "groups": [
+        [
+          0,
+          9816,
+          0
+        ],
+        [
+          9816,
+          3384,
+          1
+        ],
+        [
+          13200,
+          49776,
+          4
+        ],
+        [
+          62976,
+          132,
+          2
+        ]
+      ],
+      "vertex_stride": 24,
+      "index_stride": 2
+    }
+  },
+  {
+    "id": 21,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 121181,
+    "total_indices": 205941,
+    "first_model": {
+      "stride": 92,
+      "vertices": 121181,
+      "indices": 205941,
+      "format": "P4h_N4b_G4b_B4b_T2h_I4b_I4b_I4b_I4b_W4b_W4b_W4b_W4b",
+      "groups": [
+        [
+          0,
+          205941,
+          0
+        ]
+      ],
+      "vertex_stride": 56,
+      "index_stride": 4
+    },
+    "skin_sha256": "cf329f3677ca13967690b3da8808eaf8e4ee6d6c0b07640252aca8b795e366ff"
+  },
+  {
+    "id": 22,
+    "root_stride": 48,
+    "model_count": 0,
+    "animation": {
+      "tracks": 9,
+      "frames": 18,
+      "time_max": 33,
+      "sampling_rate": 15,
+      "decoded_sha256": "b9704e4b1234875f62fe891e1159dad091564679be205c7cb2bf8fc3c3a36792"
+    }
+  },
+  {
+    "id": 23,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 1064,
+    "total_indices": 2364,
+    "first_model": {
+      "stride": 92,
+      "vertices": 1064,
+      "indices": 2364,
+      "format": "P4h_N4b_G4b_B4b_T2h_I4b",
+      "groups": [
+        [
+          0,
+          2364,
+          0
+        ]
+      ],
+      "vertex_stride": 28,
+      "index_stride": 2
+    },
+    "skin_sha256": "b1917cf8a34e2681221e927e61e6e54845e5803d971ef3a93fe5f6be4c1965e7"
+  },
+  {
+    "id": 24,
+    "root_stride": 48,
+    "model_count": 0,
+    "animation": {
+      "tracks": 22,
+      "frames": 6622,
+      "time_max": 5000,
+      "sampling_rate": 60,
+      "decoded_sha256": "de0af0cebf514f1c5db4016df5cf6d85cffe762650fb1b9c81f0b9c0d944d078"
+    }
+  },
+  {
+    "id": 25,
+    "root_stride": 48,
+    "model_count": 1,
+    "total_vertices": 74480,
+    "total_indices": 111720,
+    "first_model": {
+      "stride": 92,
+      "vertices": 74480,
+      "indices": 111720,
+      "format": "P4h_T2h_C4c",
+      "groups": [
+        [
+          0,
+          111720,
+          0
+        ]
+      ],
+      "vertex_stride": 16,
+      "index_stride": 4
+    }
+  }
+]

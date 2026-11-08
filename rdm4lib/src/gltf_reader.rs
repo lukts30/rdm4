@@ -1,31 +1,26 @@
-use crate::rdm_data_anim::Frame;
-use crate::rdm_data_main::MeshInfo;
-use crate::vertex::*;
-use crate::vertex_transform::*;
-use crate::RdModell;
-use crate::{gltf_reader_vertex::PutVertex, RdJoint};
-use crate::{vertex::TargetVertexFormat, Triangle};
+//! Import typed scene data. RDM packing and coordinate conversion live in `rdm`.
 
-use gltf::animation::Channel;
-use gltf::Node;
-use nalgebra::*;
+#![forbid(unsafe_code)]
 
-use bytes::BytesMut;
-
-use crate::rdm_anim::*;
-use gltf::animation::util::ReadOutputs::*;
-
-use crate::VertexFormat2;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
-use std::path::Path;
-use std::str::FromStr;
 use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
+    collections::{BTreeSet, HashMap, HashSet},
+    error::Error,
+    path::Path,
+    str::FromStr,
 };
 
+use gltf::{mesh::Semantic, Node};
+use nalgebra::{Isometry3, Matrix4, Similarity3};
+
+use crate::{
+    scene::{Attribute, AttributeValues, Joint, Mesh, Primitive, Scene, Skeleton},
+    vertex::{VertexIdentifier, VertexInterpretation, VertexSemantic},
+};
+
+mod animation;
+pub use animation::AnimationImportOptions;
+
+/// Naming policy retained for the CLI and Blender addon.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResolveNodeName {
     UnstableIndex,
@@ -34,994 +29,537 @@ pub enum ResolveNodeName {
 
 impl FromStr for ResolveNodeName {
     type Err = String;
-
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_ascii_lowercase().as_str() {
-            "uniquename" | "n" => Ok(ResolveNodeName::UniqueName),
-            "unstableindex" | "i" => Ok(ResolveNodeName::UnstableIndex),
-            _ => Err(format!("Invalid value for ResolveNodeName: {}", input)),
+            "uniquename" | "n" => Ok(Self::UniqueName),
+            "unstableindex" | "i" => Ok(Self::UnstableIndex),
+            _ => Err(format!("Invalid value for ResolveNodeName: {input}")),
         }
     }
 }
 
+/// Loaded glTF document and accessor buffers, with optional mesh selection.
 pub struct ImportedGltf {
     gltf: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
+    /// Policy for joint names.
     pub name_setting: ResolveNodeName,
-    mesh_idx: u32,
-    mesh_node: u32,
+    selected_node: Option<usize>,
 }
 
-impl<'a> TryFrom<&'a Path> for ImportedGltf {
+impl TryFrom<&Path> for ImportedGltf {
     type Error = gltf::Error;
-    fn try_from(f_path: &'a Path) -> Result<ImportedGltf, gltf::Error> {
-        self::ImportedGltf::try_import(f_path, 0, ResolveNodeName::UniqueName)
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        Self::try_import(path, 0, ResolveNodeName::UniqueName)
     }
 }
 
-fn node_get_local_transform(target_node: &Node) -> Isometry3<f32> {
-    let target_mat = target_node.transform().matrix();
-    let mut mat = Matrix4::from_fn(|i, j| target_mat[j][i]);
-    mat.m44 = 1.0;
-    let similarity: Similarity3<f32> = nalgebra::try_convert(mat).unwrap();
-    debug!("similarity.scaling: {}", similarity.scaling());
-
-    let mut isometry: Isometry3<f32> = similarity.isometry;
-    isometry.rotation = isometry.rotation.inverse();
-    isometry
-}
-
-fn extract_rotations(
-    time: impl Iterator<Item = f32>,
-    origin_translation: [f32; 3],
-    mut rot_iter: impl Iterator<Item = [f32; 4]>,
-) -> Vec<Frame> {
-    let mut frames_rot: Vec<Frame> = Vec::new();
-    for t in time {
-        let r = rot_iter.next().unwrap();
-        frames_rot.push(Frame {
-            time: t,
-            rotation: [r[0], r[1], r[2], -r[3]],
-            translation: origin_translation,
-        });
-    }
-    frames_rot
-}
-
-fn extract_translations(
-    time: impl Iterator<Item = f32>,
-    origin_rotation: [f32; 4],
-    mut trans: impl Iterator<Item = [f32; 3]>,
-) -> Vec<Frame> {
-    let mut frames: Vec<Frame> = Vec::new();
-    for t in time {
-        frames.push(Frame {
-            time: t,
-            rotation: origin_rotation,
-            translation: trans.next().unwrap(),
-        });
-    }
-    frames
-}
-
-fn read_animation_channel(buffers: &[gltf::buffer::Data], channel: Channel) -> Vec<Frame> {
-    let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
-    let time = reader.read_inputs().unwrap();
-    let output = reader.read_outputs().unwrap();
-
-    match output {
-        Rotations(rot) => {
-            let rot_iter = rot.into_f32();
-            extract_rotations(time, Default::default(), rot_iter)
-        }
-        Translations(trans) => extract_translations(time, Default::default(), trans),
-        _ => unreachable!(),
-    }
-}
-
-impl<'a> ImportedGltf {
+impl ImportedGltf {
+    /// Load a document and select the first node instantiating the requested mesh.
     pub fn try_import(
-        f_path: &'a Path,
+        path: &Path,
         mesh_idx: u32,
         joint_name_src: ResolveNodeName,
-    ) -> Result<ImportedGltf, gltf::Error> {
-        info!("Loading glTF {:?}", f_path);
-        let (gltf, buffers, _) = gltf::import(f_path)?;
-        let mut res = Self {
+    ) -> Result<Self, gltf::Error> {
+        let mut result = Self::load(path, joint_name_src)?;
+        result.change_mesh_index(mesh_idx);
+        Ok(result)
+    }
+
+    /// Load without selecting a mesh, allowing all mesh nodes in the active scene.
+    pub fn load(path: &Path, joint_name_src: ResolveNodeName) -> Result<Self, gltf::Error> {
+        let (gltf, buffers, _) = gltf::import(path)?;
+        Ok(Self {
             gltf,
             buffers,
             name_setting: joint_name_src,
-            mesh_idx: 0,
-            mesh_node: 0,
-        };
-        res.change_mesh_index(mesh_idx);
-        info!("Loaded glTF: {} mesh(es)", res.gltf.meshes().len());
-        Ok(res)
+            selected_node: None,
+        })
     }
 
-    pub fn change_mesh_index(&mut self, idx: u32) {
-        self.mesh_idx = idx;
-        self.set_mesh_node();
+    /// Select a mesh using the legacy first-instance behavior.
+    pub fn change_mesh_index(&mut self, index: u32) {
+        self.select_mesh(index).expect("selected mesh has no node");
     }
 
-    fn set_mesh_node(&mut self) {
-        let mesh = self
+    /// Select a mesh definition's first instance, reporting absent indices.
+    pub fn select_mesh(&mut self, index: u32) -> Result<(), Box<dyn Error>> {
+        let node = self
             .gltf
-            .meshes()
-            .nth(self.mesh_idx.try_into().unwrap())
-            .unwrap();
-        let mesh_instantiating_node =
-            find_first_mesh_instantiating_node(&self.gltf, mesh.index()).unwrap();
-
-        self.mesh_node = mesh_instantiating_node as u32;
+            .nodes()
+            .find(|node| {
+                node.mesh()
+                    .is_some_and(|mesh| mesh.index() == index as usize)
+            })
+            .ok_or_else(|| format!("mesh index {index} has no node"))?;
+        self.selected_node = Some(node.index());
+        Ok(())
     }
 
-    fn check_node_name_uniqueness(&self) {
+    fn check_node_name_uniqueness(&self, joints: &[usize]) -> Result<(), Box<dyn Error>> {
         if self.name_setting == ResolveNodeName::UniqueName {
-            let error_msg = "
-            This converter by default matches gltf node names to rdm bone names and therefore requires that the gltf node.name property exists and that it is unique. 
-            To instead use gltf node index as a source for rdm bone name use option `-u=UnstableIndex, --gltf-node-joint-name-src=UnstableIndex`";
-            let len = self.gltf.nodes().len();
-            let no_dupes: HashSet<&str> = self
+            let names: HashSet<_> = self
                 .gltf
                 .nodes()
-                .map(|e| {
-                    e.name()
-                        .unwrap_or_else(|| panic!("node.name property unset! {}", error_msg))
+                .filter(|node| joints.contains(&node.index()))
+                .map(|node| {
+                    node.name()
+                        .ok_or("joint name missing; use UnstableIndex joint names")
                 })
-                .collect();
-            assert_eq!(
-                len,
-                no_dupes.len(),
-                "node.name property is not unique! Same value for node.name is used multiple times! {}",
-                error_msg
-            );
+                .collect::<Result<_, _>>()?;
+            if names.len() != joints.len() {
+                return Err("joint names must be unique; use UnstableIndex joint names".into());
+            }
         }
+        Ok(())
     }
 
-    fn node_get_name(&self, target_node: &Node) -> String {
-        // TODO: improve
+    fn node_get_name(&self, node: &Node) -> String {
         match self.name_setting {
-            ResolveNodeName::UnstableIndex => format!("UnnamedGltfNode{}", target_node.index()),
-            ResolveNodeName::UniqueName => target_node.name().unwrap().to_owned(),
+            ResolveNodeName::UnstableIndex => format!("UnnamedGltfNode{}", node.index()),
+            ResolveNodeName::UniqueName => node.name().expect("node name was checked").into(),
         }
     }
 
-    pub fn read_animation(
+    /// Import the selected mesh, optionally its skeleton and clips. Values remain
+    /// unquantized; the world transform is stored separately from the attributes.
+    pub fn read_scene(
         &self,
-        joints: &[RdJoint],
-        frames: usize,
-        _tmax: f32,
-    ) -> Option<Vec<RdAnim>> {
-        let (gltf, buffers) = (&self.gltf, &self.buffers);
-
-        let mut translation_map: HashMap<String, Vec<Frame>> = HashMap::new();
-        let mut rd_animations = Vec::new();
-
-        let real_joints: HashSet<_> = joints.iter().map(|e| e.name.as_str()).collect();
-
-        let interpolate_error_message = "Interpolate required but not supported ! Re-Export model in blender with 'Always sample animations' enabled and try again";
-
-        for (anim_idx, animation) in gltf.animations().enumerate() {
-            let mut t_max = 0.0;
-            let mut interpolate_channel: HashMap<String, (Vec<Frame>, Vec<Frame>)> = HashMap::new();
-
-            info!(
-                "  Animation #{} {:?}",
-                anim_idx,
-                animation.name().unwrap_or("default")
-            );
-            for channel in animation.channels() {
-                let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
-                let time = reader.read_inputs().unwrap();
-                let output = reader.read_outputs().unwrap();
-
-                let target_node_name_v2 = self.node_get_name(&channel.target().node());
-
-                debug!("{}", time.len());
-                info!(
-                    "    Channel: {} | {:?}",
-                    target_node_name_v2,
-                    channel.target().property()
-                );
-                // ugly as hell
-                t_max = t_max.max(
-                    channel
-                        .sampler()
-                        .input()
-                        .max()
-                        .unwrap()
-                        .as_array()
-                        .unwrap()
-                        .first()
-                        .unwrap()
-                        .as_f64()
-                        .unwrap(),
-                );
-
-                let origin = node_get_local_transform(&channel.target().node());
-                let origin_translation = [
-                    origin.translation.x,
-                    origin.translation.y,
-                    origin.translation.z,
-                ];
-                let origin_quaternio_raw = origin.rotation.quaternion().coords;
-                let origin_rotation = [
-                    origin_quaternio_raw.x,
-                    origin_quaternio_raw.y,
-                    origin_quaternio_raw.z,
-                    origin_quaternio_raw.w,
-                ];
-
-                if real_joints.contains(target_node_name_v2.as_str()) {
-                    match output {
-                        Rotations(rot) => {
-                            let mut rot_iter = rot.into_f32();
-                            if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
-                                for (frame, t) in frames.iter_mut().zip(time) {
-                                    if !relative_eq!(t, frame.time) {
-                                        interpolate_channel.insert(
-                                            target_node_name_v2,
-                                            (
-                                                frames.clone(),
-                                                read_animation_channel(buffers, channel),
-                                            ),
-                                        );
-                                        break;
-                                    }
-                                    let r = rot_iter.next().unwrap();
-                                    frame.rotation = [r[0], r[1], r[2], -r[3]];
-                                }
-                            } else {
-                                translation_map.insert(
-                                    target_node_name_v2,
-                                    extract_rotations(time, origin_translation, rot_iter),
-                                );
-                            }
-                        }
-                        Translations(mut trans) => {
-                            if let Some(frames) = translation_map.get_mut(&target_node_name_v2) {
-                                for (frame, t) in frames.iter_mut().zip(time) {
-                                    if !relative_eq!(t, frame.time) {
-                                        interpolate_channel.insert(
-                                            target_node_name_v2,
-                                            (
-                                                read_animation_channel(buffers, channel),
-                                                frames.clone(),
-                                            ),
-                                        );
-                                        break;
-                                    }
-                                    frame.translation = trans.next().unwrap();
-                                }
-                            } else {
-                                translation_map.insert(
-                                    target_node_name_v2,
-                                    extract_translations(time, origin_rotation, trans),
-                                );
-                            };
-                        }
-                        _ => {
-                            warn!(
-                                "output sampler not supported: '{:?}'",
-                                channel.target().property()
-                            );
-                            continue;
-                        }
-                    }
-                } else {
-                    warn!("Node: {:?} is referenced by an animation channel but the node is not part of the skinned mesh inverseBindMatrices!",target_node_name_v2)
-                }
-            }
-
-            // TODO: finish interpolate
-            if interpolate_channel.drain().next().is_some() {
-                unimplemented!("{}", interpolate_error_message);
-            }
-
-            for joint in joints {
-                if !translation_map.contains_key(&joint.name) {
-                    let node_idx = gltf
-                        .nodes()
-                        .find(|n| self.node_get_name(n) == joint.name)
-                        .unwrap();
-                    let origin = node_get_local_transform(&node_idx);
-                    let origin_translation = [
-                        origin.translation.x,
-                        origin.translation.y,
-                        origin.translation.z,
-                    ];
-                    let origin_quaternio_raw = origin.rotation.quaternion().coords;
-                    let origin_rotation = [
-                        origin_quaternio_raw.x,
-                        origin_quaternio_raw.y,
-                        origin_quaternio_raw.z,
-                        origin_quaternio_raw.w,
-                    ];
-                    let intervall = t_max as f32 / frames as f32;
-                    let mut v = Vec::with_capacity(frames);
-                    for i in 0..=frames {
-                        v.push(Frame {
-                            rotation: origin_rotation,
-                            translation: origin_translation,
-                            time: i as f32 * intervall,
-                        });
-                    }
-                    warn!("idle_anim: adding idle for joint: {:?}", joint.name);
-                    translation_map.insert(joint.name.clone(), v);
-                }
-            }
-
-            let mut frame_collections: Vec<FrameCollection> = Vec::new();
-            for (node_str, frames) in translation_map.drain() {
-                frame_collections.push(FrameCollection {
-                    frames,
-                    name: node_str.to_string(),
-                })
-            }
-
-            assert_eq!(joints.len() - frame_collections.len(), 0);
-
-            frame_collections.sort_by(|a, b| a.name.cmp(&b.name));
-
-            let name = format!("anim_{}", anim_idx);
-            rd_animations.push(RdAnim {
-                time_max: (t_max * 1000.0) as u32,
-                sampling_rate: 15,
-                anim_vec: frame_collections,
-                name,
-            });
-        }
-        Some(rd_animations)
-    }
-
-    pub fn gltf_to_rdm(
-        &self,
-        dst_format: TargetVertexFormat,
         load_skin: bool,
-        negative_x_and_v0v2v1: bool,
-        no_transform: bool,
-        overide_mesh_idx: Option<Vec<u32>>,
-    ) -> RdModell {
-        if negative_x_and_v0v2v1 {
-            warn!("negative_x_and_v0v2v1: {}", negative_x_and_v0v2v1);
-            warn!("negative_x_and_v0v2v1 may cause lighting artifacts !");
+        animations: Option<AnimationImportOptions>,
+    ) -> Result<Scene, Box<dyn Error>> {
+        let node = self.selected_node.ok_or("no mesh selected")?;
+        if load_skin && self.gltf.nodes().nth(node).unwrap().skin().is_none() {
+            return Err("requested skeleton is absent".into());
         }
-        let gltf_imp = self
-            .read_mesh(
-                dst_format,
-                load_skin,
-                negative_x_and_v0v2v1,
-                no_transform,
-                overide_mesh_idx,
-            )
-            .unwrap();
-        let vertices = gltf_imp.1;
-        let triangles = gltf_imp.2;
-
-        let joints_vec = if load_skin {
-            self.check_node_name_uniqueness();
-            Some(self.read_skin())
-        } else {
-            None
-        };
-
-        // todo!("TODO : FIX ME !!!");
-        let mesh_info_vec = gltf_imp.4;
-        RdModell {
-            rdmf: None,
-            mesh_info: mesh_info_vec,
-            joints: joints_vec,
-            triangle_indices: triangles,
-            vertex: vertices,
-            anim: None,
-            mat: None,
-        }
+        self.read_nodes(&[node], load_skin, animations)
     }
 
-    fn read_skin(&self) -> Vec<RdJoint> {
-        let mut out_joints_vec = Vec::new();
-        let node_with_skin = self.gltf.nodes().nth(self.mesh_node.try_into().unwrap());
-
-        let skin = node_with_skin.unwrap().skin().unwrap();
-        {
-            let mut node_names_vec: Vec<String> = Vec::new();
-
-            info!("  Skin #{}: {} joints", skin.index(), skin.joints().len());
-
-            for node in skin.joints() {
-                node_names_vec.push(self.node_get_name(&node));
+    /// Import every mesh node in the default glTF scene, or the first scene if
+    /// none is marked default. Repeated mesh instances retain their own transforms.
+    pub fn read_active_scene(
+        &self,
+        load_skin: bool,
+        animations: Option<AnimationImportOptions>,
+    ) -> Result<Scene, Box<dyn Error>> {
+        let active = self
+            .gltf
+            .default_scene()
+            .or_else(|| self.gltf.scenes().next())
+            .ok_or("input has no glTF scene")?;
+        let mut pending = active.nodes().collect::<Vec<_>>();
+        pending.reverse();
+        let mut visited = HashSet::new();
+        let mut meshes = Vec::new();
+        while let Some(node) = pending.pop() {
+            if !visited.insert(node.index()) {
+                return Err("glTF scene contains repeated or cyclic node references".into());
             }
-
-            debug!("{:?}", node_names_vec);
-            // parentless nodes have 255 as "index"
-            let mut node_vec: Vec<u32> = vec![u32::MAX; skin.joints().count()];
-
-            for (i, node) in skin.joints().enumerate() {
-                for child in node.children() {
-                    //rdm: children know their parent VS glTF parents know their children
-                    let c_name = self.node_get_name(&child);
-
-                    let child_idx = node_names_vec.iter().position(|r| r == &c_name).unwrap();
-                    node_vec[child_idx] = i as u32;
-                    debug!("{}: {} -> {}", c_name, i, node_names_vec[i]);
-                }
+            if node.mesh().is_some() {
+                meshes.push(node.index());
             }
-
-            debug!("node_vec: {:?}", node_vec);
-            let node_vec_iter = node_vec.into_iter();
-            let node_names_vec_iter = node_names_vec.into_iter();
-
-            let reader = skin.reader(|buffer| Some(&self.buffers[buffer.index()]));
-
-            let mats_iter = reader.read_inverse_bind_matrices().unwrap();
-            for (z, ((mat, parent), name)) in mats_iter
-                .zip(node_vec_iter)
-                .zip(node_names_vec_iter)
-                .enumerate()
-            {
-                let inverse_bind_matrix: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
-                // inverseBindMatrix^-1 = BindMatrix
-                // BindMatrix: global transform of the respective joint
-                let mat4_init: Matrix4<f32> = inverse_bind_matrix.try_inverse().unwrap();
-                debug!("{} mat4_init: {}", z, mat4_init);
-                out_joints_vec.push(create_joint(mat4_init, name, parent));
-            }
+            let mut children = node.children().collect::<Vec<_>>();
+            children.reverse();
+            pending.extend(children);
         }
-        let mut check = true;
-        while check {
-            check = self.create_joints_from_non_skin_nodes(&mut out_joints_vec);
+        if meshes.is_empty() {
+            return Err("active glTF scene contains no mesh nodes".into());
         }
-        out_joints_vec
+        self.read_nodes(&meshes, load_skin, animations)
     }
 
-    fn create_joints_from_non_skin_nodes(&self, rdjoint: &mut Vec<RdJoint>) -> bool {
-        // TODO: refactor this ugly mess
-        // If a joint has a parent that is not a joint itself convert the parent
-        let rdlen = rdjoint.len();
-        let mut l = rdjoint.len().try_into().unwrap();
-        let mut node_converted_to_joints = Vec::new();
-        let mut has_converted = false;
-        debug!("check_all_node_in_skin");
-        for j in rdjoint.iter_mut().filter(|k| k.parent == u32::MAX) {
-            for n in self.gltf.nodes() {
-                if n.children().any(|n| self.node_get_name(&n) == j.name) {
-                    let did = node_converted_to_joints
-                        .iter()
-                        .position(|o: &RdJoint| o.name == self.node_get_name(&n));
-                    match did {
-                        Some(index) => j.parent = u8::try_from(rdlen + index).unwrap().into(),
-                        None => {
-                            info!("Promoting (non skin) node: {}", n.index());
-                            j.parent = l;
-                            l = l.checked_add(1).unwrap();
-                            has_converted = true;
-                            let mat4_init: Matrix4<f32> = build_transform2(&self.gltf, n.index());
-                            node_converted_to_joints.push(create_joint(
-                                mat4_init,
-                                self.node_get_name(&n),
-                                u32::MAX,
-                            ));
-                        }
-                    }
-                    break;
-                }
+    fn read_nodes(
+        &self,
+        nodes: &[usize],
+        load_skin: bool,
+        animations: Option<AnimationImportOptions>,
+    ) -> Result<Scene, Box<dyn Error>> {
+        let mut scene = Scene::default();
+        let mut skins = HashMap::new();
+        let mut joint_nodes = Vec::new();
+        for &node_index in nodes {
+            let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
+            let skeleton = if let Some(skin) = node.skin().filter(|_| load_skin) {
+                let index = if let Some(&index) = skins.get(&skin.index()) {
+                    index
+                } else {
+                    let (skeleton, source_nodes) = self.read_skin(node_index)?;
+                    let index = scene.skeletons.len();
+                    scene.skeletons.push(skeleton);
+                    joint_nodes.push(source_nodes);
+                    skins.insert(skin.index(), index);
+                    index
+                };
+                Some(index)
+            } else {
+                None
+            };
+            scene.meshes.push(self.read_mesh(node_index, skeleton)?);
+        }
+        if load_skin && scene.skeletons.is_empty() {
+            return Err("requested skeleton is absent".into());
+        }
+        if let Some(options) = animations {
+            if !load_skin {
+                return Err("animation import requires a skeleton".into());
+            }
+            for (index, skeleton) in scene.skeletons.iter().enumerate() {
+                let names = skeleton
+                    .joints
+                    .iter()
+                    .map(|joint| joint.name.as_str())
+                    .collect::<Vec<_>>();
+                scene.animations.extend(self.read_clips(
+                    &names,
+                    index,
+                    &joint_nodes[index],
+                    options,
+                )?);
             }
         }
-        rdjoint.append(&mut node_converted_to_joints);
-        has_converted
+        Ok(scene)
     }
 
     fn read_mesh(
         &self,
-        dst_format: TargetVertexFormat,
-        load_skin: bool,
-        mut negative_x_and_v0v2v1: bool,
-        no_transform: bool,
-        overide_mesh_idx: Option<Vec<u32>>,
-    ) -> ReadMeshOutput {
-        let (gltf, buffers) = (&self.gltf, &self.buffers);
-        // only the nth mesh of file gets read
-        if let Some(mesh) = gltf.meshes().nth(self.mesh_idx.try_into().unwrap()) {
-            info!("Destination vertex format: {:?}", dst_format);
-            info!("  Mesh #{} (node #{})", mesh.index(), self.mesh_node);
-
-            let mesh_instantiating_node = self.mesh_node.try_into().unwrap();
-            debug!("mesh_instantiating_node: {}", mesh_instantiating_node);
-
-            let mut base: Matrix4<f32> = if no_transform {
-                Matrix4::identity()
+        node_index: usize,
+        skeleton: Option<usize>,
+    ) -> Result<Mesh, Box<dyn Error>> {
+        let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
+        let mesh = node.mesh().ok_or("node has no mesh")?;
+        let mut semantics: BTreeSet<_> = mesh
+            .primitives()
+            .flat_map(|primitive| primitive.attributes().map(|(semantic, _)| semantic))
+            .collect();
+        // Scene columns use dense set order; fill absent lower sets without renumbering.
+        for semantic in semantics.clone() {
+            let (set, constructor): (u32, fn(u32) -> Semantic) = match semantic {
+                Semantic::TexCoords(set) => (set, Semantic::TexCoords),
+                Semantic::Colors(set) => (set, Semantic::Colors),
+                Semantic::Joints(set) => (set, Semantic::Joints),
+                Semantic::Weights(set) => (set, Semantic::Weights),
+                _ => continue,
+            };
+            for lower in 0..set {
+                semantics.insert(constructor(lower));
+            }
+        }
+        let mut attributes: Vec<Attribute> = Vec::new();
+        let mut indices = Vec::new();
+        let mut primitives = Vec::new();
+        let mut shared = HashMap::new();
+        let mut vertex_count = 0;
+        for primitive in mesh.primitives() {
+            if primitive.mode() != gltf::mesh::Mode::Triangles {
+                return Err("only triangle primitives are supported".into());
+            }
+            let reader = primitive.reader(|buffer| Some(&self.buffers[buffer.index()]));
+            let count = reader
+                .read_positions()
+                .ok_or("mesh has no positions")?
+                .len();
+            let key: Vec<_> = primitive
+                .attributes()
+                .map(|(semantic, accessor)| (semantic, accessor.index()))
+                .collect();
+            let offset = if let Some(&offset) = shared.get(&key) {
+                offset
             } else {
-                build_transform2(gltf, mesh_instantiating_node)
+                let mut columns = Vec::new();
+                for semantic in &semantics {
+                    let (role, width, values) = match *semantic {
+                        Semantic::Extras(_) => continue,
+                        Semantic::Positions => (
+                            VertexSemantic::Position,
+                            3,
+                            AttributeValues::F32(
+                                reader.read_positions().unwrap().flatten().collect(),
+                            ),
+                        ),
+                        Semantic::Normals => (
+                            VertexSemantic::Normal,
+                            3,
+                            AttributeValues::F32(
+                                reader
+                                    .read_normals()
+                                    .map(|v| v.flatten().collect())
+                                    .unwrap_or_else(|| [0.0, 0.0, 1.0].repeat(count)),
+                            ),
+                        ),
+                        Semantic::Tangents => (
+                            VertexSemantic::Tangent,
+                            4,
+                            AttributeValues::F32(
+                                reader
+                                    .read_tangents()
+                                    .map(|v| v.flatten().collect())
+                                    .unwrap_or_else(|| [0.0, 0.0, 0.0, 1.0].repeat(count)),
+                            ),
+                        ),
+                        Semantic::TexCoords(set) => (
+                            VertexSemantic::Texcoord,
+                            2,
+                            AttributeValues::F32(
+                                reader
+                                    .read_tex_coords(set)
+                                    .map(|v| v.into_f32().flatten().collect())
+                                    .unwrap_or_else(|| vec![0.0; count * 2]),
+                            ),
+                        ),
+                        Semantic::Colors(set) => {
+                            let types = mesh
+                                .primitives()
+                                .filter_map(|p| p.get(semantic))
+                                .map(|a| a.data_type())
+                                .collect::<Vec<_>>();
+                            let component = types
+                                .first()
+                                .copied()
+                                .filter(|first| types.iter().all(|value| value == first))
+                                // Match legacy per-primitive byte conversion for mixed
+                                // sources; U16 -> F32 -> U8 changes truncation results.
+                                .unwrap_or(gltf::accessor::DataType::U8);
+                            match component {
+                                gltf::accessor::DataType::U8 => (
+                                    VertexSemantic::Color,
+                                    1,
+                                    AttributeValues::U32(
+                                        reader
+                                            .read_colors(set)
+                                            .map(|v| {
+                                                v.into_rgba_u8().map(u32::from_le_bytes).collect()
+                                            })
+                                            .unwrap_or_else(|| {
+                                                vec![u32::from_le_bytes([255, 255, 255, 0]); count]
+                                            }),
+                                    ),
+                                ),
+                                gltf::accessor::DataType::U16 => (
+                                    VertexSemantic::Color,
+                                    4,
+                                    AttributeValues::U16(
+                                        reader
+                                            .read_colors(set)
+                                            .map(|v| v.into_rgba_u16().flatten().collect())
+                                            .unwrap_or_else(|| {
+                                                [u16::MAX, u16::MAX, u16::MAX, 0].repeat(count)
+                                            }),
+                                    ),
+                                ),
+                                _ => (
+                                    VertexSemantic::Color,
+                                    4,
+                                    AttributeValues::F32(
+                                        reader
+                                            .read_colors(set)
+                                            .map(|v| v.into_rgba_f32().flatten().collect())
+                                            .unwrap_or_else(|| [1.0, 1.0, 1.0, 0.0].repeat(count)),
+                                    ),
+                                ),
+                            }
+                        }
+                        Semantic::Joints(set) => (
+                            VertexSemantic::JointIndex,
+                            4,
+                            AttributeValues::U16(
+                                reader
+                                    .read_joints(set)
+                                    .map(|v| v.into_u16().flatten().collect())
+                                    .unwrap_or_else(|| vec![0; count * 4]),
+                            ),
+                        ),
+                        Semantic::Weights(set) => (
+                            VertexSemantic::Weight,
+                            4,
+                            AttributeValues::F32(
+                                reader
+                                    .read_weights(set)
+                                    .map(|v| v.into_f32().flatten().collect())
+                                    .unwrap_or_else(|| vec![0.0; count * 4]),
+                            ),
+                        ),
+                    };
+                    let storage = values.storage_and_len().0;
+                    columns.push(Attribute {
+                        descriptor: VertexIdentifier {
+                            semantic: role.clone(),
+                            storage_type: storage,
+                            storage_count: width,
+                            interpretation: VertexInterpretation(
+                                if role == VertexSemantic::Color
+                                    && storage == crate::vertex::StorageType::U32
+                                {
+                                    4
+                                } else {
+                                    0
+                                },
+                            ),
+                        },
+                        values,
+                    });
+                }
+                if attributes.is_empty() {
+                    attributes = columns;
+                } else {
+                    for (column, source) in attributes.iter_mut().zip(columns) {
+                        match (&mut column.values, source.values) {
+                            (AttributeValues::F32(a), AttributeValues::F32(mut b)) => {
+                                a.append(&mut b)
+                            }
+                            (AttributeValues::U16(a), AttributeValues::U16(mut b)) => {
+                                a.append(&mut b)
+                            }
+                            (AttributeValues::U32(a), AttributeValues::U32(mut b)) => {
+                                a.append(&mut b)
+                            }
+                            _ => return Err("attribute encodings differ between primitives".into()),
+                        }
+                    }
+                }
+                shared.insert(key, vertex_count);
+                let offset = vertex_count;
+                vertex_count += count;
+                offset
             };
-
-            if negative_x_and_v0v2v1 {
-                let m = Matrix3::new(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
-                base *= m.to_homogeneous();
-                negative_x_and_v0v2v1 = false;
+            let start = indices.len();
+            let local: Vec<_> = reader
+                .read_indices()
+                .map(|v| v.into_u32().collect())
+                .unwrap_or_else(|| (0..count as u32).collect());
+            if local.iter().any(|&index| index as usize >= count) {
+                return Err("primitive index exceeds its vertex count".into());
             }
-
-            debug!("base: {}", base);
-
-            let det = base.determinant();
-            if det.is_sign_negative() {
-                warn!("  Mesh #{}: negative determinant {}; reversing triangle winding and adjusting tangent handedness", mesh.index(), det);
-                negative_x_and_v0v2v1 = true;
-            }
-
-            let mat3 = base.fixed_resize::<3, 3>(0.0);
-            let inv_transform_mat3 = mat3.try_inverse().unwrap();
-            let transpose_inv_transform_mat3 = inv_transform_mat3.transpose();
-
-            let ident = match dst_format {
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h().to_vec()
-                }
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b().to_vec()
-                }
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h_i4b_w4b().to_vec()
-                }
-                TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
-                    crate::vertex::p3f_n3f_g3f_b3f_t2f_c4b().to_vec()
-                }
-                TargetVertexFormat::P4h_T2h_C4b => crate::vertex::p4h_t2h_c4c().to_vec(),
-                TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => {
-                    crate::vertex::p4h_n4b_g4b_b4b_t2h_c4b_c4b().to_vec()
-                }
-            };
-            let vertsize = ident.iter().map(|x| x.get_size()).sum();
-
-            let mut mesh_info: Vec<MeshInfo> = Vec::new();
-            let mut merged_triangle_vec = Vec::new();
-            let mut vertices_count: u32 = 0;
-            let mut verts_vec = BytesMut::with_capacity(64000 * vertsize as usize);
-
-            let mut kown_vbuffers = HashMap::new();
-
-            if let Some(v) = overide_mesh_idx.as_ref() {
-                assert_eq!(mesh.primitives().len(), v.len());
-            }
-            for (i, primitive) in mesh.primitives().enumerate() {
-                info!("    Primitive #{}", primitive.index());
-                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-                /* -------- # READ STUFF FROM GLTF # ------------ */
-
-                //POSITIONS
-                let mut position_iter = reader.read_positions().unwrap();
-                let mut count = position_iter.len();
-
-                //NORMALS
-                let normal_it = match reader.read_normals() {
-                    Some(iter) => iter.collect(),
-                    None => {
-                        error!("Model has no normals! Enable normal export in Blender! Non existing normal will cause garbage values!");
-                        vec![[0.0f32, 0.0f32, 1.0f32]]
-                    }
-                };
-                let mut normal_iter = normal_it.into_iter().cycle();
-
-                //TANGENTS
-                let tangent_it = match reader.read_tangents() {
-                    Some(iter) => iter.collect(),
-                    None => {
-                        error!("Model has no tangents! Enable tangent export in Blender! Non existing tangents will cause garbage values!");
-                        vec![[0.0f32, 0.0f32, 0.0f32, 1.0f32]]
-                    }
-                };
-                let mut tangent_iter = tangent_it.into_iter().cycle();
-
-                //TEXTURES
-                let tex_iter1 = reader.read_tex_coords(0);
-                let p: Vec<[f32; 2]> = match tex_iter1 {
-                    Some(tex) => {
-                        let r: Vec<[f32; 2]> = tex.into_f32().collect();
-                        assert_eq!(count, r.len());
-                        r
-                    }
-                    None => {
-                        error!(
-                            "No tex_coords ! Non existing 'texcoord_0' will cause garbage values!"
-                        );
-                        vec![[0.0f32, 0.0f32]]
-                    }
-                };
-                let mut tex_iter = p.into_iter().cycle();
-
-                let read_joints = TargetVertexFormat::has_joints(&dst_format);
-
-                //JOINTS
-                let jvecarr: Vec<[u16; 4]> = match reader.read_joints(0) {
-                    Some(joints) if read_joints => {
-                        let j: Vec<[u16; 4]> = joints.into_u16().collect();
-                        assert_eq!(count, j.len());
-                        j
-                    }
-                    _ => {
-                        warn!("      Mesh #{}, primitive #{}: no joint attributes read (missing or unused by destination format)", mesh.index(), primitive.index());
-                        if load_skin {
-                            panic!("No joints in glTF file but --skeleton flag was set!")
-                        }
-                        vec![[0, 0, 0, 0]]
-                    }
-                };
-
-                let mut joints_iter: std::iter::Cycle<std::vec::IntoIter<[u16; 4]>> =
-                    jvecarr.into_iter().cycle();
-
-                // always read the weight data when reading the joints, even if we end up discarding them.
-                let read_weights = read_joints;
-
-                //WEIGHTS
-                let wvecarr: Vec<[f32; 4]> = match reader.read_weights(0) {
-                    Some(weight) if read_weights => {
-                        let j: Vec<[f32; 4]> = weight.into_f32().collect();
-                        assert_eq!(count, j.len());
-                        j
-                    }
-                    _ => {
-                        warn!("      Mesh #{}, primitive #{}: no weight attributes read (missing or unused by destination format)", mesh.index(), primitive.index());
-                        if load_skin {
-                            panic!("No joints/weights in glTF file but --skeleton flag was set!")
-                        }
-                        vec![[0.0, 0.0, 0.0, 0.0]]
-                    }
-                };
-                let mut weights_iter = wvecarr.into_iter().cycle();
-
-                //COLORS
-                let read_colors = TargetVertexFormat::has_colors(&dst_format);
-                let color_count: u32 = TargetVertexFormat::color_component_count(&dst_format);
-                let mut color_iterators = Vec::new();
-
-                for color_index in 0..color_count {
-                    let color_it = match reader.read_colors(color_index) {
-                        //currently hardcoded 0 for only first color set
-                        Some(r_colors) => r_colors.into_rgba_u8().collect(),
-                        _ => {
-                            if read_colors {
-                                warn!("Model has no colors in Channel {}! Enable vertex attribute export in Blender! Non existing color values will cause zero values!", color_index);
-                            }
-                            vec![[255, 255, 255, 0]]
-                        }
-                    };
-                    color_iterators.push(color_it.into_iter().cycle());
-                }
-
-                //let mut verts_vec = BytesMut::with_capacity(count * vertsize as usize);
-
-                debug!("vertex read loop");
-                let mut start_vertices_count = verts_vec.len() as u32 / vertsize;
-
-                let pre_vertices_added = verts_vec.len();
-
-                // ------------- Transform Vertex Data to RDM and write to vertex buffer ----------- //
-
-                //build context
-                let mut context = TransformContext {
-                    base,
-                    transpose_inv_transform_mat3,
-                };
-
-                while count > 0 {
-                    debug!("count {}", count);
-
-                    let position = position_iter.next().unwrap();
-                    let normal = normal_iter.next().unwrap();
-                    let tangent = tangent_iter.next().unwrap();
-                    let tex = tex_iter.next().unwrap();
-
-                    let mut weight: Option<[f32; 4]> = None;
-                    let mut joint: Option<[u16; 4]> = None;
-                    let mut colors: Vec<[u8; 4]> = Vec::new();
-
-                    if TargetVertexFormat::has_weights(&dst_format) {
-                        weight = weights_iter.next();
-                    }
-                    if TargetVertexFormat::has_joints(&dst_format) {
-                        joint = joints_iter.next();
-                    }
-                    if TargetVertexFormat::has_colors(&dst_format) {
-                        colors = color_iterators
-                            .iter_mut()
-                            .map(|color_it| color_it.next().unwrap())
-                            .collect();
-                    }
-
-                    let tangent_w: f32 = if negative_x_and_v0v2v1 {
-                        tangent[3]
-                    } else {
-                        -tangent[3]
-                    };
-
-                    let vec_normal = context.transform_normal(normal);
-                    let vec_tangent = context.transform_tangent(tangent);
-                    let vec_position = context.transform_position(position);
-
-                    match dst_format {
-                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => {
-                            verts_vec.put_vertex_data(&p4h(vec_position));
-                            verts_vec.put_vertex_data(&n4b(vec_normal));
-                            verts_vec.put_vertex_data(&g4b(vec_tangent));
-                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
-                            verts_vec.put_vertex_data(&t2h(tex));
-                        }
-                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => {
-                            verts_vec.put_vertex_data(&p4h(vec_position));
-                            verts_vec.put_vertex_data(&n4b(vec_normal));
-                            verts_vec.put_vertex_data(&g4b(vec_tangent));
-                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
-                            verts_vec.put_vertex_data(&t2h(tex));
-                            match joint {
-                                Some(_j) => verts_vec.put_vertex_data(&i4b(_j)),
-                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires Joints to be present!")
-                            }
-                        }
-                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => {
-                            verts_vec.put_vertex_data(&p4h(vec_position));
-                            verts_vec.put_vertex_data(&n4b(vec_normal));
-                            verts_vec.put_vertex_data(&g4b(vec_tangent));
-                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
-                            verts_vec.put_vertex_data(&t2h(tex));
-
-                            match joint {
-                                Some(_j) => verts_vec.put_vertex_data(&i4b(_j)),
-                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires Joints to be present!")
-                            }
-                            match weight {
-                                Some(_w) => verts_vec.put_vertex_data(&w4b(_w)),
-                                None => error!("No weights left in gltf! P4h_N4b_G4b_B4b_T2h_I4b_W4b requires weights to be present!")
-                            }
-                        }
-                        TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => {
-                            verts_vec.put_vertex_data(&p3f(vec_position));
-                            verts_vec.put_vertex_data(&n3f(vec_normal));
-                            verts_vec.put_vertex_data(&g3f(vec_tangent));
-                            verts_vec.put_vertex_data(&b3f(vec_tangent, vec_normal, tangent_w));
-                            verts_vec.put_vertex_data(&t2f(tex));
-                            verts_vec.put_vertex_data(&c4b(colors[0]));
-                        }
-                        TargetVertexFormat::P4h_T2h_C4b => {
-                            verts_vec.put_vertex_data(&p4h(vec_position));
-                            verts_vec.put_vertex_data(&t2h(tex));
-                            verts_vec.put_vertex_data(&c4c(colors[0]));
-                        }
-                        TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => {
-                            verts_vec.put_vertex_data(&p4h(vec_position));
-                            verts_vec.put_vertex_data(&n4b(vec_normal));
-                            verts_vec.put_vertex_data(&g4b(vec_tangent));
-                            verts_vec.put_vertex_data(&b4b(vec_tangent, vec_normal, tangent_w));
-                            verts_vec.put_vertex_data(&t2h(tex));
-                            verts_vec.put_vertex_data(&c4b(colors[0]));
-                            verts_vec.put_vertex_data(&c4b(colors[1]));
-                        }
-                    }
-
-                    count -= 1;
-                }
-
-                let mut hasher = DefaultHasher::new();
-                Hash::hash_slice(&verts_vec[pre_vertices_added..verts_vec.len()], &mut hasher);
-                let hash_v = hasher.finish();
-                debug!("Primivive {} hash is {:x}.", i, &hash_v);
-                match kown_vbuffers.get(&hash_v) {
-                    Some(found_start_vertices_count) => {
-                        info!(
-                            "      Reusing vertex buffer: hash {:x}, first vertex: {}",
-                            &hash_v, found_start_vertices_count
-                        );
-                        start_vertices_count = *found_start_vertices_count;
-                        verts_vec.resize(pre_vertices_added, 0)
-                    }
-                    None => {
-                        kown_vbuffers.insert(hash_v, start_vertices_count);
-                    }
-                }
-
-                vertices_count = verts_vec.len() as u32 / vertsize;
-                info!("      Total unique vertices so far: {}", vertices_count);
-                if vertices_count > (u16::MAX - 1).into() {
-                    error!("Mesh consists of too many vertices ({})!", vertices_count);
-                    error!("Mesh vertices count must stay below 65535!");
-                    error!("The vertex count that Max/Maya/Blender show may not reflect the reality of the glTF.");
-                    error!("E.g. during Blender's glTF export, shared vertices may need to be unshared (duplicated again) if not all vertex attributes (normals, tangents, UV) are exactly the same!")
-                }
-
-                //let verts = VertexFormat2::new(ident, vertices_count, vertsize, 0, verts_vec.freeze());
-
-                //---------------- # Write Face Data # ------------------//
-
-                let mut triangle_iter = reader.read_indices().unwrap().into_u32();
-                let mut triangle_vec: Vec<Triangle> = Vec::with_capacity(count);
-
-                let mut tcount = triangle_iter.len() / 3;
-
-                while tcount > 0 {
-                    //let ctri = triangle_iter.next().unwrap();
-                    let v0 = triangle_iter.next().unwrap();
-                    let v1 = triangle_iter.next().unwrap();
-                    let v2 = triangle_iter.next().unwrap();
-                    let t = if negative_x_and_v0v2v1 {
-                        Triangle {
-                            indices: [
-                                start_vertices_count + v0,
-                                start_vertices_count + v2,
-                                start_vertices_count + v1,
-                            ],
-                        }
-                    } else {
-                        Triangle {
-                            indices: [
-                                start_vertices_count + v0,
-                                start_vertices_count + v1,
-                                start_vertices_count + v2,
-                            ],
-                        }
-                    };
-                    tcount -= 1;
-                    triangle_vec.push(t);
-                }
-
-                mesh_info.push(MeshInfo {
-                    start_index_location: merged_triangle_vec.len() as u32 * 3,
-                    index_count: triangle_vec.len() as u32 * 3,
-                    material: match overide_mesh_idx.as_ref() {
-                        Some(j) => j[i],
-                        None => i.try_into().unwrap(),
-                    },
-                    _padding: Default::default(),
-                });
-
-                merged_triangle_vec.append(&mut triangle_vec);
-
-                let primitive_info = mesh_info.last().unwrap();
-                info!(
-                    "      Material: {}, first index: {}, index count: {}",
-                    primitive_info.material,
-                    primitive_info.start_index_location,
-                    primitive_info.index_count
-                );
-                //return Some((vertsize, verts, merged_triangle_vec, vertices_count, mesh_info));
-            }
-            let verts = VertexFormat2::new(
-                ident.into_boxed_slice(),
-                vertices_count,
-                vertsize,
-                verts_vec.freeze(),
-            );
-            return Some((
-                vertsize,
-                verts,
-                merged_triangle_vec,
-                vertices_count,
-                mesh_info,
-            ));
+            indices.extend(local.into_iter().map(|index| index + offset as u32));
+            primitives.push(Primitive {
+                indices: start..indices.len(),
+                material: primitive.material().index().unwrap_or(0) as u32,
+            });
         }
-        None
+        let transform = build_transform2(&self.gltf, node_index);
+        let result = Mesh {
+            name: node.name().or_else(|| mesh.name()).map(str::to_owned),
+            vertex_count,
+            attributes,
+            indices,
+            primitives,
+            skeleton,
+            transform: Some(transform.into()),
+        };
+        result.validate()?;
+        Ok(result)
+    }
+
+    fn read_skin(&self, node_index: usize) -> Result<(Skeleton, Vec<usize>), Box<dyn Error>> {
+        let poses = self.read_bind_poses_for(node_index)?;
+        let source_nodes = poses.iter().map(|(node, _, _)| *node).collect();
+        let joints = poses
+            .into_iter()
+            .map(|(node, parent, pose)| {
+                let rotation =
+                    nalgebra::UnitQuaternion::from_quaternion(*pose.rotation.quaternion());
+                let translation = rotation
+                    .inverse_transform_vector(&pose.translation.vector)
+                    .scale(-1.0);
+                let q = rotation.coords;
+                Joint {
+                    name: self.node_get_name(&self.gltf.nodes().nth(node).unwrap()),
+                    parent,
+                    inverse_bind_translation: translation.into(),
+                    inverse_bind_rotation: [-q.x, -q.y, -q.z, q.w],
+                }
+            })
+            .collect();
+        Ok((Skeleton { joints }, source_nodes))
+    }
+
+    fn read_bind_poses_for(&self, node_index: usize) -> Result<Vec<BindPose>, Box<dyn Error>> {
+        let node = self.gltf.nodes().nth(node_index).expect("mesh node exists");
+        let skin = node.skin().ok_or("requested skeleton is absent")?;
+        let mut nodes: Vec<_> = skin.joints().map(|node| node.index()).collect();
+        let mut parents = vec![None; self.gltf.nodes().len()];
+        for node in self.gltf.nodes() {
+            for child in node.children() {
+                parents[child.index()] = Some(node.index());
+            }
+        }
+        let reader = skin.reader(|buffer| Some(&self.buffers[buffer.index()]));
+        let matrices: Vec<_> = reader
+            .read_inverse_bind_matrices()
+            .map(|v| v.collect())
+            .unwrap_or_else(|| vec![Matrix4::identity().into(); nodes.len()]);
+        if matrices.len() < nodes.len() {
+            return Err("inverse bind matrix count disagrees with skin joints".into());
+        }
+        let mut binds = matrices
+            .into_iter()
+            .take(nodes.len())
+            .map(|matrix| {
+                Matrix4::from(matrix)
+                    .try_inverse()
+                    .ok_or_else(|| "singular inverse bind matrix".into())
+            })
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        // Keep skin indices stable and append ancestors in the legacy promotion order.
+        let mut cursor = 0;
+        while cursor < nodes.len() {
+            let end = nodes.len();
+            for i in cursor..end {
+                if let Some(parent) = parents[nodes[i]] {
+                    if !nodes.contains(&parent) {
+                        nodes.push(parent);
+                        binds.push(build_transform2(&self.gltf, parent));
+                    }
+                }
+            }
+            cursor = end;
+        }
+        self.check_node_name_uniqueness(&nodes)?;
+        nodes
+            .iter()
+            .zip(binds)
+            .map(|(&node, mut bind)| {
+                bind.m44 = 1.0;
+                let similarity: Similarity3<f32> =
+                    nalgebra::try_convert(bind).ok_or("joint transform is not rigid")?;
+                Ok((
+                    node,
+                    parents[node].and_then(|parent| nodes.iter().position(|&node| node == parent)),
+                    similarity.isometry,
+                ))
+            })
+            .collect()
     }
 }
 
-#[inline]
-fn create_joint(mut mat4_init: Matrix4<f32>, name: String, parent: u32) -> RdJoint {
-    // may perform expensive checks ...
-    debug!("node_to_joint mat4_init: {}", mat4_init);
-    mat4_init.m44 = 1.0;
-    let similarity: Similarity3<f32> = nalgebra::try_convert(mat4_init).unwrap();
-    debug!("similarity.scaling: {}", similarity.scaling());
+type BindPose = (usize, Option<usize>, Isometry3<f32>);
 
-    let isometry: Isometry3<f32> = similarity.isometry;
-    let unit_quaternion = isometry.rotation;
-    let quaternion_raw = unit_quaternion.quaternion().coords;
-
-    let translation: Translation3<f32> = isometry.translation;
-
-    RdJoint {
-        name,
-        parent,
-        quaternion: [
-            quaternion_raw.x,
-            quaternion_raw.y,
-            quaternion_raw.z,
-            quaternion_raw.w,
-        ],
-        transition: [translation.x, translation.y, translation.z],
-    }
+fn node_get_local_transform(node: &Node) -> Isometry3<f32> {
+    let mut matrix = Matrix4::from(node.transform().matrix());
+    matrix.m44 = 1.0;
+    let similarity: Similarity3<f32> =
+        nalgebra::try_convert(matrix).expect("joint local transform is not rigid");
+    let mut pose = similarity.isometry;
+    pose.rotation = pose.rotation.inverse();
+    pose
 }
 
-type ReadMeshOutput = Option<(u32, VertexFormat2, Vec<Triangle>, u32, Vec<MeshInfo>)>;
-
-fn find_first_mesh_instantiating_node(gltf: &gltf::Document, mesh_idx: usize) -> Option<usize> {
-    for (i, node) in gltf.nodes().enumerate() {
-        match node.mesh() {
-            Some(mesh) => {
-                debug!("mesh.index(): {}", mesh.index());
-                if mesh.index() == mesh_idx {
-                    return Some(i);
-                }
-            }
-            None => continue,
-        }
+fn build_transform2(document: &gltf::Document, node: usize) -> Matrix4<f32> {
+    let mut chain = Vec::new();
+    let mut current = node;
+    while let Some(parent) = document
+        .nodes()
+        .find(|parent| parent.children().any(|child| child.index() == current))
+    {
+        chain.push(parent.index());
+        current = parent.index();
+        assert!(
+            chain.len() <= document.nodes().len(),
+            "cyclic node hierarchy"
+        );
     }
-    None
-}
-
-fn build_transform2(gltf: &gltf::Document, mesh_node: usize) -> Matrix4<f32> {
-    let mut child_list: Vec<Option<Vec<usize>>> = vec![None; gltf.nodes().count()];
-
-    let mut tmp: Vec<usize> = Vec::new();
-    for (i, node) in gltf.nodes().enumerate() {
-        for child in node.children() {
-            tmp.push(child.index());
-        }
-        if !tmp.is_empty() {
-            child_list[i] = Some(tmp);
-            tmp = Vec::new();
-        }
+    let mut matrix = Matrix4::<f32>::identity();
+    for parent in chain.into_iter().rev() {
+        matrix *= Matrix4::from(document.nodes().nth(parent).unwrap().transform().matrix());
     }
-
-    //let mesh_node = 1;
-    let mut find_node: usize = mesh_node;
-    let mut tree: Vec<usize> = Vec::new();
-    assert!(find_node < child_list.len());
-    loop {
-        let idx = find_parent(find_node, &child_list);
-        match idx {
-            Some(value) => {
-                tree.push(value);
-                find_node = value;
-            }
-            None => {
-                break;
-            }
-        }
-    }
-
-    debug!("tree: {:?}", tree);
-
-    calculate_global_transform(mesh_node, &tree, gltf)
-}
-
-fn calculate_global_transform(
-    target_node: usize,
-    tree: &[usize],
-    gltf: &gltf::Document,
-) -> Matrix4<f32> {
-    let nodes: Vec<gltf::scene::Node> = gltf.nodes().collect();
-    debug!("target_node: {} ", target_node);
-    let rel_transform_data = nodes[target_node].transform().matrix();
-    let mut mat4rel_transform = Matrix4::from_fn(|i, j| rel_transform_data[j][i]);
-
-    let mut bmat4: Matrix4<f32> = Matrix4::identity();
-    if !tree.is_empty() {
-        for p in tree.iter().rev() {
-            let mat = nodes[*p].transform().matrix();
-            let mat4: Matrix4<f32> = Matrix4::from_fn(|i, j| mat[j][i]);
-            bmat4 *= mat4;
-        }
-    }
-    mat4rel_transform = bmat4 * mat4rel_transform;
-    mat4rel_transform
-}
-
-fn find_parent(mesh_node: usize, child_list: &[Option<Vec<usize>>]) -> Option<usize> {
-    let mut parent_idx: Option<usize> = None;
-    for (i, opt_children) in child_list.iter().enumerate() {
-        match opt_children {
-            Some(c) => {
-                let opt_parent_idx = c.iter().position(|&r| r == mesh_node);
-
-                match opt_parent_idx {
-                    Some(_) => {
-                        parent_idx = Some(i);
-                        break;
-                    }
-                    None => continue,
-                }
-            }
-            None => continue,
-        }
-    }
-    parent_idx
+    matrix * Matrix4::from(document.nodes().nth(node).unwrap().transform().matrix())
 }
