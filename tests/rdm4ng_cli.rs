@@ -788,6 +788,7 @@ fn extra_skin_influences_fail_without_changing_legacy_packing() {
     );
     assert!(!restored.exists());
     let result = legacy()
+        .env("RUST_LOG", "warn")
         .arg("--gltf=P4h_N4b_G4b_B4b_T2h_I4b_W4b")
         .arg("-i")
         .arg(&glb)
