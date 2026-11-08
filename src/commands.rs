@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use log::{error, info};
+use log::{debug, error, info};
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{AnimationImportOptions, ImportedGltf, ResolveNodeName},
@@ -245,6 +245,32 @@ pub struct Files {
 }
 
 impl Files {
+    fn conversion_destination(
+        &self,
+        extension: &str,
+        legacy: bool,
+    ) -> Result<Option<PathBuf>, Box<dyn Error>> {
+        if legacy {
+            return Ok(self.destination(extension));
+        }
+        let mut output = self
+            .output
+            .clone()
+            .unwrap_or_else(|| self.input.with_extension(extension));
+        if self.input_name && !output.is_dir() {
+            return Err("--input-name requires an existing output directory".into());
+        }
+        if output.is_dir() {
+            output.push(self.input.file_name().ok_or("input has no filename")?);
+        } else if let Some(ext) = output.extension().and_then(|ext| ext.to_str()) {
+            if !ext.eq_ignore_ascii_case(extension) {
+                return Err(format!("output extension .{ext} does not match .{extension}; change --format or --output").into());
+            }
+        }
+        output.set_extension(extension);
+        Ok(Some(output))
+    }
+
     fn destination(&self, extension: &str) -> Option<PathBuf> {
         let mut output = self.output.clone();
         if let Some(ref mut path) = output {
@@ -291,7 +317,20 @@ pub struct RdmOptions {
 
 /// Convert all RDM models or one explicitly selected model through the shared scene.
 pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn Error>> {
+    let extension = if opts.format == GltfExportFormat::Glb {
+        "glb"
+    } else {
+        "gltf"
+    };
+    let output = opts.files.conversion_destination(extension, opts.legacy)?;
     let mut document = read_document(&opts.files.input)?;
+    info!(
+        "Available: {} models, {} materials, {} joints, {} animations",
+        document.models.as_ref().map_or(0, Vec::len),
+        document.materials.as_ref().map_or(0, Vec::len),
+        document.skin.as_ref().map_or(0, |skin| skin.joints.len()),
+        document.animations.as_ref().map_or(0, Vec::len)
+    );
     if let Some(index) = mesh_index {
         let models = document.models.take().unwrap_or_default();
         let count = models.len();
@@ -299,11 +338,35 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
             .into_iter()
             .nth(index)
             .ok_or_else(|| format!("model index {index} out of range for {count} models"))?;
-        info!(
-            "  Model #{index}: {} vertices; {}",
-            model.vertices.count, model.vertex_format
-        );
+        info!("Selected model #{index}");
         document.models = Some(vec![model]);
+    }
+    for (index, model) in document.models.iter().flatten().enumerate() {
+        info!(
+            "  Model #{} {:?}: {} vertices, {} triangles, {} groups",
+            mesh_index.unwrap_or(index),
+            model.name.name.as_deref().unwrap_or("<unnamed>"),
+            model.vertices.count,
+            model.indices.values.len() / 3,
+            model.groups.len()
+        );
+        info!(
+            "    Vertex format: {}; index type: {:?}",
+            model.vertex_format, model.index_format.storage_type
+        );
+        debug!(
+            "    Bounds: {:?} .. {:?}",
+            model.bounds_min, model.bounds_max
+        );
+        for (index, group) in model.groups.iter().enumerate() {
+            info!(
+                "    Group #{index}: material {}, first index {}, index count {}",
+                group.material, group.first_index, group.index_count
+            );
+        }
+    }
+    if !opts.skeleton && document.skin.is_some() {
+        info!("Skeleton omitted; use --skeleton to include it");
     }
     let mut scene = document.into_scene(opts.skeleton)?;
     // The old CLI activates the selected model's skeleton explicitly.
@@ -316,6 +379,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         }
         scene.attach_rdm_animation(read_animation(path)?, 0)?;
     }
+    log_scene(&scene);
     let mut writer = gltf_export::GltfWriter::new(scene);
     if opts.legacy {
         writer = writer.legacy();
@@ -323,11 +387,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     if let Some(textures) = opts.textures {
         writer = writer.textures(RdMaterial::new(textures));
     }
-    writer.write(
-        opts.files.destination("gltf"),
-        !opts.files.force,
-        opts.format,
-    )
+    writer.write(output, !opts.files.force, opts.format)
 }
 
 fn read_animation(path: &Path) -> Result<RdmAnimation, Box<dyn Error>> {
@@ -350,14 +410,20 @@ fn read_animation(path: &Path) -> Result<RdmAnimation, Box<dyn Error>> {
 }
 
 fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
-    Ok(RdmReader::new(BufReader::new(File::open(path)?))?
-        .read_root::<RdmDocument>()?
-        .value)
+    let file = File::open(path)?;
+    info!(
+        "Reading {} ({} bytes)",
+        path.display(),
+        file.metadata()?.len()
+    );
+    let reader = RdmReader::new(BufReader::new(file))?;
+    info!("Byte order: {:?}", reader.endian());
+    Ok(reader.read_root::<RdmDocument>()?.value)
 }
 
 /// Convert selected geometry or all active-scene mesh nodes, optionally with skin and animation.
 pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
-    let output = opts.files.destination("rdm");
+    let output = opts.files.conversion_destination("rdm", opts.legacy)?;
     let mut gltf = ImportedGltf::load(opts.files.input.as_path(), opts.joint_names)?;
     let animations = (opts.skeleton && opts.animation).then_some(AnimationImportOptions {
         interpolate: opts.interpolate_animations,
@@ -370,6 +436,23 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     } else {
         gltf.read_active_scene(opts.skeleton, animations)?
     };
+    info!("Destination vertex format: {:?}", opts.format);
+    for (index, mesh) in scene.meshes.iter().enumerate() {
+        info!(
+            "  Model #{index} {:?}: {} vertices, {} triangles, {} groups",
+            mesh.name.as_deref().unwrap_or("<unnamed>"),
+            mesh.vertex_count,
+            mesh.indices.len() / 3,
+            mesh.primitives.len()
+        );
+        for (index, primitive) in mesh.primitives.iter().enumerate() {
+            info!(
+                "    Group #{index}: material {}, indices {:?}",
+                primitive.material, primitive.indices
+            );
+        }
+    }
+    log_scene(&scene);
     let material_indices = if opts.legacy {
         Some(
             opts.material_indices
@@ -394,4 +477,27 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
     }
     Ok(())
+}
+
+fn log_scene(scene: &rdm4lib::scene::Scene) {
+    info!(
+        "Exporting {} models, {} skeletons ({} joints), {} animations",
+        scene.meshes.len(),
+        scene.skeletons.len(),
+        scene
+            .skeletons
+            .iter()
+            .map(|skin| skin.joints.len())
+            .sum::<usize>(),
+        scene.animations.len()
+    );
+    for animation in &scene.animations {
+        info!(
+            "  Animation {:?}: {} tracks, {} ms, {} samples/s",
+            animation.name,
+            animation.tracks.len(),
+            animation.duration_millis,
+            animation.sampling_rate
+        );
+    }
 }

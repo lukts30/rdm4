@@ -918,3 +918,77 @@ fn external_animation_preserves_scene_selection_and_legacy_keys() {
     );
     assert_eq!(fs::read(destination).unwrap(), mesh);
 }
+
+#[test]
+fn conversion_reports_models_and_resolves_ng_output_paths() {
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("fishery.rdm");
+    fs::copy(fixture("fishery_others_lod2.rdm"), &input).unwrap();
+    let output = ng()
+        .env_remove("RUST_LOG")
+        .arg("gltf")
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(input.with_extension("glb").is_file());
+    assert!(output.stdout.is_empty());
+    let log = String::from_utf8_lossy(&output.stderr);
+    for expected in [
+        "Model #0",
+        "vertices",
+        "triangles",
+        "Vertex format",
+        "Group #0",
+        "material",
+        "Exporting",
+    ] {
+        assert!(log.contains(expected), "missing {expected}: {log}");
+    }
+    let separate = directory.path().join("separate.gltf");
+    succeeds(ng().arg("gltf").arg(&input).arg("-o").arg(&separate));
+    assert!(gltf::import(&separate).is_ok());
+    succeeds(
+        ng().arg("rdm")
+            .arg(&separate)
+            .args(["--format", "P4h_N4b_G4b_B4b_T2h"]),
+    );
+    assert!(separate.with_extension("rdm").is_file());
+    let nested = directory.path().join("nested");
+    fs::create_dir(&nested).unwrap();
+    succeeds(ng().arg("gltf").arg(&input).arg("-o").arg(&nested));
+    assert!(nested.join("fishery.glb").is_file());
+    let quiet = ng()
+        .env_remove("RUST_LOG")
+        .arg("gltf")
+        .arg(&input)
+        .args(["--quiet", "--force"])
+        .output()
+        .unwrap();
+    assert!(quiet.status.success());
+    assert!(!String::from_utf8_lossy(&quiet.stderr).contains("Model #"));
+    let invalid = ng()
+        .arg("gltf")
+        .arg(&input)
+        .arg("-o")
+        .arg(&separate)
+        .args(["--format", "glb"])
+        .output()
+        .unwrap();
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("does not match"));
+    let invalid = ng()
+        .arg("gltf")
+        .arg(&input)
+        .arg("-o")
+        .arg(directory.path().join("missing"))
+        .arg("--input-name")
+        .output()
+        .unwrap();
+    assert!(!invalid.status.success());
+    assert!(!String::from_utf8_lossy(&invalid.stderr).contains("panicked"));
+}

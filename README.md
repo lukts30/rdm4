@@ -40,6 +40,14 @@ for options. `rdm4-bin` remains available with its existing arguments.
 Release archives and the default Nix package include both executables.
 Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
+Conversions report model geometry, material groups, skeletons and animations on
+stderr. Use `-v` for diagnostics or `-q` to keep only warnings and errors;
+`RUST_LOG` overrides the log level. Without `-o`, NG writes beside the input
+with the output extension. An existing output directory uses the input basename.
+For `gltf`, `-o model.gltf` selects separate glTF; otherwise GLB is the default.
+An explicit `--format` must match the output extension. Existing files still
+require `--force`.
+
 `rdm4ng gltf` exports all models by default; `--mesh-index` selects one
 (zero-based). Both entry points use the scene layer and the new reader and writer.
 `rdm4-bin` retains its arguments and first-model default.

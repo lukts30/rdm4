@@ -7,10 +7,7 @@ use rdm4lib::{
     gltf_export::GltfExportFormat, gltf_reader::ResolveNodeName, vertex::TargetVertexFormat,
 };
 
-use crate::{
-    commands::{self, Files, GltfOptions, InspectFormat, RdmOptions},
-    init_logging,
-};
+use crate::commands::{self, Files, GltfOptions, InspectFormat, RdmOptions};
 
 /// Parse an existing input file for either CLI.
 pub fn existing_file(value: &str) -> Result<PathBuf, String> {
@@ -32,6 +29,9 @@ struct Cli {
     /// Increase logging verbosity.
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
+    /// Suppress progress messages (warnings and errors remain).
+    #[arg(short, long, global = true, conflicts_with = "verbose")]
+    quiet: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -81,10 +81,10 @@ struct FileArgs {
     /// Input file.
     #[arg(value_parser = existing_file)]
     input: PathBuf,
-    /// Output file or existing directory.
+    /// Output file or existing directory; defaults to INPUT with the output extension.
     #[arg(short, long)]
     output: Option<PathBuf>,
-    /// Use the input basename in the output directory.
+    /// Use the input basename in the output directory (automatic for directories).
     #[arg(short = 'n', long, requires = "output")]
     input_name: bool,
     /// Overwrite existing output files.
@@ -116,9 +116,9 @@ struct GltfArgs {
     /// External animation RDM; includes the skeleton.
     #[arg(short, long, value_parser = existing_file)]
     animation: Option<PathBuf>,
-    /// Output format: glb, gltf, or gltfmin.
-    #[arg(short = 'e', long, default_value = "glb")]
-    format: GltfExportFormat,
+    /// Output format: glb, gltf, or gltfmin; inferred from -o, otherwise glb.
+    #[arg(short = 'e', long)]
+    format: Option<GltfExportFormat>,
     /// Diffuse DDS texture; may be repeated (requires Windows and texconv).
     #[arg(short = 't', long = "diffuse-texture", value_parser = existing_file)]
     textures: Option<Vec<PathBuf>>,
@@ -163,16 +163,38 @@ struct RdmArgs {
 /// Parse and execute the `rdm4ng` command line.
 pub fn run() -> ExitCode {
     let cli = Cli::parse();
-    init_logging(cli.verbose);
+    let level = match (cli.quiet, cli.verbose) {
+        (true, _) => "warn",
+        (false, 0) => "info",
+        (false, 1) => "debug",
+        _ => "trace",
+    };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level))
+        .format_timestamp(None)
+        .format_target(false)
+        .init();
     match cli.command {
         Command::Gltf(args) => {
+            let format = args.format.unwrap_or_else(|| {
+                match args
+                    .files
+                    .output
+                    .as_ref()
+                    .filter(|p| !p.is_dir())
+                    .and_then(|p| p.extension())
+                    .and_then(|e| e.to_str())
+                {
+                    Some(ext) if ext.eq_ignore_ascii_case("gltf") => GltfExportFormat::GltfSeparate,
+                    _ => GltfExportFormat::Glb,
+                }
+            });
             let result = commands::gltf(
                 GltfOptions {
                     files: args.files.into(),
                     legacy: false,
                     skeleton: args.skeleton || args.animation.is_some(),
                     animation: args.animation,
-                    format: args.format,
+                    format,
                     textures: args.textures,
                 },
                 args.mesh_index,
