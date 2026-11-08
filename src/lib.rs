@@ -3,6 +3,8 @@
 pub mod cli;
 pub mod commands;
 
+mod reporting;
+
 /// Initialize CLI logging, respecting `RUST_LOG`.
 pub fn init_logging(verbosity: u8) {
     use env_logger::Env;

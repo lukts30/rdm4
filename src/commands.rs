@@ -7,7 +7,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use log::{debug, error, info};
+use log::{error, info};
+
+use crate::reporting;
 use rdm4lib::{
     gltf_export::{self, GltfExportFormat},
     gltf_reader::{AnimationImportOptions, ImportedGltf, ResolveNodeName},
@@ -26,7 +28,14 @@ pub fn split(
     force: bool,
     mut output: impl Write,
 ) -> Result<(), Box<dyn Error>> {
-    let mut splitter = RdmSplitter::new(BufReader::new(File::open(input)?))?;
+    let file = File::open(input)?;
+    reporting::input(input, file.metadata()?.len());
+    let mut splitter = RdmSplitter::new(BufReader::new(file))?;
+    info!(
+        "Splitting {} models into {}; shared records and source bytes are preserved",
+        splitter.model_count(),
+        directory.display()
+    );
     let paths: Vec<_> = (0..splitter.model_count())
         .map(|index| {
             let mut name = input
@@ -56,14 +65,27 @@ pub fn split(
     fs::create_dir_all(directory)?;
     for (index, path) in paths.iter().enumerate() {
         let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+        info!(
+            "Writing model #{index} ({}/{}) to {}",
+            index + 1,
+            paths.len(),
+            path.display()
+        );
         splitter.write_model(index, &mut temporary)?;
+        let bytes = temporary.as_file().metadata()?.len();
         if force {
             temporary.persist(path)?;
         } else {
             temporary.persist_noclobber(path)?;
         }
+        info!("Wrote model #{index}: {} ({} bytes)", path.display(), bytes);
         writeln!(output, "{}", path.display())?;
     }
+    info!(
+        "Split complete: {} files written to {}",
+        paths.len(),
+        directory.display()
+    );
     Ok(())
 }
 
@@ -324,13 +346,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     };
     let output = opts.files.conversion_destination(extension, opts.legacy)?;
     let mut document = read_document(&opts.files.input)?;
-    info!(
-        "Available: {} models, {} materials, {} joints, {} animations",
-        document.models.as_ref().map_or(0, Vec::len),
-        document.materials.as_ref().map_or(0, Vec::len),
-        document.skin.as_ref().map_or(0, |skin| skin.joints.len()),
-        document.animations.as_ref().map_or(0, Vec::len)
-    );
+    reporting::available(&document);
     if let Some(index) = mesh_index {
         let models = document.models.take().unwrap_or_default();
         let count = models.len();
@@ -341,30 +357,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         info!("Selected model #{index}");
         document.models = Some(vec![model]);
     }
-    for (index, model) in document.models.iter().flatten().enumerate() {
-        info!(
-            "  Model #{} {:?}: {} vertices, {} triangles, {} groups",
-            mesh_index.unwrap_or(index),
-            model.name.name.as_deref().unwrap_or("<unnamed>"),
-            model.vertices.count,
-            model.indices.values.len() / 3,
-            model.groups.len()
-        );
-        info!(
-            "    Vertex format: {}; index type: {:?}",
-            model.vertex_format, model.index_format.storage_type
-        );
-        debug!(
-            "    Bounds: {:?} .. {:?}",
-            model.bounds_min, model.bounds_max
-        );
-        for (index, group) in model.groups.iter().enumerate() {
-            info!(
-                "    Group #{index}: material {}, first index {}, index count {}",
-                group.material, group.first_index, group.index_count
-            );
-        }
-    }
+    reporting::models(&document, mesh_index);
     if !opts.skeleton && document.skin.is_some() {
         info!("Skeleton omitted; use --skeleton to include it");
     }
@@ -379,15 +372,27 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         }
         scene.attach_rdm_animation(read_animation(path)?, 0)?;
     }
-    log_scene(&scene);
+    reporting::scene(&scene);
     let mut writer = gltf_export::GltfWriter::new(scene);
     if opts.legacy {
         writer = writer.legacy();
     }
     if let Some(textures) = opts.textures {
+        info!("Converting {} DDS textures with texconv", textures.len());
         writer = writer.textures(RdMaterial::new(textures));
     }
-    writer.write(output, !opts.files.force, opts.format)
+    let mut path = output.unwrap_or_else(|| PathBuf::from("gltf_out"));
+    if opts.files.output.is_none() && opts.legacy {
+        fs::create_dir_all(&path)?;
+    }
+    if path.is_dir() {
+        path.push("out");
+    }
+    path.set_extension(extension);
+    info!("Writing glTF {}", path.display());
+    writer.write(Some(path.clone()), !opts.files.force, opts.format)?;
+    reporting::written(&path);
+    Ok(())
 }
 
 fn read_animation(path: &Path) -> Result<RdmAnimation, Box<dyn Error>> {
@@ -411,11 +416,7 @@ fn read_animation(path: &Path) -> Result<RdmAnimation, Box<dyn Error>> {
 
 fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
     let file = File::open(path)?;
-    info!(
-        "Reading {} ({} bytes)",
-        path.display(),
-        file.metadata()?.len()
-    );
+    reporting::input(path, file.metadata()?.len());
     let reader = RdmReader::new(BufReader::new(file))?;
     info!("Byte order: {:?}", reader.endian());
     Ok(reader.read_root::<RdmDocument>()?.value)
@@ -424,6 +425,7 @@ fn read_document(path: &Path) -> Result<RdmDocument, Box<dyn Error>> {
 /// Convert selected geometry or all active-scene mesh nodes, optionally with skin and animation.
 pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     let output = opts.files.conversion_destination("rdm", opts.legacy)?;
+    reporting::input(&opts.files.input, fs::metadata(&opts.files.input)?.len());
     let mut gltf = ImportedGltf::load(opts.files.input.as_path(), opts.joint_names)?;
     let animations = (opts.skeleton && opts.animation).then_some(AnimationImportOptions {
         interpolate: opts.interpolate_animations,
@@ -437,22 +439,8 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
         gltf.read_active_scene(opts.skeleton, animations)?
     };
     info!("Destination vertex format: {:?}", opts.format);
-    for (index, mesh) in scene.meshes.iter().enumerate() {
-        info!(
-            "  Model #{index} {:?}: {} vertices, {} triangles, {} groups",
-            mesh.name.as_deref().unwrap_or("<unnamed>"),
-            mesh.vertex_count,
-            mesh.indices.len() / 3,
-            mesh.primitives.len()
-        );
-        for (index, primitive) in mesh.primitives.iter().enumerate() {
-            info!(
-                "    Group #{index}: material {}, indices {:?}",
-                primitive.material, primitive.indices
-            );
-        }
-    }
-    log_scene(&scene);
+    reporting::meshes(&scene);
+    reporting::scene(&scene);
     let material_indices = if opts.legacy {
         Some(
             opts.material_indices
@@ -461,7 +449,10 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
     } else {
         opts.material_indices
     };
-    write_scene(
+    let animation_count = scene.animations.len();
+    let directory_output = output.as_ref().is_none_or(|path| path.is_dir());
+    info!("Writing RDM and {animation_count} animation files");
+    let path = write_scene(
         scene,
         RdmExportOptions {
             format: opts.format,
@@ -473,31 +464,22 @@ pub fn rdm(opts: RdmOptions) -> Result<(), Box<dyn Error>> {
         output,
         !opts.files.force,
     )?;
+    for index in 0..animation_count {
+        let name = if directory_output {
+            format!("anim_{index}.rdm")
+        } else {
+            format!(
+                "{}_anim_{index}.rdm",
+                path.file_stem()
+                    .expect("output has a filename")
+                    .to_string_lossy()
+            )
+        };
+        reporting::written(&path.with_file_name(name));
+    }
+    reporting::written(&path);
     if opts.skeleton && !opts.no_transform {
         error!("glTF skeleton is set, but no_transform is not! Animation & Mesh might be severely deformed! Use --no_transform and apply rotation & translation in the cfg file.");
     }
     Ok(())
-}
-
-fn log_scene(scene: &rdm4lib::scene::Scene) {
-    info!(
-        "Exporting {} models, {} skeletons ({} joints), {} animations",
-        scene.meshes.len(),
-        scene.skeletons.len(),
-        scene
-            .skeletons
-            .iter()
-            .map(|skin| skin.joints.len())
-            .sum::<usize>(),
-        scene.animations.len()
-    );
-    for animation in &scene.animations {
-        info!(
-            "  Animation {:?}: {} tracks, {} ms, {} samples/s",
-            animation.name,
-            animation.tracks.len(),
-            animation.duration_millis,
-            animation.sampling_rate
-        );
-    }
 }

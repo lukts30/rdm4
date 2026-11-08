@@ -65,6 +65,8 @@ changes and hash history.
 `split` writes `<stem>.model-000.rdm`, etc., one per model. It preserves source
 byte order, strides and opaque tails, retaining shared materials, skeleton and
 animations. All blocks must have known owners. Existing outputs require `--force`.
+Progress and output sizes go to stderr; stdout lists only the written paths.
+Use `--quiet` to suppress progress while retaining the file list.
 
 `inspect` uses the new scanner to list physical blocks and preamble metadata.
 Unknown record layouts are accepted by default. `--records` additionally decodes

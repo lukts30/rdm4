@@ -42,7 +42,6 @@ fn write_document(
     file: &Path,
     create_new: bool,
 ) -> Result<(), Box<dyn Error>> {
-    info!("Writing RDM {:?}", file);
     let writer = OpenOptions::new()
         .write(true)
         .create(true)
@@ -53,7 +52,6 @@ fn write_document(
     RdmWriter::new(BufWriter::new(writer), RdmEndian::Little)
         .write_root(document)?
         .flush()?;
-    info!("Wrote RDM {:?}", file);
     Ok(())
 }
 

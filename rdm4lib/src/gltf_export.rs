@@ -98,7 +98,6 @@ impl RdGltf {
                 .map(BufWriter::new)
                 .map_err(|error| format!("{}: {error}", path.display()))
         };
-        info!("Writing glTF {:?}", file);
         let mut writer = open(&file)?;
         match config {
             GltfExportFormat::Glb => {
@@ -137,7 +136,6 @@ impl RdGltf {
             }
         }
         writer.flush()?;
-        info!("Wrote glTF {:?}", file);
         Ok(())
     }
 }

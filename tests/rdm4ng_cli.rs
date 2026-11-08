@@ -128,6 +128,7 @@ fn split_preserves_model_records_and_shared_data() {
         let models = expected.value.models.as_ref().unwrap();
         let directory = output.path().join(case.to_string());
         let result = ng()
+            .env_remove("RUST_LOG")
             .arg("split")
             .arg(&input)
             .arg("-o")
@@ -138,6 +139,21 @@ fn split_preserves_model_records_and_shared_data() {
             result.status.success(),
             "{name}: {}",
             String::from_utf8_lossy(&result.stderr)
+        );
+        let log = String::from_utf8_lossy(&result.stderr);
+        for expected in [
+            "Reading",
+            "bytes",
+            "Splitting",
+            "Writing model #0",
+            "Wrote model #0",
+            "Split complete",
+        ] {
+            assert!(log.contains(expected), "missing {expected}: {log}");
+        }
+        assert!(
+            log.contains(&format!("Splitting {} models", models.len())),
+            "{log}"
         );
         let paths: Vec<_> = String::from_utf8(result.stdout)
             .unwrap()
@@ -194,15 +210,30 @@ fn split_preserves_model_records_and_shared_data() {
                 .output()
                 .unwrap();
             assert_eq!(collision.status.code(), Some(1));
+            assert!(!String::from_utf8_lossy(&collision.stderr).contains("Split complete"));
             assert!(!paths[0].exists());
             assert_eq!(fs::read(&paths[1]).unwrap(), second);
-            succeeds(
-                ng().arg("split")
-                    .arg(&input)
-                    .arg("-o")
-                    .arg(&directory)
-                    .arg("--force"),
+            let quiet = ng()
+                .env_remove("RUST_LOG")
+                .arg("split")
+                .arg(&input)
+                .arg("-o")
+                .arg(&directory)
+                .args(["--force", "--quiet"])
+                .output()
+                .unwrap();
+            assert!(quiet.status.success());
+            assert!(
+                quiet.stderr.is_empty(),
+                "{}",
+                String::from_utf8_lossy(&quiet.stderr)
             );
+            let quiet_paths: Vec<_> = String::from_utf8(quiet.stdout)
+                .unwrap()
+                .lines()
+                .map(PathBuf::from)
+                .collect();
+            assert_eq!(quiet_paths, paths);
             assert_eq!(fs::read(&paths[0]).unwrap(), first);
         }
         assert_eq!(fs::read(input).unwrap(), bytes);
