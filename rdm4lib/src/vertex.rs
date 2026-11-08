@@ -151,23 +151,7 @@ impl StorageType {
     }
 }
 
-impl From<u32> for StorageType {
-    fn from(i: u32) -> Self {
-        match i {
-            3 => Self::U16,
-            5 => Self::U32,
-            6 => Self::F16,
-            7 => Self::F32,
-            _ => panic!("Unsupported RDM storage type: {}", i),
-        }
-    }
-}
-
 impl VertexIdentifier {
-    pub fn get_size(&self) -> u32 {
-        self.storage_type.byte_size() * self.storage_count
-    }
-
     pub const fn p4h() -> Self {
         VertexIdentifier {
             semantic: VertexSemantic::Position,
@@ -393,71 +377,13 @@ impl FromStr for TargetVertexFormat {
     }
 }
 
-pub trait VertexFormatProperties {
-    fn has_weights(vertex_format: &TargetVertexFormat) -> bool;
-    fn has_joints(vertex_format: &TargetVertexFormat) -> bool;
-    fn has_colors(vertex_format: &TargetVertexFormat) -> bool;
-
-    //this is for later when we want to implementmultiple indices and weights
-    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32;
-    fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32;
-    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32;
-}
-
-impl VertexFormatProperties for TargetVertexFormat {
-    fn has_weights(vertex_format: &TargetVertexFormat) -> bool {
-        match vertex_format {
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => false,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => true,
-            TargetVertexFormat::P4h_T2h_C4b => false,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => false,
-        }
-    }
-
-    fn has_joints(vertex_format: &TargetVertexFormat) -> bool {
-        match vertex_format {
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h => false,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => true,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => true,
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => false,
-            TargetVertexFormat::P4h_T2h_C4b => false,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => false,
-        }
-    }
-
-    fn has_colors(vertex_format: &TargetVertexFormat) -> bool {
+impl TargetVertexFormat {
+    /// Whether this output preset stores joint indices.
+    pub fn has_joints(&self) -> bool {
         matches!(
-            vertex_format,
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b
-                | TargetVertexFormat::P4h_T2h_C4b
-                | TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b
+            self,
+            Self::P4h_N4b_G4b_B4b_T2h_I4b | Self::P4h_N4b_G4b_B4b_T2h_I4b_W4b
         )
-    }
-
-    fn weight_component_count(vertex_format: &TargetVertexFormat) -> u32 {
-        match vertex_format {
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
-            _ => 0,
-        }
-    }
-
-    fn joint_component_count(vertex_format: &TargetVertexFormat) -> u32 {
-        match vertex_format {
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b_W4b => 1,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_I4b => 1,
-            _ => 0,
-        }
-    }
-
-    fn color_component_count(vertex_format: &TargetVertexFormat) -> u32 {
-        match vertex_format {
-            TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b => 1,
-            TargetVertexFormat::P4h_T2h_C4b => 1,
-            TargetVertexFormat::P4h_N4b_G4b_B4b_T2h_C4b_C4b => 2,
-            _ => 0,
-        }
     }
 }
 
@@ -556,7 +482,7 @@ mod tests_vertex {
             descriptor.write(&mut writer, i * 16).unwrap();
         }
         let output = writer.into_inner().into_inner();
-        let bytes: Vec<&[u8]> = output.chunks_exact(16).collect();
+        let bytes = output.as_chunks::<16>().0;
         assert_eq!(bytes.len(), 6);
 
         const P4H_IDENTIFIER: [u8; 16] = [

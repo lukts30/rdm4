@@ -220,7 +220,10 @@ impl RdmReadField for StorageType {
     ) -> Result<Self, RdmError> {
         let code = u32::read_field(reader, raw, at, context, ())?;
         match code {
-            3 | 5 | 6 | 7 => Ok(Self::from(code)),
+            3 => Ok(Self::U16),
+            5 => Ok(Self::U32),
+            6 => Ok(Self::F16),
+            7 => Ok(Self::F32),
             _ => Err(RdmError::new(
                 at,
                 context,

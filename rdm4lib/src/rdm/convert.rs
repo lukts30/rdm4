@@ -429,7 +429,9 @@ mod tests {
             assert_eq!(block.source.payload.end, meta + 68);
             let words: Vec<u32> = block
                 .tails
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|raw| endian.decode(raw))
                 .collect();
             assert_eq!(words, [1, 2, 3, 4]);
