@@ -382,6 +382,97 @@ mod tests {
     }
 
     #[test]
+    fn imports_mixed_color_storage_with_legacy_byte_conversion() {
+        use rdm4lib::{rdm::RdmAttributeValues, vertex::VertexSemantic};
+        use serde_json::json;
+
+        let output = tempfile::tempdir().unwrap();
+        let mut bytes: Vec<_> = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        let mut views = vec![json!({"buffer": 0, "byteLength": bytes.len()})];
+        let mut accessors = vec![json!({
+            "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+            "min": [0, 0, 0], "max": [1, 1, 0]
+        })];
+        let mut primitives = Vec::new();
+        for (component_type, color) in [
+            (5121, vec![11u8, 77, 193, 255]),
+            (
+                5123,
+                [256u16, 512, 32768, 65535]
+                    .into_iter()
+                    .flat_map(u16::to_le_bytes)
+                    .collect(),
+            ),
+            (
+                5126,
+                [0.25f32, 0.5, 0.75, 1.0]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+                    .collect(),
+            ),
+            (5121, vec![37, 88, 199, 128]),
+        ] {
+            views.push(json!({
+                "buffer": 0, "byteOffset": bytes.len(), "byteLength": color.len() * 3
+            }));
+            bytes.extend(color.repeat(3));
+            accessors.push(json!({
+                "bufferView": views.len() - 1, "componentType": component_type,
+                "count": 3, "type": "VEC4", "normalized": component_type != 5126
+            }));
+            primitives.push(json!({"attributes": {
+                "POSITION": 0, "COLOR_0": accessors.len() - 1
+            }}));
+        }
+        fs::write(output.path().join("colors.bin"), &bytes).unwrap();
+        let input = output.path().join("colors.gltf");
+        fs::write(
+            &input,
+            serde_json::to_vec(&json!({
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "colors.bin", "byteLength": bytes.len()}],
+                "bufferViews": views, "accessors": accessors,
+                "meshes": [{"primitives": primitives}], "nodes": [{"mesh": 0}],
+                "scenes": [{"nodes": [0]}], "scene": 0
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let scene = gltf_reader::ImportedGltf::try_from(input.as_path())
+            .unwrap()
+            .read_scene(false, None)
+            .unwrap();
+        let document =
+            RdmDocument::from_scene(scene, options(TargetVertexFormat::P3f_N3f_G3f_B3f_T2f_C4b))
+                .unwrap();
+        let model = &document.models.as_ref().unwrap()[0];
+        let color = model
+            .vertex_format
+            .attributes
+            .iter()
+            .position(|attribute| attribute.semantic == VertexSemantic::Color)
+            .unwrap();
+        // U16 uses the high byte; floats truncate after multiplication by 255.
+        let expected: Vec<_> = [
+            [11, 77, 193, 255],
+            [1, 2, 128, 255],
+            [63, 127, 191, 255],
+            [37, 88, 199, 128],
+        ]
+        .into_iter()
+        .flat_map(|color| [u32::from_le_bytes(color); 3])
+        .collect();
+        assert_eq!(model.groups.len(), 4);
+        assert_eq!(
+            model.vertices.attributes[color],
+            RdmAttributeValues::U32(expected)
+        );
+    }
+
+    #[test]
     #[cfg_attr(miri, ignore)]
     fn preserves_skinned_rdm_bytes_and_layout() {
         let source = fs::read("rdm/basalt_crusher_others_lod2.rdm").unwrap();

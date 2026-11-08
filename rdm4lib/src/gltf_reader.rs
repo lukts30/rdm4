@@ -317,7 +317,9 @@ impl ImportedGltf {
                                 .first()
                                 .copied()
                                 .filter(|first| types.iter().all(|value| value == first))
-                                .unwrap_or(gltf::accessor::DataType::F32);
+                                // Match legacy per-primitive byte conversion for mixed
+                                // sources; U16 -> F32 -> U8 changes truncation results.
+                                .unwrap_or(gltf::accessor::DataType::U8);
                             match component {
                                 gltf::accessor::DataType::U8 => (
                                     VertexSemantic::Color,
@@ -406,6 +408,9 @@ impl ImportedGltf {
                                 a.append(&mut b)
                             }
                             (AttributeValues::U16(a), AttributeValues::U16(mut b)) => {
+                                a.append(&mut b)
+                            }
+                            (AttributeValues::U32(a), AttributeValues::U32(mut b)) => {
                                 a.append(&mut b)
                             }
                             _ => return Err("attribute encodings differ between primitives".into()),
