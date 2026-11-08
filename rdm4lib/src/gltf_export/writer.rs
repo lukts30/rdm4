@@ -178,8 +178,7 @@ impl GltfWriter {
             )?;
         }
         let buffers = binary.finish(&mut root, config != GltfExportFormat::GltfSeparate);
-        RdGltf { root, buffers }.write_gltf(dir, textures, create_new, config);
-        Ok(())
+        RdGltf { root, buffers }.write_gltf(dir, textures, create_new, config)
     }
 }
 

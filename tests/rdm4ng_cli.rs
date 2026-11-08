@@ -379,6 +379,25 @@ fn gltf_command_and_alias_match_legacy_output() {
         );
         same_gltf_data(&directory.join("mesh with spaces.glb"), &expected);
     }
+    for format in ["glb", "gltf"] {
+        let destination = output.path().join(format!("existing.{format}"));
+        fs::write(&destination, b"existing output").unwrap();
+        let result = ng()
+            .arg("gltf")
+            .arg(&input)
+            .args(["--format", format])
+            .arg("-o")
+            .arg(&destination)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        let error = String::from_utf8(result.stderr).unwrap();
+        assert!(
+            error.contains("existing.") && !error.contains("panicked"),
+            "{error}"
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"existing output");
+    }
     let legacy_directory = output.path().join("legacy separate");
     let ng_directory = output.path().join("ng separate");
     fs::create_dir(&legacy_directory).unwrap();
