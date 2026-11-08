@@ -192,14 +192,13 @@ fn put_textures(
         let mut image = json::Image {
             uri: Some(name.clone()),
             buffer_view: None,
-            mime_type: None,
+            mime_type: Some(json::image::MimeType("image/png".into())),
             name: None,
             extensions: None,
             extras: None,
         };
         if embed {
             image.uri = None;
-            image.mime_type = Some(json::image::MimeType("image/png".into()));
             image.buffer_view = Some(
                 binary
                     .push_buffer_view(BufferContainer(fs::read(env::temp_dir().join(name))?), None),
