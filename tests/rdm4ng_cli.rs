@@ -985,10 +985,13 @@ fn external_animation_preserves_scene_selection_and_legacy_keys() {
 #[test]
 fn conversion_reports_models_and_resolves_ng_output_paths() {
     let directory = tempfile::tempdir().unwrap();
-    let input = directory.path().join("fishery.rdm");
+    let input_dir = directory.path().join("input");
+    fs::create_dir(&input_dir).unwrap();
+    let input = input_dir.join("fishery.rdm");
     fs::copy(fixture("fishery_others_lod2.rdm"), &input).unwrap();
     let output = ng()
         .env_remove("RUST_LOG")
+        .current_dir(directory.path())
         .arg("gltf")
         .arg(&input)
         .output()
@@ -998,7 +1001,8 @@ fn conversion_reports_models_and_resolves_ng_output_paths() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(input.with_extension("glb").is_file());
+    assert!(directory.path().join("fishery.glb").is_file());
+    assert!(!input.with_extension("glb").exists());
     assert!(output.stdout.is_empty());
     let log = String::from_utf8_lossy(&output.stderr);
     for expected in [
@@ -1012,21 +1016,24 @@ fn conversion_reports_models_and_resolves_ng_output_paths() {
     ] {
         assert!(log.contains(expected), "missing {expected}: {log}");
     }
-    let separate = directory.path().join("separate.gltf");
+    let separate = input_dir.join("separate.gltf");
     succeeds(ng().arg("gltf").arg(&input).arg("-o").arg(&separate));
     assert!(gltf::import(&separate).is_ok());
     succeeds(
-        ng().arg("rdm")
+        ng().current_dir(directory.path())
+            .arg("rdm")
             .arg(&separate)
             .args(["--format", "P4h_N4b_G4b_B4b_T2h"]),
     );
-    assert!(separate.with_extension("rdm").is_file());
+    assert!(directory.path().join("separate.rdm").is_file());
+    assert!(!separate.with_extension("rdm").exists());
     let nested = directory.path().join("nested");
     fs::create_dir(&nested).unwrap();
     succeeds(ng().arg("gltf").arg(&input).arg("-o").arg(&nested));
     assert!(nested.join("fishery.glb").is_file());
     let quiet = ng()
         .env_remove("RUST_LOG")
+        .current_dir(directory.path())
         .arg("gltf")
         .arg(&input)
         .args(["--quiet", "--force"])

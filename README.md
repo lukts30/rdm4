@@ -42,8 +42,9 @@ Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
 
 Conversions report model geometry, material groups, skeletons and animations on
 stderr. Use `-v` for diagnostics or `-q` to keep only warnings and errors;
-`RUST_LOG` overrides the log level. Without `-o`, NG writes beside the input
-with the output extension. An existing output directory uses the input basename.
+`RUST_LOG` overrides the log level. Without `-o`, NG writes to the current working
+directory using the input basename with the output extension. An existing output
+directory uses the input basename.
 For `gltf`, `-o model.gltf` selects separate glTF; otherwise GLB is the default.
 An explicit `--format` must match the output extension. Existing files still
 require `--force`.

@@ -115,7 +115,7 @@ struct FileArgs {
     /// Input file.
     #[arg(value_parser = existing_file)]
     input: PathBuf,
-    /// Output file or existing directory; defaults to INPUT with the output extension.
+    /// Output file or existing directory; defaults to the input basename in the current directory.
     #[arg(short, long)]
     output: Option<PathBuf>,
     /// Use the input basename in the output directory (automatic for directories).

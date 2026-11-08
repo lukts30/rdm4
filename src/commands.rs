@@ -275,10 +275,11 @@ impl Files {
         if legacy {
             return Ok(self.destination(extension));
         }
-        let mut output = self
-            .output
-            .clone()
-            .unwrap_or_else(|| self.input.with_extension(extension));
+        let mut output = match &self.output {
+            Some(path) => path.clone(),
+            None => PathBuf::from(self.input.file_name().ok_or("input has no filename")?)
+                .with_extension(extension),
+        };
         if self.input_name && !output.is_dir() {
             return Err("--input-name requires an existing output directory".into());
         }
