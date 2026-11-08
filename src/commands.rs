@@ -264,6 +264,8 @@ impl Files {
 /// Settings for RDM to glTF/GLB conversion.
 pub struct GltfOptions {
     pub files: Files,
+    /// Preserve the original CLI's attribute and skeleton export behavior.
+    pub legacy: bool,
     pub skeleton: bool,
     pub animation: Option<PathBuf>,
     pub format: GltfExportFormat,
@@ -305,7 +307,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
     }
     let mut scene = document.into_scene(opts.skeleton)?;
     // The old CLI activates the selected model's skeleton explicitly.
-    if mesh_index.is_some() && opts.skeleton {
+    if opts.legacy && opts.skeleton {
         scene.meshes[0].skeleton = Some(0);
     }
     if let Some(path) = &opts.animation {
@@ -315,7 +317,7 @@ pub fn gltf(opts: GltfOptions, mesh_index: Option<usize>) -> Result<(), Box<dyn 
         scene.attach_rdm_animation(read_animation(path)?, 0)?;
     }
     let mut writer = gltf_export::GltfWriter::new(scene);
-    if mesh_index.is_some() {
+    if opts.legacy {
         writer = writer.legacy();
     }
     if let Some(textures) = opts.textures {

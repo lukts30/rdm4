@@ -169,6 +169,7 @@ pub fn run() -> ExitCode {
             let result = commands::gltf(
                 GltfOptions {
                     files: args.files.into(),
+                    legacy: false,
                     skeleton: args.skeleton || args.animation.is_some(),
                     animation: args.animation,
                     format: args.format,

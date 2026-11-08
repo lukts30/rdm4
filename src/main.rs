@@ -186,6 +186,7 @@ fn entry_do_work(opts: Opts) {
         commands::gltf(
             GltfOptions {
                 files,
+                legacy: true,
                 skeleton: opts.skeleton,
                 animation: opts.rdanimation,
                 format: opts.gltf_export_format,

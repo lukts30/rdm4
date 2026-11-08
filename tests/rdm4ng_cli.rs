@@ -404,12 +404,12 @@ fn gltf_command_and_alias_match_legacy_output() {
     for name in [
         "excavator_tycoons_lod1.rdm",
         "destruction_stone_building_04_decal_detail01_lod0.rdm",
+        "jungletree_big_01.rdm",
     ] {
         let expected = legacy_directory.join("variant.glb");
         let actual = ng_directory.join("variant.glb");
         succeeds(
-            legacy()
-                .arg("-i")
+            ng().arg("gltf")
                 .arg(fixture(name))
                 .arg("-o")
                 .arg(&expected)
@@ -418,13 +418,21 @@ fn gltf_command_and_alias_match_legacy_output() {
         succeeds(
             ng().arg("gltf")
                 .arg(fixture(name))
-                // Selected export keeps the legacy attribute coverage.
                 .args(["--mesh-index", "0"])
                 .arg("-o")
                 .arg(&actual)
                 .arg("--force"),
         );
         same_gltf_data(&actual, &expected);
+        if name == "jungletree_big_01.rdm" {
+            assert!(gltf::Gltf::open(&actual)
+                .unwrap()
+                .meshes()
+                .next()
+                .unwrap()
+                .primitives()
+                .all(|primitive| primitive.get(&gltf::Semantic::Colors(0)).is_some()));
+        }
     }
     let input = fixture("benchmark/06-heavy_04_conveyor_lod2.rdm");
     let actual = ng_directory.join("selected.glb");
@@ -689,7 +697,7 @@ fn rdm_commands_keep_payloads_and_import_active_scene_models() {
 }
 
 #[test]
-fn external_animation_preserves_legacy_bytes_and_scene_keys() {
+fn external_animation_preserves_scene_selection_and_legacy_keys() {
     let output = tempfile::tempdir().unwrap();
     let input = fixture("basalt_crusher_others_lod0.rdm");
     let animation = fixture("basalt_crusher_others_idle01.rdm");
@@ -715,7 +723,7 @@ fn external_animation_preserves_legacy_bytes_and_scene_keys() {
             .arg("-o")
             .arg(&actual),
     );
-    assert_eq!(fs::read(&actual).unwrap(), fs::read(&expected).unwrap());
+    let selected = fs::read(&actual).unwrap();
     succeeds(
         ng().arg("gltf")
             .arg(&input)
@@ -725,6 +733,7 @@ fn external_animation_preserves_legacy_bytes_and_scene_keys() {
             .arg("-o")
             .arg(&actual),
     );
+    assert_eq!(fs::read(&actual).unwrap(), selected);
     let clips = |path: &Path| {
         let (document, buffers, _) = gltf::import(path).unwrap();
         document
