@@ -26,6 +26,13 @@ vertex counts, index arrays/order, index widths, position bytes and UV bytes.
 The legacy CLI retains its primitive-order material defaults: palace's slots
 `[1, 0]` become `[0, 1]`. `rdm4ng` preserves `[1, 0]`.
 
+The Anno 2070 harbor cargo cart fixtures (`harbor_line_subterrain_cargo_cart_*`)
+come from `patch6.rda`, under
+`data/graphics/dlc_03/buildings/others/ornaments/harbor_line_subterrain_cargo/`.
+The mesh has one joint but no vertex influences. Both CLIs export it with
+implicit full weight on joint 0 for `work01` and `work02`; multi-joint meshes
+still require explicit joint indices.
+
 Whole-file bytes differ: fresh output rebuilds layout and metadata, and recomputes
 bounds. Palace's bounds changed despite identical positions. For unchanged
 records, `RdmWriter::write_preserving` reproduces the source bytes and layout

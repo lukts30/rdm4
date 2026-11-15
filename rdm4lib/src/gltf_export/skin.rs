@@ -194,8 +194,13 @@ pub(super) fn influences(
             })
             .collect::<Result<Vec<_>, Box<dyn Error>>>()
     };
-    let joints = packed(VertexSemantic::JointIndex, 0)?;
+    let mut joints = packed(VertexSemantic::JointIndex, 0)?;
     let mut weights = packed(VertexSemantic::Weight, 2)?;
+    // Anno 2070 rigid animations can reference a single-joint skeleton without
+    // storing per-vertex influences (for example the harbor cargo cart).
+    if joints.is_empty() && weights.is_empty() && joint_count == 1 {
+        joints.push(vec![[0; 4]; mesh.vertex_count]);
+    }
     if joints.is_empty() {
         return Err("skinned mesh has no joint indices".into());
     }

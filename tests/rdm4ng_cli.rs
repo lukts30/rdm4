@@ -1190,3 +1190,60 @@ fn mesh_selection_supports_all_and_indices_in_both_clis() {
         }
     }
 }
+
+#[test]
+fn anno2070_rigid_cargo_cart_exports_with_both_animations() {
+    use rdm4lib::rdm::{RdmDocument, RdmReader};
+    let directory = tempfile::tempdir().unwrap();
+    let input = fixture("harbor_line_subterrain_cargo_cart_lod0.rdm");
+    for clip in ["work01", "work02"] {
+        let animation = fixture(&format!("harbor_line_subterrain_cargo_cart_{clip}.rdm"));
+        let source = RdmReader::new(std::io::BufReader::new(fs::File::open(&animation).unwrap()))
+            .unwrap()
+            .read_root::<RdmDocument>()
+            .unwrap()
+            .value;
+        let expected = &source.animations.as_ref().unwrap()[0].tracks[0].frames;
+        for old in [false, true] {
+            let path = directory.path().join(format!("{clip}-{old}.glb"));
+            let mut command = if old { legacy() } else { ng() };
+            if old {
+                command.arg("-i");
+            } else {
+                command.arg("gltf");
+            }
+            command.arg(&input);
+            if old {
+                command.arg("-sam");
+            } else {
+                command.arg("--animation");
+            }
+            succeeds(command.arg(&animation).arg("-o").arg(&path));
+            let (document, buffers, _) = gltf::import(path).unwrap();
+            assert_eq!(document.skins().count(), 1);
+            assert_eq!(document.skins().next().unwrap().joints().count(), 1);
+            assert_eq!(document.animations().count(), 1);
+            let primitive = document
+                .meshes()
+                .next()
+                .unwrap()
+                .primitives()
+                .next()
+                .unwrap();
+            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+            assert_eq!(reader.read_positions().unwrap().count(), 164);
+            let joints: Vec<_> = reader.read_joints(0).unwrap().into_u16().collect();
+            let weights: Vec<_> = reader.read_weights(0).unwrap().into_f32().collect();
+            assert_eq!(joints, vec![[0; 4]; 164]);
+            assert_eq!(weights, vec![[1.0, 0.0, 0.0, 0.0]; 164]);
+            for channel in document.animations().next().unwrap().channels() {
+                let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+                let times: Vec<_> = reader.read_inputs().unwrap().collect();
+                assert_eq!(
+                    times,
+                    expected.iter().map(|frame| frame.time).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+}

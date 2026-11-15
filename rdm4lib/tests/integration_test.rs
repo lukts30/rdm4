@@ -650,3 +650,36 @@ fn rdm_frame_times_are_seconds_and_duration_is_milliseconds() {
     assert_eq!(animation.time_max, 24_000);
     assert_eq!(animation.tracks[0].frames.last().unwrap().time, 24.0);
 }
+
+#[test]
+fn missing_joint_indices_are_not_inferred_for_multiple_joints() {
+    use rdm4lib::{
+        gltf_export::{GltfExportFormat, GltfWriter},
+        rdm::{RdmDocument, RdmReader},
+    };
+    let document = RdmReader::new(std::io::BufReader::new(
+        File::open("rdm/harbor_line_subterrain_cargo_cart_lod0.rdm").unwrap(),
+    ))
+    .unwrap()
+    .read_root::<RdmDocument>()
+    .unwrap()
+    .value;
+    let mut scene = document.into_scene(true).unwrap();
+    scene.skeletons[0].joints.push(rdm4lib::scene::Joint {
+        name: "extra".into(),
+        parent: None,
+        inverse_bind_translation: [0.0; 3],
+        inverse_bind_rotation: [0.0, 0.0, 0.0, 1.0],
+    });
+    let output = tempfile::tempdir().unwrap();
+    let error = GltfWriter::new(scene)
+        .write(
+            Some(output.path().join("invalid.glb")),
+            true,
+            GltfExportFormat::Glb,
+        )
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("skinned mesh has no joint indices"));
+}

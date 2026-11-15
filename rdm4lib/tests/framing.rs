@@ -84,7 +84,7 @@ fn scans_and_preserves_every_fixture_from_seekable_sources() {
         .map(|entry| entry.unwrap().path())
         .filter(|path| path.extension().is_some_and(|extension| extension == "rdm"))
         .collect();
-    assert_eq!(paths.len(), 43);
+    assert_eq!(paths.len(), 46);
     let mut blocks = 0;
     for path in paths {
         let bytes = fs::read(&path).unwrap();
@@ -123,5 +123,5 @@ fn scans_and_preserves_every_fixture_from_seekable_sources() {
             .into_inner();
         assert_eq!(output, bytes, "{path:?}");
     }
-    assert_eq!(blocks, 3786);
+    assert_eq!(blocks, 3824);
 }
