@@ -29,7 +29,7 @@ impl RdMaterial {
     }
 
     fn run_texconv(&self, dst: &Path) {
-        info!("Converting DDS textures with texconv");
+        debug!("Converting DDS textures with texconv");
         for p in self.c_model_diff_tex.iter() {
             let ab_path = p.canonicalize().unwrap();
             let ab_dst = dst.canonicalize().unwrap();

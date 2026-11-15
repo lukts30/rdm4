@@ -32,11 +32,11 @@ jobs:
         include:
           - name: linux
             os: ubuntu-latest
-            artifact_name: rdm4-bin
+            executable_suffix: ""
             asset_name: rdm4-linux-x64
           - name: windows
             os: windows-latest
-            artifact_name: rdm4-bin.exe
+            executable_suffix: .exe
             asset_name: rdm4-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
@@ -64,11 +64,19 @@ jobs:
       - name: cargo test
         run: cargo test --release --workspace --locked
       - name: cargo build release
-        run: cargo build --release --workspace --locked
+        run: cargo build --release --workspace --bins --locked
+      - name: Check release executables
+        shell: bash
+        run: |
+          target/release/rdm4-bin${{ matrix.executable_suffix }} --version
+          target/release/rdm4ng${{ matrix.executable_suffix }} --version
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: target/release/${{ matrix.artifact_name }}
+          path: |
+            target/release/rdm4-bin${{ matrix.executable_suffix }}
+            target/release/rdm4ng${{ matrix.executable_suffix }}
+          if-no-files-found: error
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -101,6 +109,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
+            Archives contain both `rdm4-bin` and `rdm4ng`.
+
             ## Windows prerequisite
 
             On Windows, install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) before running rdm4.

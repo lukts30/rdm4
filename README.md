@@ -19,6 +19,69 @@ Create the folder C:\\tools. Copy rdm4-bin.exe to C:\\tools. Choose one of the r
 
 - [Youtube playlist with a few videos showing how to use the rdm4 converter to make it a bit easier to get started with the converter.](https://www.youtube.com/playlist?list=PLBsFrFg1v0yxRMV36SkJRnSh_O-hMTsr2)
 
+## rdm4ng
+
+The subcommand CLI provides conversion and inspection:
+
+```sh
+rdm4ng gltf model.rdm -o model.glb
+rdm4ng rdm model.glb -o model.rdm
+rdm4ng gltf model.rdm --animation idle.rdm -o animated.glb
+rdm4ng gltf multi_model.rdm -o all_models.glb
+rdm4ng gltf multi_model.rdm --mesh-index 1 -o selected.glb
+rdm4ng split multi_model.rdm -o split_models
+rdm4ng inspect model.rdm
+rdm4ng inspect model.rdm --format json
+rdm4ng inspect model.rdm --records --format json
+```
+
+`rdm2gltf` and `gltf2rdm` are aliases. Use `rdm4ng <command> --help`
+for options. `rdm4-bin` remains available with its existing arguments.
+Release archives and the default Nix package include both executables.
+Use `nix run .#rdm4ng -- --help` for the subcommand CLI.
+
+Conversions report model geometry, material groups, skeletons and animations on
+stderr. Use `-v` for diagnostics or `-q` to keep only warnings and errors;
+`RUST_LOG` overrides the log level. Without `-o`, NG writes to the current working
+directory using the input basename with the output extension. An existing output
+directory uses the input basename.
+For `gltf`, `-o model.gltf` selects separate glTF; otherwise GLB is the default.
+An explicit `--format` must match the output extension. Existing files still
+require `--force`.
+
+`rdm` / `gltf2rdm` defaults to `P4h_N4b_G4b_B4b_T2h`; use `--format`
+to select another preset. `--format default` and legacy `-g=default` select
+that same standard format.
+
+Both CLIs accept `--mesh-index N` (zero-based) or `--mesh-index all`.
+NG defaults to `all`; the old CLI defaults to `0` and retains
+`--gltf-mesh-index` as an alias. For glTF input, `all` imports mesh instances
+in the active scene; an index selects one mesh definition.
+`rdm4ng gltf` exports all models by default. Both entry points use the scene layer and the new reader and writer.
+`rdm4-bin` retains its arguments and first-model default.
+Selecting a model with `rdm4ng --mesh-index` retains colors and all supported UV sets.
+RDM output presets store at most four joint influences. `rdm4ng rdm` rejects
+nonzero weights in additional sets; the old CLI keeps its first-set packing and
+warns. Duplicate or missing joint names require the `UnstableIndex` naming policy.
+See [RDM round trips](docs/RDM_ROUNDTRIP.md) for measured fidelity, known shading
+changes and hash history.
+
+`split` writes `<stem>.model-000.rdm`, etc., one per model. It preserves source
+byte order, strides and opaque tails, retaining shared materials, skeleton and
+animations. All blocks must have known owners. Existing outputs require `--force`.
+Progress and output sizes go to stderr; stdout lists only the written paths.
+Use `--quiet` to suppress progress while retaining the file list.
+
+`inspect` uses the new scanner to list physical blocks and preamble metadata.
+Unknown record layouts are accepted by default. `--records` additionally decodes
+known records and buffers, lists every model, and checks references, ownership and
+index bounds. Decode failures keep the framing report and return status 1.
+Framing issues retain partial results and return exit status 1.
+JSON reports include structured issues, numeric byte offsets and half-open ranges
+(`start` inclusive, `end` exclusive). Missing metadata is `null`; `schema_version`
+is currently 1. `framing_complete` only describes physical framing, not record validity.
+I/O errors go to stderr and return status 1.
+
 ## command-line interface rdm4-bin
 
 ```
